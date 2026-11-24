@@ -1,0 +1,341 @@
+:root {
+  --bg-obsidian: #100f0d;
+  --bg-stone: #1b1915;
+  --bg-panel: rgba(22, 20, 17, 0.88);
+  --bg-panel-solid: #1b1915;
+  --border-stone: rgba(209, 170, 82, 0.28);
+  --border-subtle: rgba(255, 245, 224, 0.11);
+  --text-main: #f3ede2;
+  --text-muted: #a99f8e;
+  --gold: #cfa64c;
+  --gold-bright: #efd083;
+  --gold-dim: rgba(207, 166, 76, 0.18);
+  --jade: #26543d;
+  --jade-bright: #3c825f;
+  --jade-soft: rgba(38, 84, 61, 0.36);
+  --crimson: #c94b3c;
+  --crimson-soft: rgba(201, 75, 60, 0.28);
+  --amber: #d99436;
+
+  /* Tablero equilibrado por defecto: piedra cálida y jade antiguo */
+  --sq-light: #e5d8bf;
+  --sq-dark: #6b7d69;
+  --board-pedestal-bg: linear-gradient(145deg, #524839 0%, #221e18 55%, #3a3327 100%);
+  --sq-selected: rgba(235, 202, 120, 0.56);
+  --sq-last: rgba(207, 166, 76, 0.34);
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Cinzel', Georgia, serif;
+  --radius: 12px;
+  --shadow-deep: 0 20px 54px rgba(0, 0, 0, 0.72);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  min-height: 100vh;
+  background-color: var(--bg-obsidian);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+#bg-vfx-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ================= BOTONES MINIMALISTAS ================= */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 15px;
+  border-radius: 9px;
+  font-family: var(--font-sans);
+  font-size: 0.83rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border-stone);
+  background: rgba(31, 28, 23, 0.92);
+  color: var(--text-main);
+  transition: all 0.18s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) {
+  background: rgba(50, 44, 36, 0.98);
+  border-color: var(--gold);
+  transform: translateY(-1px);
+}
+.btn:active:not(:disabled) { transform: translateY(0); }
+.btn:disabled { opacity: 0.38; cursor: not-allowed; }
+
+.btn-primary {
+  background: linear-gradient(180deg, #356c50 0%, #224735 100%);
+  border-color: #519674;
+  color: #fbf7ee;
+  box-shadow: 0 4px 16px rgba(34, 71, 53, 0.45);
+}
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #408060 0%, #2a5741 100%);
+  border-color: var(--gold-bright);
+}
+
+.btn-gold {
+  background: linear-gradient(180deg, #cfa448 0%, #967227 100%);
+  border-color: var(--gold-bright);
+  color: #15130f;
+  font-weight: 700;
+}
+.btn-gold:hover:not(:disabled) {
+  background: linear-gradient(180deg, #e0b75a 0%, #ab8431 100%);
+}
+
+.btn-danger {
+  background: rgba(110, 34, 26, 0.86);
+  border-color: var(--crimson);
+  color: #ffdcd7;
+}
+.btn-danger:hover:not(:disabled) {
+  background: rgba(148, 46, 36, 0.94);
+}
+
+.btn-sm { padding: 6px 11px; font-size: 0.77rem; }
+.btn-icon { padding: 6px 9px; min-width: 34px; }
+.btn-toggle.active {
+  background: var(--crimson-soft);
+  border-color: var(--crimson);
+  color: #ffd8d3;
+}
+
+/* ================= INPUTS Y MODALES ================= */
+.input-field {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-stone);
+  background: rgba(12, 11, 9, 0.92);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 0.86rem;
+  outline: none;
+}
+.input-field:focus {
+  border-color: var(--gold-bright);
+  box-shadow: 0 0 0 2px rgba(207, 166, 76, 0.18);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(8, 7, 6, 0.82);
+  backdrop-filter: blur(6px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.modal-backdrop.open { display: flex; }
+
+.modal-box {
+  background: var(--bg-panel-solid);
+  border: 1.5px solid var(--gold);
+  border-radius: var(--radius);
+  padding: 24px;
+  max-width: 440px;
+  width: 100%;
+  text-align: center;
+  box-shadow: var(--shadow-deep);
+}
+.modal-box h2 {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  color: var(--gold-bright);
+  margin-bottom: 10px;
+}
+.modal-box p {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ================= TOAST DE NOTIFICACIONES ================= */
+#toast-container {
+  position: fixed;
+  bottom: 18px;
+  right: 18px;
+  z-index: 9800;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(380px, 92vw);
+}
+.toast-item {
+  padding: 11px 15px;
+  border-radius: 10px;
+  background: rgba(20, 18, 15, 0.96);
+  border: 1px solid var(--gold);
+  color: var(--text-main);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.78);
+  animation: toastIn 0.22s ease;
+}
+.toast-item.error { border-color: var(--crimson); color: #ffd9d4; }
+.toast-item.success { border-color: #519674; color: #ccf2dc; }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ================= AVATARES Y MARCOS ================= */
+.avatar-badge {
+  border-radius: 50%;
+  overflow: hidden;
+  background: #171512;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 2px solid var(--gold);
+}
+.avatar-badge img, .avatar-badge svg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.avatar-badge.frame_stone { border-color: #8a7e6a; box-shadow: 0 0 10px rgba(207, 166, 76, 0.16); }
+.avatar-badge.frame_gold { border-color: #cfa64c; box-shadow: 0 0 14px rgba(239, 208, 131, 0.42); }
+.avatar-badge.frame_jade { border-color: #3c825f; box-shadow: 0 0 14px rgba(60, 130, 95, 0.48); }
+.avatar-badge.frame_obsidian { border-color: #efd083; box-shadow: 0 0 18px rgba(207, 166, 76, 0.62); }
+.avatar-badge.frame_mittens { border-color: #f3ede2; box-shadow: 0 0 14px rgba(255, 255, 255, 0.42); }
+.avatar-badge.frame_galaxy { border-color: #8b7ae6; box-shadow: 0 0 16px rgba(139, 122, 230, 0.56); }
+.avatar-badge.frame_eclipse { border-color: #c94b3c; box-shadow: 0 0 16px rgba(201, 75, 60, 0.56); }
+.avatar-badge.frame_chess_victor { border-color: #fff2c4; box-shadow: 0 0 22px rgba(239, 208, 131, 0.9), inset 0 0 10px rgba(255, 245, 204, 0.5); }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border: 1px solid var(--border-stone);
+  background: rgba(20, 18, 15, 0.85);
+  color: var(--gold-bright);
+}
+.pill.jade { border-color: rgba(81, 150, 116, 0.55); background: rgba(38, 84, 61, 0.3); color: #a7e8c6; }
+.pill.crimson { border-color: rgba(201, 75, 60, 0.55); background: rgba(201, 75, 60, 0.22); color: #ffd4ce; }
+.pill.muted { border-color: var(--border-subtle); color: var(--text-muted); }
+
+/* Scrollbar elegante */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: rgba(16, 15, 13, 0.5); }
+::-webkit-scrollbar-thumb { background: rgba(207, 166, 76, 0.32); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(207, 166, 76, 0.55); }
+
+/* ================= LOGO OFICIAL CHESS.MOD ================= */
+.brand-logo-header {
+  padding: 6px 4px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid rgba(207, 166, 76, 0.22);
+  margin-bottom: 12px;
+}
+
+.brand-logo-img {
+  width: 100%;
+  max-width: 215px;
+  height: auto;
+  border-radius: 10px;
+  display: block;
+  object-fit: contain;
+  border: 1px solid rgba(207, 166, 76, 0.35);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.hud-logo-img {
+  height: 30px;
+  width: auto;
+  border-radius: 6px;
+  display: block;
+  object-fit: contain;
+  border: 1px solid rgba(207, 166, 76, 0.32);
+}
+
+/* ================= RESPONSIVE MENÚ PC + CELULAR ================= */
+@media (max-width: 900px) {
+  #app-shell {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto 1fr !important;
+    height: auto !important;
+    min-height: 100dvh !important;
+  }
+  .menu-sidebar {
+    flex-direction: column !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border-stone) !important;
+    padding: 10px 12px !important;
+    gap: 10px !important;
+  }
+  .brand-logo-img {
+    max-width: 160px !important;
+  }
+  .main-nav {
+    display: flex !important;
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    gap: 6px !important;
+    padding-bottom: 4px !important;
+  }
+  .nav-btn {
+    white-space: nowrap !important;
+    flex: 0 0 auto !important;
+    padding: 8px 11px !important;
+    font-size: 0.8rem !important;
+  }
+  .menu-content {
+    padding: 14px 12px 28px !important;
+  }
+  .cards-grid-3 {
+    grid-template-columns: 1fr !important;
+  }
+  .campaign-level-card {
+    grid-template-columns: 64px 1fr !important;
+  }
+  .campaign-level-card > button {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+  }
+  .power-choice-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

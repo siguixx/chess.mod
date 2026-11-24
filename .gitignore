@@ -1,0 +1,9 @@
+node_modules/
+dist/
+server/data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.env
+CHESS_MOD_COMPLETO.html
+chess_mod.html

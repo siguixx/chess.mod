@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CHESS.MOD</title>
+  <link rel="icon" type="image/jpeg" href="/assets/images/chess_mod_logo.jpg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/menu.css">
+  <link rel="stylesheet" href="/css/board.css">
+  <link rel="stylesheet" href="/css/portraits.css">
+</head>
+<body>
+  <canvas id="bg-vfx-canvas"></canvas>
+
+  <!-- Pistas oficiales de jefes en loop automático -->
+  <audio id="boss-music-audio" src="/assets/audio/Ultimate%20Battle.mp3" loop preload="auto"></audio>
+  <audio id="mittens-music-audio" src="/assets/audio/FreeMittensBattle.mp3" loop preload="auto"></audio>
+  <audio id="blacky-music-audio" src="/assets/audio/BlackyBattle.mp3" loop preload="auto"></audio>
+
+  <div id="toast-container"></div>
+
+  <!-- ================= MENÚ PRINCIPAL PROFESIONAL DE CHESS.MOD ================= -->
+  <div id="app-shell">
+    <aside class="menu-sidebar">
+      <div>
+        <div class="brand-header brand-logo-header">
+          <img class="brand-logo-img" src="/assets/images/chess_mod_logo.jpg" alt="CHESS.MOD">
+        </div>
+
+        <nav class="main-nav" aria-label="Menú principal CHESS.MOD">
+          <button class="nav-btn active" data-screen="play"><span class="nav-ico">⚔️</span><span>Jugar</span></button>
+          <button class="nav-btn" data-screen="multiplayer"><span class="nav-ico">🌐</span><span>Multijugador</span></button>
+          <button class="nav-btn" data-screen="story"><span class="nav-ico">📜</span><span>Modo Historia</span></button>
+          <button class="nav-btn" data-screen="profile"><span class="nav-ico">👤</span><span>Perfil</span></button>
+          <button class="nav-btn" data-screen="customize"><span class="nav-ico">🎨</span><span>Personalización</span></button>
+          <button class="nav-btn" data-screen="ranking"><span class="nav-ico">🏆</span><span>Ranking Global</span></button>
+          <button class="nav-btn" data-screen="stats"><span class="nav-ico">📊</span><span>Estadísticas</span></button>
+          <button class="nav-btn" data-screen="settings"><span class="nav-ico">⚙️</span><span>Configuración</span></button>
+        </nav>
+      </div>
+
+      <div class="sidebar-user-card">
+        <div class="sidebar-user-top">
+          <div id="sidebar-avatar" class="avatar-badge frame_stone" style="width:40px;height:40px;"></div>
+          <div class="sidebar-user-info">
+            <div id="sidebar-username" class="sidebar-user-name">Invitado</div>
+            <div class="sidebar-user-meta">
+              <span id="sidebar-elo">Elo 0</span>
+              <span id="sidebar-xp">0 XP</span>
+            </div>
+          </div>
+        </div>
+        <div class="xp-mini-track"><div id="sidebar-xp-bar" class="xp-mini-fill"></div></div>
+        <button id="btn-sidebar-auth" class="btn btn-sm btn-gold" style="width:100%;">Iniciar sesión / Registro</button>
+      </div>
+    </aside>
+
+    <main class="menu-content">
+      <!-- 1. JUGAR (EXACTAMENTE 3 MODOS — CERO BOSS FIGHTS DIRECTOS) -->
+      <section id="screen-play" class="screen-section active">
+        <div class="screen-header">
+          <div>
+            <div class="screen-kicker">CHESS.MOD · AJEDREZ CLÁSICO Y COMPETITIVO</div>
+            <h1 class="screen-title">JUGAR</h1>
+            <p class="screen-subtitle">Elige uno de los tres modos clásicos. Todos los Jefes y combates especiales pertenecen al Modo Historia.</p>
+          </div>
+          <span class="pill">💡 Pista IA: 25 XP</span>
+        </div>
+
+        <div class="cards-grid-3" id="play-modes-grid">
+          <!-- Opción 1: Partida Rápida -->
+          <div class="mode-card featured">
+            <div>
+              <span class="pill jade" style="margin-bottom:8px;">CLÁSICO · MATCHMAKING</span>
+              <h3>⚡ Partida Rápida</h3>
+              <p>Ajedrez clásico inmediato. Si iniciaste sesión, te conecta directo a la cola rápida de matchmaking competitivo con Elo desde 0.</p>
+            </div>
+            <button id="btn-play-quick-match" class="btn btn-gold">⚡ Jugar Partida Rápida</button>
+          </div>
+
+          <!-- Opción 2: Vs IA -->
+          <div class="mode-card">
+            <div>
+              <span class="pill" style="margin-bottom:8px;">ENTRENAMIENTO TÁCTICO</span>
+              <h3>🤖 Vs IA</h3>
+              <p>Enfrenta al motor táctico clásico eligiendo la dificultad que prefieras (de Principiante a Gran Maestro).</p>
+              <div id="play-ai-diff-pills" class="time-pills" style="margin-top:10px;">
+                <button class="time-opt" data-diff="1">Nv.1</button>
+                <button class="time-opt" data-diff="2">Nv.2</button>
+                <button class="time-opt active" data-diff="3">Nv.3</button>
+                <button class="time-opt" data-diff="4">Nv.4</button>
+                <button class="time-opt" data-diff="5">Nv.5</button>
+              </div>
+            </div>
+            <button id="btn-play-vs-ai" class="btn btn-primary">🤖 Iniciar Vs IA</button>
+          </div>
+
+          <!-- Opción 3: Contra el Tiempo -->
+          <div class="mode-card">
+            <div>
+              <span class="pill crimson" style="margin-bottom:8px;">BULLET · BLITZ · RÁPIDA</span>
+              <h3>⏱️ Contra el Tiempo</h3>
+              <p>Pon a prueba tus reflejos bajo presión estricta de reloj en partidas cronometradas.</p>
+              <div id="play-timed-pills" class="time-pills" style="margin-top:10px;">
+                <button class="time-opt" data-mins="1">Bullet 1m</button>
+                <button class="time-opt active" data-mins="3">Blitz 3m</button>
+                <button class="time-opt" data-mins="5">Blitz 5m</button>
+                <button class="time-opt" data-mins="10">Rápida 10m</button>
+              </div>
+            </div>
+            <button id="btn-play-timed" class="btn">⏱️ Jugar Contra el Tiempo</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. MULTIJUGADOR ONLINE REAL -->
+      <section id="screen-multiplayer" class="screen-section">
+        <div class="screen-header">
+          <div>
+            <div class="screen-kicker">SOCKET.IO · SERVIDOR AUTORITATIVO</div>
+            <h1 class="screen-title">MULTIJUGADOR ONLINE</h1>
+            <p class="screen-subtitle">Emparejamiento automático real por Elo competitivo (desde 0) con relojes sincronizados y validación en servidor.</p>
+          </div>
+          <span id="mp-my-elo" class="pill">0 Elo</span>
+        </div>
+
+        <div id="mp-auth-warning" class="panel-card" style="text-align:center;">
+          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:8px;">Inicia sesión para competir online</h3>
+          <p style="color:var(--text-muted);font-size:0.86rem;margin-bottom:14px;">Todos comienzan en 0 Elo y suben ganando partidas reales contra otros jugadores en el Ranking Global.</p>
+          <button id="btn-mp-open-auth" class="btn btn-gold">Iniciar sesión / Crear cuenta</button>
+        </div>
+
+        <div id="mp-queue-controls" class="matchmaking-hero hidden">
+          <div class="panel-card" style="display:flex;flex-direction:column;gap:16px;">
+            <div>
+              <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;">Cola de Matchmaking Competitivo</h3>
+              <p style="font-size:0.84rem;color:var(--text-muted);">Empareja jugadores reales con Elo similar ampliando rango progresivamente si hay espera.</p>
+            </div>
+
+            <div>
+              <div style="font-size:0.74rem;color:var(--gold);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;font-weight:700;">Control de Tiempo</div>
+              <div id="mp-time-pills" class="time-pills">
+                <button class="time-opt" data-mins="1">1 min</button>
+                <button class="time-opt" data-mins="3">3 min</button>
+                <button class="time-opt" data-mins="5">5 min</button>
+                <button class="time-opt active" data-mins="10">10 min</button>
+                <button class="time-opt" data-mins="15">15 min</button>
+              </div>
+            </div>
+
+            <button id="btn-mp-find" class="btn btn-gold" style="padding:13px 20px;font-size:0.95rem;">⚔️ Buscar Partida Online</button>
+
+            <div id="mp-queue-status" class="hidden" style="display:flex;align-items:center;gap:14px;padding:12px;border-radius:10px;background:rgba(207,166,76,0.1);border:1px solid var(--gold);">
+              <div class="queue-spinner"></div>
+              <div>
+                <strong style="color:var(--gold-bright);">Emparejando en tiempo real</strong>
+                <div id="mp-queue-timer" style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">Buscando rival real...</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-card">
+            <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:10px;">Fórmula Elo Real desde 0</h3>
+            <ul style="padding-left:18px;display:flex;flex-direction:column;gap:8px;font-size:0.83rem;color:var(--text-muted);line-height:1.45;">
+              <li>Todo jugador comienza en <strong>0 Elo</strong> (nunca baja de 0).</li>
+              <li>Probabilidad esperada oficial: <code>E = 1 / (1 + 10^((eloRival - elo) / 400))</code>.</li>
+              <li>Factor K dinámico: <code>K=40</code> (primeras 20 partidas), <code>K=32</code> estándar, <code>K=24</code> élite.</li>
+              <li>Actualización instantánea en PostgreSQL/SQLite y Ranking Global.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. MODO HISTORIA (5 CAPÍTULOS · 25 NIVELES · PROGRESIÓN ESTRICTA) -->
+      <section id="screen-story" class="screen-section">
+        <div class="screen-header">
+          <div>
+            <div class="screen-kicker">MODO HISTORIA · 5 CAPÍTULOS · 25 NIVELES</div>
+            <h1 class="screen-title">CAMPAÑA PRINCIPAL</h1>
+            <p class="screen-subtitle">Progresión estricta sin saltar niveles: supera 1 → 2 → 3 → 4 para enfrentar al Jefe de cada capítulo y abrir el siguiente.</p>
+          </div>
+        </div>
+
+        <div id="campaign-tabs-bar" class="campaign-tabs"></div>
+        <div id="campaign-banner-info" class="panel-card" style="margin-bottom:14px;"></div>
+        <div id="campaign-levels-container" class="campaign-level-list"></div>
+      </section>
+
+      <!-- 4. PERFIL -->
+      <section id="screen-profile" class="screen-section">
+        <div class="screen-header">
+          <div>
+            <div class="screen-kicker">IDENTIDAD PERMANENTE EN BASE DE DATOS</div>
+            <h1 class="screen-title">PERFIL DEL JUGADOR</h1>
+          </div>
+        </div>
+
+        <div id="profile-guest-box" class="panel-card" style="text-align:center;">
+          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:8px;">Aún no has iniciado sesión</h3>
+          <p style="color:var(--text-muted);font-size:0.86rem;margin-bottom:14px;">Crea una cuenta para guardar permanentemente tu Elo (desde 0), XP, Nivel, avatares, cosméticos y tu progreso en los 5 Capítulos.</p>
+          <button id="btn-profile-open-auth" class="btn btn-gold">Iniciar sesión / Crear cuenta</button>
+        </div>
+
+        <div id="profile-auth-box" class="hidden" style="display:flex;flex-direction:column;gap:16px;">
+          <div class="panel-card" style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+            <div id="profile-avatar-large" class="avatar-badge frame_stone" style="width:86px;height:86px;"></div>
+            <div style="flex:1;min-width:220px;">
+              <h2 id="profile-name-h" style="font-family:var(--font-display);color:var(--gold-bright);font-size:1.5rem;">Jugador</h2>
+              <div id="profile-id-txt" style="font-size:0.78rem;color:var(--text-muted);font-family:monospace;margin-top:3px;"></div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+                <span class="pill">🏆 Elo: <strong id="profile-elo-val">0</strong></span>
+                <span id="profile-level-val" class="pill jade">Nv. 1</span>
+                <span id="profile-xp-val" class="pill muted">50 XP</span>
+              </div>
+              <div class="xp-mini-track" style="height:8px;margin-top:10px;"><div id="profile-xp-bar" class="xp-mini-fill"></div></div>
+            </div>
+            <button id="btn-profile-logout" class="btn btn-danger btn-sm">Cerrar sesión</button>
+          </div>
+
+          <div class="panel-card" style="display:flex;flex-direction:column;gap:14px;max-width:620px;">
+            <h3 style="font-family:var(--font-display);color:var(--gold-bright);font-size:1rem;">Editar Identidad</h3>
+            <div>
+              <label style="font-size:0.76rem;color:var(--text-muted);display:block;margin-bottom:5px;">Nombre de usuario único</label>
+              <div style="display:flex;gap:8px;">
+                <input id="input-edit-username" class="input-field" type="text" minlength="3" maxlength="20">
+                <button id="btn-save-username" class="btn btn-primary">Guardar</button>
+              </div>
+            </div>
+            <div>
+              <label style="font-size:0.76rem;color:var(--text-muted);display:block;margin-bottom:6px;">Subir foto personalizada (PNG, JPG o WebP · máx. 2 MB)</label>
+              <input id="input-avatar-file" type="file" accept="image/png,image/jpeg,image/webp" class="hidden">
+              <button id="btn-upload-avatar" class="btn">📷 Subir imagen desde mi PC</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. PERSONALIZACIÓN -->
+      <section id="screen-customize" class="screen-section">
+        <div class="screen-header">
+          <div>
+            <div class="screen-kicker">DESBLOQUEABLES POR NIVEL Y LOGROS</div>
+            <h1 class="screen-title">PERSONALIZACIÓN</h1>
+            <p class="screen-subtitle">Sube de nivel o derrota a CHESS para desbloquear avatares, marcos exclusivos y estilos de tablero.</p>
+          </div>
+        </div>
+
+        <div class="panel-card" style="margin-bottom:16px;">
+          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;">Avatares</h3>
+          <div id="cosmetics-avatars-grid" class="cosmetics-grid"></div>
+        </div>
+        <div class="panel-card" style="margin-bottom:16px;">
+          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;">Marcos de Retrato</h3>
+          <div id="cosmetics-frames-grid" class="cosmetics-grid"></div>
+        </div>
+        <div class="panel-card">
+          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;">Estilos de Tablero</h3>
+          <div id="cosmetics-boards-grid" class="cosmetics-grid"></div>
+        </div>
+      </section>
+
+      <!-- 6. RANKING GLOBAL -->
+      <section id="screen-ranking" class="screen-section">
+        <div class="screen-header">
+          <div>
+            <div class="screen-kicker">CLASIFICACIÓN OFICIAL ELO</div>
+            <h1 class="screen-title">RANKING GLOBAL</h1>
+            <p class="screen-subtitle">Ordenado en tiempo real por Elo competitivo desde 0.</p>
+          </div>
+          <button id="btn-refresh-ranking" class="btn btn-sm">↻ Actualizar</button>
+        </div>
+
+        <div class="panel-card" style="padding:0;overflow:hidden;">
+          <table class="ranking-table">
+            <thead>
+              <tr>
+                <th>Pos.</th>
+                <th>Jugador</th>
+                <th>Elo</th>
+                <th>Victorias</th>
+                <th>Derrotas</th>
+              </tr>
+            </thead>
+            <tbody id="ranking-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 7. ESTADÍSTICAS -->
+      <section id="screen-stats" class="screen-section">
+        <div class="screen-header">
+          <div>
+            <div class="screen-kicker">REGISTRO HISTÓRICO</div>
+            <h1 class="screen-title">ESTADÍSTICAS</h1>
+          </div>
+        </div>
+
+        <div class="stats-cards-4">
+          <div class="stat-box"><div id="st-elo" class="val">0</div><div class="lbl">Elo Competitivo</div></div>
+          <div class="stat-box"><div id="st-xp" class="val">0 XP</div><div class="lbl">Experiencia</div></div>
+          <div class="stat-box"><div id="st-games" class="val">0</div><div class="lbl">Partidas</div></div>
+          <div class="stat-box"><div id="st-winrate" class="val">0%</div><div class="lbl">Efectividad</div></div>
+          <div class="stat-box"><div id="st-wins" class="val">0</div><div class="lbl">Victorias</div></div>
+          <div class="stat-box"><div id="st-losses" class="val">0</div><div class="lbl">Derrotas</div></div>
+          <div class="stat-box"><div id="st-bases" class="val">0</div><div class="lbl">Bases Destruidas</div></div>
+          <div class="stat-box"><div id="st-campaigns" class="val">0 / 25</div><div class="lbl">Historia</div></div>
+        </div>
+
+        <div class="panel-card">
+          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:12px;">Historial Reciente de Partidas</h3>
+          <div id="stats-history-list"></div>
+        </div>
+      </section>
+
+      <!-- 8. CONFIGURACIÓN -->
+      <section id="screen-settings" class="screen-section">
+        <div class="screen-header">
+          <div>
+            <div class="screen-kicker">PREFERENCIAS DE SISTEMA</div>
+            <h1 class="screen-title">CONFIGURACIÓN</h1>
+          </div>
+        </div>
+
+        <div class="settings-stack">
+          <div class="panel-card">
+            <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:10px;">Audio Independiente</h3>
+            <div class="setting-row">
+              <label for="set-music-vol">🎵 Volumen Música de Jefes (Maya / Free Mittens)</label>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <input id="set-music-vol" type="range" min="0" max="1" step="0.05" value="0.65" style="accent-color:var(--gold);">
+                <span id="set-music-pct" style="min-width:38px;text-align:right;font-size:0.78rem;">65%</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label for="set-sfx-vol">🔔 Volumen Efectos (SFX)</label>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <input id="set-sfx-vol" type="range" min="0" max="1" step="0.05" value="0.72" style="accent-color:var(--gold);">
+                <span id="set-sfx-pct" style="min-width:38px;text-align:right;font-size:0.78rem;">72%</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <span>Silenciar todo el audio</span>
+              <input id="set-mute-all" type="checkbox" style="accent-color:var(--gold);width:18px;height:18px;cursor:pointer;">
+            </div>
+          </div>
+
+          <div class="panel-card">
+            <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:10px;">Juego, Relojes y Pantalla</h3>
+            <div class="setting-row">
+              <span>Reducir VFX (modo rendimiento)</span>
+              <input id="set-reduced-vfx" type="checkbox" style="accent-color:var(--gold);width:18px;height:18px;cursor:pointer;">
+            </div>
+            <div class="setting-row" style="flex-wrap:wrap;">
+              <span>Reloj por defecto en partidas locales</span>
+              <div id="settings-time-pills" class="time-pills">
+                <button class="time-opt" data-mins="5">5 min</button>
+                <button class="time-opt active" data-mins="10">10 min</button>
+                <button class="time-opt" data-mins="15">15 min</button>
+                <button class="time-opt" data-mins="0">Sin límite</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <span>Pantalla completa (también tecla F11)</span>
+              <div style="display:flex;gap:8px;">
+                <button id="btn-toggle-fullscreen" class="btn btn-sm btn-gold">⛶ Alternar Pantalla Completa</button>
+                <button id="btn-desktop-quit" class="btn btn-sm btn-danger hidden">Salir del juego</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= INTRO CINEMATOGRÁFICA DE JEFES (CAPÍTULOS 1 A 5) ================= -->
+  <div id="boss-intro-overlay" role="dialog" aria-modal="true" aria-label="Introducción de Jefe">
+    <canvas id="intro-vfx-canvas"></canvas>
+    <div class="cinematic-bar top"></div>
+    <div class="cinematic-bar bottom"></div>
+    <div class="intro-boss-showcase">
+      <div id="intro-portrait-slot" class="intro-portrait-big"></div>
+      <div class="intro-title-block">
+        <div id="intro-kicker-text" class="intro-kicker">BOSS FIGHT</div>
+        <div id="intro-main-title-text" class="intro-main-title">DIOS MAYA</div>
+        <p id="intro-subtitle-text" style="letter-spacing:0.18em;color:#e2d8c5;margin-top:8px;font-family:var(--font-display);font-size:0.84rem;"></p>
+      </div>
+    </div>
+    <button id="btn-skip-intro" class="btn btn-sm">Saltar introducción ⏭</button>
+  </div>
+
+  <!-- ================= ARENA DE BATALLA (SIN BOTÓN DE REPETIR INTRO) ================= -->
+  <section id="view-battle" class="hidden">
+    <div class="sanctuary-backdrop" aria-hidden="true">
+      <svg id="temple-backdrop-svg" class="temple-architecture" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMin slice">
+        <defs>
+          <radialGradient id="sunGlow" cx="50%" cy="20%" r="50%">
+            <stop offset="0%" stop-color="#cfa64c" stop-opacity="0.3"/>
+            <stop offset="52%" stop-color="#26543d" stop-opacity="0.16"/>
+            <stop offset="100%" stop-color="#100f0d" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <rect width="1440" height="900" fill="url(#sunGlow)"/>
+        <g fill="#1c1914" stroke="#40382d" stroke-width="1.5" opacity="0.88">
+          <polygon points="170,900 1270,900 1165,720 275,720"/>
+          <polygon points="255,720 1185,720 1095,565 345,565"/>
+          <polygon points="335,565 1105,565 1025,430 415,430"/>
+        </g>
+      </svg>
+
+      <div class="mayan-boss-stage">
+        <svg id="mayan-boss-svg" class="mayan-boss-figure mood-idle" viewBox="0 0 600 320">
+          <path d="M300 128 C210 28 110 38 48 92 C115 92 185 112 248 152 Z" fill="#26543d"/>
+          <path d="M300 128 C390 28 490 38 552 92 C485 92 415 112 352 152 Z" fill="#26543d"/>
+          <path d="M214 134 L244 82 L276 106 L300 58 L324 106 L356 82 L386 134 Z" fill="#cfa64c"/>
+          <path d="M236 132 L364 132 L352 224 L300 246 L248 224 Z" fill="#302b24" stroke="#cfa64c" stroke-width="2.4"/>
+          <g id="boss-eyes-group" class="boss-pupil-group">
+            <polygon class="boss-eye-glow" points="258,170 286,174 280,183 261,180"/>
+            <polygon class="boss-eye-glow" points="342,170 314,174 320,183 339,180"/>
+          </g>
+        </svg>
+
+        <!-- Presencia monumental del Boss Secreto BLACKY (Schnauzer) detrás del tablero -->
+        <svg id="blacky-boss-svg" class="mayan-boss-figure blacky-monument hidden" viewBox="0 0 600 320">
+          <polygon points="205,155 155,32 252,102" fill="#18171d" stroke="#525666" stroke-width="2.4"/>
+          <polygon points="395,155 445,32 348,102" fill="#18171d" stroke="#525666" stroke-width="2.4"/>
+          <path d="M196 132 Q300 64 404 132 L392 268 Q300 308 208 268 Z" fill="#121116" stroke="#c94b3c" stroke-width="2.4"/>
+          <path d="M188 154 Q242 122 292 152 L284 176 Q236 156 194 172 Z" fill="#b4bac7"/>
+          <path d="M412 154 Q358 122 308 152 L316 176 Q364 156 406 172 Z" fill="#b4bac7"/>
+          <path d="M214 202 Q300 184 386 202 L396 254 L350 288 L300 306 L250 288 L204 254 Z" fill="#cfd4df" opacity="0.88"/>
+          <circle cx="255" cy="182" r="9" fill="#ff4949"/>
+          <circle cx="345" cy="182" r="9" fill="#ff4949"/>
+        </svg>
+      </div>
+    </div>
+
+    <div id="boss-speech-wrap" class="boss-speech-wrap" aria-live="polite">
+      <div class="boss-speech-bubble">
+        <div class="boss-speech-speaker" id="boss-speech-speaker">Dios Maya</div>
+        <div id="boss-speech-text">...</div>
+      </div>
+    </div>
+
+    <header class="hud-topbar">
+      <div class="hud-left">
+        <button id="btn-battle-back" class="btn btn-sm">← Menú</button>
+        <img class="hud-logo-img" src="/assets/images/chess_mod_logo.jpg" alt="CHESS.MOD">
+      </div>
+
+      <div id="turn-banner" class="turn-banner player-turn">
+        <span class="turn-indicator-dot"></span>
+        <span id="turn-banner-text">TU TURNO</span>
+      </div>
+
+      <div class="hud-right">
+        <button id="btn-hint" class="btn btn-sm btn-gold" title="Consume 25 XP validados en servidor">💡 Pista (25 XP)</button>
+        <button id="btn-undo" class="btn btn-sm">↶ Deshacer</button>
+        <button id="btn-restart" class="btn btn-sm">↻ Reiniciar</button>
+      </div>
+    </header>
+
+    <main class="arena-main">
+      <!-- Columna Izquierda -->
+      <aside class="hud-col hud-col-left">
+        <div class="hud-card boss-portrait-card">
+          <div class="boss-portrait-frame expr-idle" id="boss-portrait-frame">
+            <span class="portrait-think-dots">•••</span>
+            <div id="boss-portrait-slot" style="width:100%;height:100%;"></div>
+          </div>
+          <div class="boss-portrait-footer">
+            <span class="boss-portrait-name" id="boss-portrait-name">Dios Maya</span>
+            <span class="boss-portrait-mood-pill" id="boss-portrait-status">Observando</span>
+          </div>
+        </div>
+
+        <div class="hud-card" id="maya-hud-card">
+          <div class="hud-card-header">
+            <span>Pirámide 2×2</span>
+            <span id="pyramid-coords" style="font-family:monospace;color:var(--text-muted);">d6-e5</span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <strong style="font-size:0.84rem;">Estado</strong>
+            <span id="pyramid-status-chip" class="pill crimson">Activa</span>
+          </div>
+          <div class="bases-grid" id="bases-grid"></div>
+        </div>
+
+        <div class="hud-card hidden" id="maya-campaign-hud-card">
+          <div class="hud-card-header"><span>Mecánicas del Nivel</span></div>
+          <strong id="maya-camp-unit-title" style="color:var(--gold-bright);font-size:0.85rem;display:block;margin-bottom:5px;"></strong>
+          <p id="maya-camp-unit-desc" style="font-size:0.76rem;color:var(--text-muted);line-height:1.42;"></p>
+        </div>
+
+        <div class="hud-card hidden" id="mittens-hud-card">
+          <div class="hud-card-header"><span>⛓️ Reglas Cap. 02</span><span class="pill">1:1</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:0.77rem;margin-bottom:5px;">
+            <span style="color:var(--text-muted);">🔫 Soldados Blancos</span>
+            <strong id="mittens-soldiers-count" style="color:#86dfff;">3 / 3</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:0.77rem;margin-bottom:5px;">
+            <span style="color:var(--text-muted);">💦 Aspersor</span>
+            <strong id="mittens-sprinkler-pos" style="font-family:monospace;color:#86dfff;">d4</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:0.77rem;">
+            <span style="color:var(--text-muted);">✨ Transformaciones</span>
+            <strong id="mittens-conversions-count" style="color:var(--gold-bright);">0</strong>
+          </div>
+        </div>
+
+        <div class="hud-card hidden" id="blacky-hud-card">
+          <div class="hud-card-header"><span>🐾 Poderes de BLACKY</span><span class="pill crimson">IMPOSIBLE</span></div>
+          <div id="blacky-last-power" style="font-size:0.75rem;color:#ffb4ac;margin-bottom:7px;font-weight:600;">Acechando en las sombras...</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:0.73rem;">
+            <div>🐾 Selladas: <strong id="bk-stat-sealed">0</strong></div>
+            <div>🌀 Invocadas: <strong id="bk-stat-summoned">0</strong></div>
+            <div>🌑 Absorbidas: <strong id="bk-stat-absorbed">0</strong></div>
+            <div>⚔️ Traición: <strong id="bk-stat-betrayed">0</strong></div>
+          </div>
+        </div>
+
+        <div class="hud-card hidden" id="online-hud-card">
+          <div class="hud-card-header"><span>🌐 Partida Oficial</span><span class="pill jade">EN VIVO</span></div>
+          <p style="font-size:0.76rem;color:var(--text-muted);line-height:1.45;">Movimientos validados en el servidor. Al finalizar se actualiza tu Elo en el Ranking Global.</p>
+        </div>
+
+        <div class="hud-card">
+          <div class="hud-card-header"><span>Capturadas</span></div>
+          <div class="captured-line" id="cap-black-list"></div>
+          <div class="captured-line" id="cap-white-list" style="margin-top:6px;"></div>
+        </div>
+      </aside>
+
+      <!-- Columna Central: Tablero -->
+      <section class="board-column">
+        <div class="clocks-bar">
+          <div id="clock-top" class="clock-pill">
+            <span id="clock-top-label" class="clock-label">Rival</span>
+            <span id="clock-top-time" class="clock-time">10:00</span>
+          </div>
+          <div id="clock-bottom" class="clock-pill active-clock">
+            <span id="clock-bottom-label" class="clock-label">Tú</span>
+            <span id="clock-bottom-time" class="clock-time">10:00</span>
+          </div>
+        </div>
+
+        <div class="board-pedestal" id="board-pedestal">
+          <div class="board-inner" id="board-inner">
+            <div class="board-grid" id="board-grid"></div>
+            <div id="anim-piece-layer"></div>
+            <div id="pyramid-layer" class="pyramid-layer"></div>
+            <canvas id="board-vfx-canvas"></canvas>
+            <svg id="hint-arrow-svg" viewBox="0 0 800 800" preserveAspectRatio="none"></svg>
+          </div>
+        </div>
+
+        <div id="hint-banner" class="hint-banner" role="status" aria-live="polite">
+          <span id="hint-text"></span>
+          <button id="btn-close-hint" class="btn btn-sm btn-icon" style="padding:2px 7px;min-width:auto;">✕</button>
+        </div>
+
+        <div class="board-legend" id="battle-legend"></div>
+      </section>
+
+      <!-- Columna Derecha -->
+      <aside class="hud-col hud-col-right">
+        <div class="hud-card" id="maya-threats-card">
+          <button id="btn-threats" class="btn btn-sm btn-toggle active" style="width:100%;">Ocultar amenazas</button>
+        </div>
+
+        <div class="hud-card hidden" id="mittens-controls-card">
+          <div class="hud-card-header"><span>Soldados de Agua</span></div>
+          <p style="font-size:0.75rem;color:var(--text-muted);line-height:1.45;">
+            Tus 3 Soldados Blancos (<strong>b2, d2, g2</strong>):<br>
+            • <strong>1 clic:</strong> Disparar agua y repeler sin moverte.<br>
+            • <strong>Doble clic:</strong> Mover como peón.
+          </p>
+        </div>
+
+        <div class="hud-card hidden" id="chess-power-controls-card">
+          <div class="hud-card-header"><span>Poder de la Galaxia</span></div>
+          <button id="btn-player-teleport" class="btn btn-sm btn-gold" style="width:100%;">✦ Activar Teletransporte</button>
+        </div>
+
+        <div class="hud-card hidden" id="online-controls-card">
+          <div class="hud-card-header"><span>Acciones Online</span></div>
+          <div style="display:flex;gap:8px;">
+            <button id="btn-online-draw" class="btn btn-sm" style="flex:1;">🤝 Tablas</button>
+            <button id="btn-online-resign" class="btn btn-sm btn-danger" style="flex:1;">🏳️ Rendirse</button>
+          </div>
+        </div>
+
+        <div class="hud-card">
+          <div class="hud-card-header">
+            <span>Registro de Batalla</span>
+            <span id="turn-counter-label" style="color:var(--text-muted);">Turno 1</span>
+          </div>
+          <div class="log-scroll" id="log-list"></div>
+        </div>
+      </aside>
+    </main>
+  </section>
+
+  <!-- ================= MODALES ================= -->
+  <div id="modal-auth" class="modal-backdrop">
+    <div class="modal-box" style="max-width:440px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h2 style="margin:0;font-size:1.22rem;">CUENTA CHESS.MOD</h2>
+        <button id="btn-auth-close" class="btn btn-sm btn-icon">✕</button>
+      </div>
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login">Iniciar sesión</button>
+        <button class="auth-tab" data-tab="register">Crear cuenta</button>
+      </div>
+
+      <button id="btn-google-oauth" class="btn" style="width:100%;margin-bottom:12px;background:#f5f2eb;color:#171512;">
+        Continuar con Google (OAuth 2.0)
+      </button>
+
+      <form id="form-login" class="auth-form">
+        <div>
+          <label for="login-identifier">Usuario o correo electrónico</label>
+          <input id="login-identifier" class="input-field" type="text" required placeholder="Estratega o correo@ejemplo.com">
+        </div>
+        <div>
+          <label for="login-password">Contraseña</label>
+          <input id="login-password" class="input-field" type="password" required minlength="6" placeholder="••••••••">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:4px;">Entrar</button>
+      </form>
+
+      <form id="form-register" class="auth-form hidden">
+        <div>
+          <label for="reg-username">Nombre de usuario único (3–20 caracteres)</label>
+          <input id="reg-username" class="input-field" type="text" required minlength="3" maxlength="20" placeholder="Maestro_Maya">
+        </div>
+        <div>
+          <label for="reg-email">Correo electrónico</label>
+          <input id="reg-email" class="input-field" type="email" required placeholder="jugador@ejemplo.com">
+        </div>
+        <div>
+          <label for="reg-password">Contraseña (mín. 6 caracteres)</label>
+          <input id="reg-password" class="input-field" type="password" required minlength="6" placeholder="Mínimo 6 caracteres">
+        </div>
+        <button type="submit" class="btn btn-gold" style="width:100%;margin-top:4px;">Crear cuenta (0 Elo · 50 XP)</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- SELECCIÓN OBLIGATORIA DE PODER ANTES DE ENFRENTAR A CHESS (CAP. 5 NIVEL 5) -->
+  <div id="modal-chess-power" class="modal-backdrop">
+    <div class="modal-box" style="max-width:740px;">
+      <div style="font-size:0.72rem;letter-spacing:0.22em;color:var(--gold);font-family:var(--font-display);margin-bottom:4px;">CAPÍTULO 05 · JEFE FINAL ABSOLUTO</div>
+      <h2>ELIGE TU PODER CONTRA CHESS</h2>
+      <p style="margin-bottom:6px;">CHESS no usa poderes sobrenaturales, solo estrategia pura (Súper IA). Antes de comenzar DEBES equipar 1 de estos 3 poderes:</p>
+      <div class="power-choice-grid">
+        <div class="power-choice-card" data-chess-power="mittens">
+          <span class="pill">PODER 1</span>
+          <h4>⛓️ Poder de Mittens</h4>
+          <p>Tus capturas asimilan la pieza enemiga al tipo exacto en tu casilla origen + 3 Soldados Blancos con pistolas de agua.</p>
+        </div>
+        <div class="power-choice-card" data-chess-power="maya">
+          <span class="pill jade">PODER 2</span>
+          <h4>🏛️ La Torre del Dios Maya</h4>
+          <p>Despliegas 2 Casas Blancas inmortales (c3, f3) y una Torre Sagrada Maya reforzada adicional en d3.</p>
+        </div>
+        <div class="power-choice-card" data-chess-power="galaxy">
+          <span class="pill">PODER 3</span>
+          <h4>🌌 Poderes de la Galaxia</h4>
+          <p>Despliegas 2 Barreras Universales inmortales (c3, f3) + Teletransporte Galáctico activo cada 3 turnos.</p>
+        </div>
+      </div>
+      <button id="btn-cancel-chess-power" class="btn btn-sm">Volver a Campaña</button>
+    </div>
+  </div>
+
+  <div id="modal-promo" class="modal-backdrop">
+    <div class="modal-box">
+      <h2>Coronación de Peón</h2>
+      <p>Elige en qué pieza promover tu peón:</p>
+      <div class="modal-actions">
+        <button class="btn btn-gold" data-promo="Q">Dama</button>
+        <button class="btn btn-primary" data-promo="R">Torre</button>
+        <button class="btn btn-primary" data-promo="B">Alfil</button>
+        <button class="btn btn-primary" data-promo="N">Caballo</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-draw-offer" class="modal-backdrop">
+    <div class="modal-box">
+      <h2>Oferta de Tablas</h2>
+      <p>Tu rival propone terminar la partida en empate.</p>
+      <div class="modal-actions">
+        <button id="btn-accept-draw" class="btn btn-gold">Aceptar Tablas</button>
+        <button id="btn-decline-draw" class="btn">Continuar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-gameover" class="modal-backdrop">
+    <div class="modal-box" style="max-width:490px;">
+      <h2 id="gameover-title">Victoria</h2>
+      <p id="gameover-desc"></p>
+      <div id="gameover-summary-box" class="hidden" style="background:rgba(14,13,11,0.82);border:1px solid var(--border-stone);border-radius:9px;padding:12px;margin-bottom:16px;text-align:left;font-size:0.83rem;"></div>
+      <div class="modal-actions">
+        <button id="btn-gameover-rematch" class="btn btn-primary">Reintentar</button>
+        <button id="btn-gameover-menu" class="btn btn-gold">Volver al Menú</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

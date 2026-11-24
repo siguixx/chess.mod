@@ -1,0 +1,141 @@
+import crypto from 'node:crypto';
+
+const JWT_SECRET = process.env.CHESS_MOD_JWT_SECRET || 'chess_mod_obsidian_jade_secret_key_change_in_prod_2026';
+export const SESSION_COOKIE_NAME = 'chess_mod_token';
+const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
+
+function b64urlEncode(input) { return Buffer.from(input).toString('base64url'); }
+function b64urlDecode(str) { return Buffer.from(str, 'base64url').toString('utf8'); }
+
+export function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(String(password), salt, 64).toString('hex');
+  return { hash, salt };
+}
+
+export function verifyPassword(password, storedHash, storedSalt) {
+  const derived = crypto.scryptSync(String(password), storedSalt, 64);
+  const expected = Buffer.from(storedHash, 'hex');
+  if (derived.length !== expected.length) return false;
+  return crypto.timingSafeEqual(derived, expected);
+}
+
+export function signToken(payload) {
+  const header = b64urlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const now = Math.floor(Date.now() / 1000);
+  const body = b64urlEncode(JSON.stringify({ ...payload, iat: now, exp: now + TOKEN_TTL_SECONDS }));
+  const sig = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${body}`).digest('base64url');
+  return `${header}.${body}.${sig}`;
+}
+
+export function verifyToken(token) {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const [header, body, sig] = parts;
+  const expectedSig = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${body}`).digest('base64url');
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expectedSig);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const decoded = JSON.parse(b64urlDecode(body));
+    if (!decoded.exp || decoded.exp < Math.floor(Date.now() / 1000)) return null;
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
+export function extractTokenFromRequest(req) {
+  const authHeader = req.headers?.authorization || '';
+  if (authHeader.startsWith('Bearer ')) return authHeader.slice(7).trim();
+  if (req.cookies && req.cookies[SESSION_COOKIE_NAME]) return req.cookies[SESSION_COOKIE_NAME];
+  return null;
+}
+
+export function extractTokenFromCookieHeader(cookieHeader) {
+  if (!cookieHeader) return null;
+  for (const pair of cookieHeader.split(';')) {
+    const [k, ...v] = pair.trim().split('=');
+    if (k === SESSION_COOKIE_NAME) return decodeURIComponent(v.join('='));
+  }
+  return null;
+}
+
+export function setSessionCookie(res, token) {
+  const isProd = process.env.NODE_ENV === 'production';
+  res.cookie(SESSION_COOKIE_NAME, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: isProd,
+    maxAge: TOKEN_TTL_SECONDS * 1000,
+    path: '/'
+  });
+}
+
+export function clearSessionCookie(res) {
+  res.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
+}
+
+export function validateUsername(raw) {
+  const name = String(raw || '').trim();
+  if (name.length < 3 || name.length > 20) {
+    return { ok: false, error: 'El nombre de usuario debe tener entre 3 y 20 caracteres.' };
+  }
+  if (!/^[A-Za-z0-9_.\-]+$/.test(name)) {
+    return { ok: false, error: 'Solo se permiten letras, números, guion (-), guion bajo (_) y punto (.).' };
+  }
+  return { ok: true, name };
+}
+
+export function validateEmail(raw) {
+  const email = String(raw || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: 'Ingresa un correo electrónico válido.' };
+  }
+  return { ok: true, email };
+}
+
+export function createAuthMiddleware(db) {
+  return {
+    requireAuth: async (req, res, next) => {
+      try {
+        const token = extractTokenFromRequest(req);
+        const decoded = verifyToken(token);
+        if (!decoded?.uid) {
+          return res.status(401).json({ error: 'Sesión no válida o expirada. Inicia sesión para continuar.' });
+        }
+        const user = await db.findUserById(decoded.uid);
+        if (!user) return res.status(401).json({ error: 'Usuario no encontrado.' });
+        req.userId = user.id;
+        req.user = user;
+        next();
+      } catch (err) {
+        next(err);
+      }
+    },
+    optionalAuth: async (req, _res, next) => {
+      try {
+        const token = extractTokenFromRequest(req);
+        const decoded = verifyToken(token);
+        if (decoded?.uid) {
+          const user = await db.findUserById(decoded.uid);
+          if (user) {
+            req.userId = user.id;
+            req.user = user;
+          }
+        }
+        next();
+      } catch (err) {
+        next(err);
+      }
+    }
+  };
+}
+
+export function getGoogleOAuthConfig() {
+  const clientId = process.env.GOOGLE_CLIENT_ID || '';
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+  const callbackUrl = process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3000/api/auth/google/callback';
+  return { configured: Boolean(clientId && clientSecret), clientId, clientSecret, callbackUrl };
+}

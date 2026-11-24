@@ -1,0 +1,373 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import * as esbuild from 'esbuild';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(__dirname, '..');
+const clientDir = path.join(rootDir, 'client');
+const outHtmlPath = path.join(rootDir, 'CHESS_MOD_COMPLETO.html');
+
+// 1. Codificar assets binarios en base64 (logo, mittens_ref.png, glitch_texture.jpg y 3 pistas MP3)
+const mittensImgPath = path.join(clientDir, 'assets', 'images', 'mittens_ref.png');
+const logoImgPath = path.join(clientDir, 'assets', 'images', 'chess_mod_logo.jpg');
+const glitchTexPath = path.join(clientDir, 'assets', 'images', 'glitch_texture.jpg');
+const musicPath = path.join(clientDir, 'assets', 'audio', 'Ultimate Battle.mp3');
+const mittensMusicPath = path.join(clientDir, 'assets', 'audio', 'FreeMittensBattle.mp3');
+const blackyMusicPath = path.join(clientDir, 'assets', 'audio', 'BlackyBattle.mp3');
+
+const mittensDataUri = `data:image/png;base64,${fs.readFileSync(mittensImgPath).toString('base64')}`;
+const logoDataUri = `data:image/jpeg;base64,${fs.readFileSync(logoImgPath).toString('base64')}`;
+const glitchTexDataUri = `data:image/jpeg;base64,${fs.readFileSync(glitchTexPath).toString('base64')}`;
+const musicDataUri = `data:audio/mpeg;base64,${fs.readFileSync(musicPath).toString('base64')}`;
+const mittensMusicDataUri = `data:audio/mpeg;base64,${fs.readFileSync(mittensMusicPath).toString('base64')}`;
+const blackyMusicDataUri = `data:audio/mpeg;base64,${fs.readFileSync(blackyMusicPath).toString('base64')}`;
+
+// 2. CSS combinado inline (todos los 4 archivos CSS)
+const cssMain = fs.readFileSync(path.join(clientDir, 'css', 'main.css'), 'utf8');
+const cssMenu = fs.readFileSync(path.join(clientDir, 'css', 'menu.css'), 'utf8');
+const cssBoard = fs.readFileSync(path.join(clientDir, 'css', 'board.css'), 'utf8');
+const cssPortraits = fs.readFileSync(path.join(clientDir, 'css', 'portraits.css'), 'utf8');
+const combinedCss = `${cssMain}\n\n${cssMenu}\n\n${cssBoard}\n\n${cssPortraits}`;
+
+// 3. Adaptador API offline en localStorage (para que registro, perfil, 5 campañas, XP, pistas 25 XP, cosméticos y ranking funcionen 100% en file://)
+const standaloneApiSource = `
+import { INITIAL_ELO, HINT_XP_COST, computeLevelFromXp } from '../../shared/config/constants.js';
+const INITIAL_XP = 50;
+import { COSMETIC_AVATARS, COSMETIC_FRAMES, COSMETIC_BOARDS } from '../../shared/config/cosmetics.js';
+import { CHAPTER_ORDER, getCampaignLevel, isCampaignLevelUnlocked, getCampaignUnlockReason } from '../../shared/config/campaigns.js';
+
+const STORE_KEY = 'chess_mod_standalone_v2';
+const TOKEN_KEY = 'chess_mod_auth_token';
+
+function defaultCampaigns() {
+  const c = {};
+  for (const ch of CHAPTER_ORDER) c[ch] = { completedLevels: [] };
+  return c;
+}
+
+function loadStore() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return { user: null, matches: [] };
+}
+
+function saveStore(store) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch {}
+}
+
+function hydrateUser(u, matches = []) {
+  if (!u) return null;
+  const lvInfo = computeLevelFromXp(u.xp || 0);
+  const campaigns = { ...defaultCampaigns(), ...(u.campaigns || {}) };
+  const unlockedCosmetics = new Set(u.unlockedCosmetics || ['obsidian_king', 'frame_stone', 'board_classic_maya']);
+  for (const item of [...COSMETIC_AVATARS, ...COSMETIC_FRAMES, ...COSMETIC_BOARDS]) {
+    if (!item.exclusive && (item.unlockLevel || 1) <= lvInfo.level) unlockedCosmetics.add(item.id);
+  }
+  const bossKills = {
+    maya: (campaigns.maya?.completedLevels || []).includes(5) ? 1 : 0,
+    mittens: (campaigns.mittens?.completedLevels || []).includes(5) ? 1 : 0,
+    galaxy: (campaigns.galaxy?.completedLevels || []).includes(5) ? 1 : 0,
+    glitch: (campaigns.glitch?.completedLevels || []).includes(5) ? 1 : 0,
+    chess: (campaigns.chess?.completedLevels || []).includes(5) ? 1 : 0
+  };
+  return {
+    ...u,
+    level: lvInfo.level,
+    title: u.customTitle || lvInfo.title,
+    levelProgressPct: lvInfo.progressPct,
+    campaigns,
+    unlockedCosmetics: [...unlockedCosmetics],
+    bossKills,
+    recentMatches: matches.slice(0, 20)
+  };
+}
+
+class StandaloneApiClient {
+  getToken() {
+    try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; }
+  }
+  setToken(token) {
+    try {
+      if (token) localStorage.setItem(TOKEN_KEY, token);
+      else localStorage.removeItem(TOKEN_KEY);
+    } catch {}
+  }
+
+  async me() {
+    const store = loadStore();
+    if (!store.user) {
+      // Crear perfil local inicial automáticamente con 0 Elo y 50 XP para jugar sin fricción
+      store.user = {
+        id: 'local_player',
+        username: 'Estratega',
+        email: 'local@chess.mod',
+        elo: INITIAL_ELO,
+        xp: INITIAL_XP,
+        avatar: 'preset:obsidian_king',
+        frameId: 'frame_stone',
+        boardThemeId: 'board_classic_maya',
+        wins: 0,
+        losses: 0,
+        draws: 0,
+        basesDestroyed: 0,
+        campaigns: defaultCampaigns(),
+        unlockedCosmetics: ['obsidian_king', 'frame_stone', 'board_classic_maya'],
+        customTitle: null
+      };
+      saveStore(store);
+      this.setToken('standalone-local-token');
+    }
+    return { authenticated: true, user: hydrateUser(store.user, store.matches), googleOAuthConfigured: false };
+  }
+
+  async register({ username, email }) {
+    const store = loadStore();
+    store.user = {
+      id: 'local_' + Date.now(),
+      username: String(username || 'Estratega').trim().slice(0, 20) || 'Estratega',
+      email: String(email || 'local@chess.mod').trim(),
+      elo: INITIAL_ELO,
+      xp: INITIAL_XP,
+      avatar: 'preset:obsidian_king',
+      frameId: 'frame_stone',
+      boardThemeId: 'board_classic_maya',
+      wins: 0,
+      losses: 0,
+      draws: 0,
+      basesDestroyed: 0,
+      campaigns: defaultCampaigns(),
+      unlockedCosmetics: ['obsidian_king', 'frame_stone', 'board_classic_maya'],
+      customTitle: null
+    };
+    store.matches = [];
+    saveStore(store);
+    this.setToken('standalone-local-token');
+    return { token: 'standalone-local-token', user: hydrateUser(store.user, store.matches) };
+  }
+
+  async login({ identifier }) {
+    const store = loadStore();
+    if (!store.user) return this.register({ username: identifier || 'Estratega', email: 'local@chess.mod' });
+    this.setToken('standalone-local-token');
+    return { token: 'standalone-local-token', user: hydrateUser(store.user, store.matches) };
+  }
+
+  async logout() {
+    this.setToken('');
+    return { ok: true };
+  }
+
+  async getCosmetics() {
+    return { avatars: COSMETIC_AVATARS, frames: COSMETIC_FRAMES, boards: COSMETIC_BOARDS };
+  }
+
+  async updateUsername(username) {
+    const store = loadStore();
+    if (store.user) {
+      store.user.username = String(username || '').trim().slice(0, 20) || store.user.username;
+      saveStore(store);
+    }
+    return { user: hydrateUser(store.user, store.matches) };
+  }
+
+  async updateAvatar(avatar) {
+    const store = loadStore();
+    if (store.user) {
+      store.user.avatar = avatar;
+      saveStore(store);
+    }
+    return { user: hydrateUser(store.user, store.matches) };
+  }
+
+  async updateCosmetics({ frameId, boardThemeId }) {
+    const store = loadStore();
+    if (store.user) {
+      if (frameId) store.user.frameId = frameId;
+      if (boardThemeId) store.user.boardThemeId = boardThemeId;
+      saveStore(store);
+    }
+    return { user: hydrateUser(store.user, store.matches) };
+  }
+
+  async getLeaderboard() {
+    const store = loadStore();
+    const u = hydrateUser(store.user, store.matches);
+    const players = u ? [{
+      rank: 1,
+      id: u.id,
+      username: u.username,
+      avatar: u.avatar,
+      frameId: u.frameId,
+      elo: u.elo,
+      level: u.level,
+      wins: u.wins,
+      losses: u.losses,
+      draws: u.draws
+    }] : [];
+    return { players };
+  }
+
+  async validateCampaignStart(campaignId, levelId) {
+    const store = loadStore();
+    const campaigns = store.user?.campaigns || defaultCampaigns();
+    if (!isCampaignLevelUnlocked(campaignId, levelId, campaigns)) {
+      const err = new Error(getCampaignUnlockReason(campaignId, levelId, campaigns) || 'Nivel bloqueado.');
+      err.status = 403;
+      throw err;
+    }
+    return { ok: true, campaignId, levelId };
+  }
+
+  async spendHintXp() {
+    const store = loadStore();
+    if (!store.user) await this.me();
+    const s = loadStore();
+    if ((s.user.xp || 0) < HINT_XP_COST) {
+      const err = new Error(\`Necesitas \${HINT_XP_COST} XP para usar una Pista IA (tienes \${s.user.xp || 0} XP).\`);
+      err.status = 400;
+      throw err;
+    }
+    s.user.xp -= HINT_XP_COST;
+    saveStore(s);
+    return { ok: true, xp: s.user.xp, user: hydrateUser(s.user, s.matches) };
+  }
+
+  async reportMatch({ mode, opponentName, winner, resultReason, turns, basesDestroyed, campaignId, levelId }) {
+    const store = loadStore();
+    if (!store.user) await this.me();
+    const s = loadStore();
+    const u = s.user;
+    u.campaigns = { ...defaultCampaigns(), ...(u.campaigns || {}) };
+
+    let xpGained = winner === 'w' ? 65 : (winner === 'draw' ? 25 : 15);
+    if (campaignId && levelId) {
+      const lvl = getCampaignLevel(campaignId, levelId);
+      if (lvl) xpGained = winner === 'w' ? lvl.xpReward : 20;
+      if (winner === 'w') {
+        const list = new Set(u.campaigns[campaignId]?.completedLevels || []);
+        list.add(Number(levelId));
+        u.campaigns[campaignId] = { completedLevels: [...list].sort((a, b) => a - b) };
+        if (campaignId === 'chess' && Number(levelId) === 5) {
+          u.customTitle = 'Vencedor de Chess';
+          const unl = new Set(u.unlockedCosmetics || []);
+          unl.add('frame_chess_victor');
+          unl.add('chess_origin');
+          u.unlockedCosmetics = [...unl];
+        }
+      }
+    }
+
+    if (winner === 'w') u.wins = (u.wins || 0) + 1;
+    else if (winner === 'b') u.losses = (u.losses || 0) + 1;
+    else u.draws = (u.draws || 0) + 1;
+    u.basesDestroyed = (u.basesDestroyed || 0) + (Number(basesDestroyed) || 0);
+    u.xp = (u.xp || 0) + xpGained;
+
+    s.matches.unshift({
+      mode,
+      opponentName,
+      result: winner === 'w' ? 'win' : (winner === 'b' ? 'loss' : 'draw'),
+      resultReason,
+      turns,
+      xpGained,
+      createdAt: new Date().toISOString()
+    });
+    s.matches = s.matches.slice(0, 40);
+    saveStore(s);
+    return { ok: true, xpGained, user: hydrateUser(u, s.matches) };
+  }
+}
+
+export const api = new StandaloneApiClient();
+`;
+
+const resolveSharedPlugin = {
+  name: 'resolve-shared-root',
+  setup(build) {
+    build.onResolve({ filter: /^\/shared\// }, (args) => ({
+      path: path.join(rootDir, args.path.slice(1))
+    }));
+  }
+};
+
+// 4. Empaquetar el Web Worker de Súper IA como string autocontenido
+const workerBuild = await esbuild.build({
+  entryPoints: [path.join(clientDir, 'js', 'superAiWorker.js')],
+  bundle: true,
+  format: 'iife',
+  minify: true,
+  write: false,
+  plugins: [resolveSharedPlugin]
+});
+const workerCode = workerBuild.outputFiles[0].text;
+
+// 5. Empaquetar toda la app del cliente en un único IIFE (reemplazando api.js por el adaptador offline y mittens_ref.png por data URI)
+const appBuild = await esbuild.build({
+  entryPoints: [path.join(clientDir, 'js', 'app.js')],
+  bundle: true,
+  format: 'iife',
+  minify: false,
+  write: false,
+  plugins: [
+    resolveSharedPlugin,
+    {
+      name: 'standalone-offline-adapter',
+      setup(build) {
+        build.onResolve({ filter: /^\.\/api\.js$/ }, () => ({
+          path: path.join(clientDir, 'js', 'api.js'),
+          namespace: 'standalone-api'
+        }));
+        build.onLoad({ filter: /.*/, namespace: 'standalone-api' }, () => ({
+          contents: standaloneApiSource,
+          resolveDir: path.join(clientDir, 'js'),
+          loader: 'js'
+        }));
+        build.onLoad({ filter: /(portraits|svgs)\.js$/ }, (args) => {
+          let src = fs.readFileSync(args.path, 'utf8');
+          src = src.replaceAll('/assets/images/mittens_ref.png', mittensDataUri);
+          src = src.replaceAll('/assets/images/glitch_texture.jpg', glitchTexDataUri);
+          return { contents: src, loader: 'js' };
+        });
+        build.onLoad({ filter: /battleController\.js$/ }, (args) => {
+          let src = fs.readFileSync(args.path, 'utf8');
+          // Usar Blob URL para el Worker de Súper IA en archivo HTML descargable
+          src = src.replace(
+            "new Worker('/js/superAiWorker.js', { type: 'module' })",
+            "new Worker(URL.createObjectURL(new Blob([window.__CHESS_SUPER_AI_WORKER_CODE__ || ''], { type: 'application/javascript' })))"
+          );
+          return { contents: src, loader: 'js' };
+        });
+      }
+    }
+  ]
+});
+
+const appJs = appBuild.outputFiles[0].text;
+
+// 6. Construir el archivo HTML final autocontenido a partir de client/index.html
+let html = fs.readFileSync(path.join(clientDir, 'index.html'), 'utf8');
+
+// Reemplazar los 4 CSS externos por un único <style> inline
+html = html.replace(
+  /<link rel="stylesheet" href="\/css\/main\.css">\s*<link rel="stylesheet" href="\/css\/menu\.css">\s*<link rel="stylesheet" href="\/css\/board\.css">\s*<link rel="stylesheet" href="\/css\/portraits\.css">/,
+  `<style>\n${combinedCss}\n</style>`
+);
+
+// Reemplazar el logo oficial y las 3 pistas de jefes por Data URIs embebidos
+html = html.replaceAll('/assets/images/chess_mod_logo.jpg', logoDataUri);
+html = html.replaceAll('/assets/audio/Ultimate%20Battle.mp3', musicDataUri);
+html = html.replaceAll('/assets/audio/FreeMittensBattle.mp3', mittensMusicDataUri);
+html = html.replaceAll('/assets/audio/BlackyBattle.mp3', blackyMusicDataUri);
+
+// Quitar socket.io externo (no aplica en modo archivo descargable offline) y reemplazar el <script type="module"> por nuestro bundle inline
+html = html.replace(
+  /<script src="\/socket\.io\/socket\.io\.js"><\/script>\s*<script type="module" src="\/js\/app\.js"><\/script>/,
+  `<script>window.__CHESS_SUPER_AI_WORKER_CODE__ = ${JSON.stringify(workerCode)};</script>\n  <script>\n${appJs.replace(/<\/script>/gi, '<\\/script>')}\n</script>`
+);
+
+fs.writeFileSync(outHtmlPath, html, 'utf8');
+const sizeMb = (fs.statSync(outHtmlPath).size / (1024 * 1024)).toFixed(2);
+console.log(`✅ Generado HTML descargable autocontenido: ${outHtmlPath} (${sizeMb} MB)`);

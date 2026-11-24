@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: chessmod
+    runtime: node
+    plan: free
+    buildCommand: npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CHESS_MOD_JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
