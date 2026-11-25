@@ -124,6 +124,14 @@ export class MultiplayerManager {
     }
   }
 
+  notifyUser(userId, event, payload) {
+    for (const sock of this.io.sockets.sockets.values()) {
+      if (sock.userId === userId) {
+        sock.emit(event, payload);
+      }
+    }
+  }
+
   getLiveMatchesSummary() {
     const list = [];
     for (const room of this.matches.values()) {
@@ -697,9 +705,18 @@ export class MultiplayerManager {
       : { specialModeId: effectiveSpecialId, timeMinutes: whiteEntry.timeMinutes, allowPowers: true, allowHints: false, allowUndo: false, betMods: activeBet };
 
     const matchId = `${isPrivate ? 'priv' : 'room'}_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
-    const engine = createEngineForMode(effectiveSpecialId, effectiveSettings.timeMinutes);
-    if (isPrivate && customMod && !effectiveSpecialId) {
+    let engine;
+    if (isPrivate && customMod?.gameMode && !effectiveSpecialId) {
+      const gm = customMod.gameMode;
+      engine = (gm.boardSize === 12 || gm.boardSize === 10 || gm.atomicMode)
+        ? new LargeBoardChessEngine(gm.boardSize || 8, effectiveSettings.timeMinutes, { atomicMode: Boolean(gm.atomicMode) })
+        : new ClassicChessEngine(effectiveSettings.timeMinutes);
       applyCustomModSetupToEngine(engine, customMod);
+    } else {
+      engine = createEngineForMode(effectiveSpecialId, effectiveSettings.timeMinutes);
+      if (isPrivate && customMod && !effectiveSpecialId) {
+        applyCustomModSetupToEngine(engine, customMod);
+      }
     }
 
     const powerState = createInitialPowerState();

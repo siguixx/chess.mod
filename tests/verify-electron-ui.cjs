@@ -240,7 +240,8 @@ app.whenReady().then(async () => {
       await wait(300);
       results.galaxyManVisible = !document.getElementById('pyramid-layer').classList.contains('hidden')
         && document.getElementById('pyramid-layer').classList.contains('galaxy-man-mode')
-        && document.getElementById('pyramid-layer').innerHTML.includes('Anclas');
+        && document.getElementById('pyramid-layer').innerHTML.includes('Anclas')
+        && document.getElementById('pyramid-layer').innerHTML.includes('gxSpiralBg');
 
       // 8. Verificar Cap. 4 Lv. 5 (Boss Glitch): intro temática + textura real glitch_texture.jpg
       document.getElementById('btn-battle-back').click();
@@ -333,7 +334,16 @@ app.whenReady().then(async () => {
       await wait(150);
       results.battlePassTiersRendered = document.querySelectorAll('#bp-tiers-grid .bp-tier-row').length;
       results.battlePassInsideShop = !document.getElementById('shop-battlepass-panel')?.classList.contains('hidden');
-      results.battlePassPaidOnlyUsdBtn = Boolean(document.getElementById('btn-bp-buy-usd')) && !document.getElementById('btn-bp-buy-mods');
+      results.battlePassBothPayOptionsExist = Boolean(document.getElementById('btn-bp-buy-usd')) && Boolean(document.getElementById('btn-bp-buy-mods'));
+      results.languagesCount = document.querySelectorAll('#settings-lang-pills [data-set-lang]').length;
+
+      document.querySelector('[data-screen="missions"]').click();
+      await wait(350);
+      results.missionsRenderedCount = document.querySelectorAll('#missions-list-grid .shop-card').length;
+
+      document.querySelector('[data-screen="mods"]').click();
+      await wait(150);
+      results.modsGameModeBuilderExists = Boolean(document.getElementById('mod-gamemode-builder') && document.getElementById('btn-mod-apply-gamemode'));
 
       document.querySelector('[data-screen="customize"]').click();
       await wait(150);
@@ -365,6 +375,18 @@ app.whenReady().then(async () => {
       await wait(400);
       results.colossal12x12Squares = document.querySelectorAll('#board-grid .square').length;
       results.undoVisibleVsBot = !document.getElementById('btn-undo').classList.contains('hidden');
+      document.getElementById('btn-battle-back').click();
+      await wait(150);
+
+      // 14. Probar Modo Equipos 2 vs 2 (4 facciones en arena 10×10 = 100 casillas) + botón Agregar Amigo en Online + Chat Privado modal
+      document.querySelector('[data-start-special="special_teams_2v2"]')?.click();
+      await wait(200);
+      document.getElementById('btn-ml-play-bot')?.click();
+      await wait(400);
+      results.teams2v2Squares = document.querySelectorAll('#board-grid .square').length;
+      results.teams2v2HasFactions = Boolean(document.querySelector('.faction-c') && document.querySelector('.faction-r') && document.querySelector('.faction-y'));
+      results.onlineAddFriendBtnExists = Boolean(document.getElementById('btn-online-add-friend'));
+      results.friendChatModalExists = Boolean(document.getElementById('modal-friend-chat'));
       document.getElementById('btn-battle-back').click();
       await wait(150);
 

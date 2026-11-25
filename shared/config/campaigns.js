@@ -190,61 +190,61 @@ export const GALAXY_CAMPAIGN = {
       id: 1,
       key: 'galaxy_1',
       bossId: 'galaxy_herald',
-      name: 'Heraldos de Nebulosa',
+      name: 'Explorador Cometa',
       difficultyLabel: 'Fácil-Medio',
       aiDifficulty: 2,
       isFinalBoss: false,
       hasGalaxyMan: false,
       teleportCooldown: 6,
       xpReward: 180,
-      unitIntroduced: 'Teletransporte (6t) · Defensa: 2 Barreras Universales',
-      briefing: 'Teletransporte enemigo cada 6 turnos (vanguardia reducida). Tus 2 Barreras Universales inmortales (c3, f3) bloquean el paso y también impiden teletransportes adyacentes.',
-      openingLine: 'Liberaste al prisionero prohibido. El cosmos exigirá tu rendición.'
+      unitIntroduced: '☄️ Estela Cometa (Teletransporte 6t) · 2 Barreras',
+      briefing: 'El Explorador Cometa surca el tablero con saltos de cometa cada 6 turnos. Tus 2 Barreras Universales inmortales (c3, f3) bloquean el paso e impiden saltos adyacentes.',
+      openingLine: '¡Mi estela de hielo cósmico te alcanzará antes de que termines tu apertura!'
     },
     {
       id: 2,
       key: 'galaxy_2',
       bossId: 'galaxy_weaver',
-      name: 'Tejedores de Constelación',
+      name: 'Centinela Púlsar',
       difficultyLabel: 'Medio',
       aiDifficulty: 2,
       isFinalBoss: false,
       hasGalaxyMan: false,
       teleportCooldown: 5,
       xpReward: 220,
-      unitIntroduced: 'Teletransporte (5t) · 2 Barreras Universales',
-      briefing: 'Teletransporte cada 5 turnos. Usa tus 2 Barreras Universales para sellar columnas clave y proteger tu flanco de saltos espaciales.',
-      openingLine: 'Las constelaciones no persiguen el tablero: se pliegan sobre él.'
+      unitIntroduced: '💫 Pulso Gravitatorio (4t) + Salto (5t) · 2 Barreras',
+      briefing: 'El Centinela Púlsar emite ondas gravitatorias cada 4 turnos que empujan 1 pieza blanca sin escudo hacia atrás. Protege tus filas junto a tus Barreras Universales.',
+      openingLine: 'Cada pulso de mi estrella altera la gravedad de tu formación.'
     },
     {
       id: 3,
       key: 'galaxy_3',
       bossId: 'galaxy_warden',
-      name: 'Centinelas del Horizonte',
+      name: 'Tejedora de Nebulosa',
       difficultyLabel: 'Medio',
       aiDifficulty: 3,
       isFinalBoss: false,
       hasGalaxyMan: false,
       teleportCooldown: 4,
       xpReward: 270,
-      unitIntroduced: 'Flanqueo Cósmico (4t) · 2 Barreras Universales',
-      briefing: 'Ejército galáctico completo con teletransporte cada 4 turnos. Coordina tus 2 Barreras Universales para ahogar sus líneas de ataque.',
-      openingLine: 'Tus barreras son sólidas, mas tus flancos permanecen expuestos al vacío.'
+      unitIntroduced: '🌫️ Velo de Nebulosa (Salto 4t) · 2 Barreras',
+      briefing: 'La Tejedora de Nebulosa despliega su ejército estelar completo con teletransportes cada 4 turnos para flanquear tus líneas. Sella columnas con tus Barreras.',
+      openingLine: 'Tus barreras brillan, mas la nebulosa rodea todo cuanto existe.'
     },
     {
       id: 4,
       key: 'galaxy_4',
       bossId: 'galaxy_archon',
-      name: 'Arconte Estelar',
+      name: 'Guardián Quásar',
       difficultyLabel: 'Medio-Difícil',
       aiDifficulty: 3,
       isFinalBoss: false,
       hasGalaxyMan: false,
       teleportCooldown: 4,
       xpReward: 330,
-      unitIntroduced: 'Presión Estelar (4t) · 2 Barreras Universales',
-      briefing: 'Antesala del núcleo galáctico con teletransporte cada 4 turnos y mayor presión táctica. Mantén tus Barreras activas para resistir.',
-      openingLine: 'Un paso más y te enfrentarás al cuerpo viviente de la galaxia.'
+      unitIntroduced: '☀️ Llamarada Quásar (Pulso + Salto 4t) · 2 Barreras',
+      briefing: 'El Guardián Quásar combina pulsos gravitatorios y teletransportes rápidos antes del trono estelar. Mantén tus 2 Barreras activas.',
+      openingLine: 'Supera la radiación del quásar o arde antes de ver a la Galaxia viviente.'
     },
     {
       id: 5,
@@ -257,8 +257,8 @@ export const GALAXY_CAMPAIGN = {
       hasGalaxyMan: true,
       teleportCooldown: 4,
       xpReward: 520,
-      unitIntroduced: 'Hombre Galaxia 2×2 (Torre) · 2 Barreras Universales',
-      briefing: 'JEFE DEL CAPÍTULO 03. El Hombre Galaxia 2×2 se mueve como Torre y es invulnerable. Cubre tus piezas con las 2 Barreras Universales y elimina TODOS los Alfiles y Caballos enemigos para ganar.',
+      unitIntroduced: '🌌 Galaxia Espiral 2×2 (Torre) · 2 Barreras Universales',
+      briefing: 'JEFE DEL CAPÍTULO 03. La Galaxia Espiral 2×2 se mueve como Torre y es invulnerable. Cubre tus piezas con las 2 Barreras Universales y elimina TODOS los Alfiles y Caballos enemigos para ganar.',
       openingLine: 'Por tu insolencia liberaste a Free Mittens. ¡Afronta el peso entero de las estrellas!'
     }
   ]
@@ -278,22 +278,22 @@ export const GLITCH_CAMPAIGN = {
       id: 1,
       key: 'glitch_1',
       bossId: 'glitch_shard',
-      name: 'Fragmento de Memoria',
+      name: 'Bit Corrupto',
       difficultyLabel: 'Medio',
       aiDifficulty: 2,
       isFinalBoss: false,
       riftInterval: 5,
       allowAnomalies: false,
       xpReward: 240,
-      unitIntroduced: 'Grietas (5t) · Defensa: 2 Cortafuegos Selladores',
-      briefing: 'Cada 5 turnos se abren Grietas de Vacío. Tus 2 Barreras Cortafuegos inmortales (c3, f3) pueden pisar una Grieta para sellarla y despejar el tablero.',
-      openingLine: 'ERR_01:: La geometría del tablero empieza a sangrar píxeles.'
+      unitIntroduced: '🟩 Desfase de Bits (Grietas 5t) · 2 Cortafuegos',
+      briefing: 'El Bit Corrupto abre Grietas de Vacío cada 5 turnos y altera la textura del tablero. Tus 2 Cortafuegos inmortales (c3, f3) sellan Grietas al pisarlas.',
+      openingLine: '0x01_BIT_ERR:: La geometría del tablero empieza a fragmentarse en píxeles.'
     },
     {
       id: 2,
       key: 'glitch_2',
       bossId: 'glitch_pawn_err',
-      name: 'Peones Desincronizados',
+      name: 'Gusano de Memoria',
       difficultyLabel: 'Medio',
       aiDifficulty: 2,
       isFinalBoss: false,
@@ -301,15 +301,15 @@ export const GLITCH_CAMPAIGN = {
       allowAnomalies: true,
       anomalyLevel: 1,
       xpReward: 290,
-      unitIntroduced: 'Peones Anómalos · 2 Cortafuegos Inmortales',
-      briefing: 'Peones corruptos atacan de frente o retroceden, pero tus 2 Cortafuegos protegen a las piezas adyacentes de todo ataque anómalo y sellan Grietas.',
-      openingLine: 'RULE_BREACH:: ¿Quién decidió que un peón solo camina hacia adelante?'
+      unitIntroduced: '🪱 Gusano de Memoria (Peones Anómalos) · 2 Cortafuegos',
+      briefing: 'El Gusano de Memoria corrompe a sus peones para atacar de frente o retroceder. Tus 2 Cortafuegos protegen a piezas adyacentes y sellan Grietas.',
+      openingLine: 'MEM_WORM:: ¿Quién programó que un peón solo camina hacia adelante?'
     },
     {
       id: 3,
       key: 'glitch_3',
       bossId: 'glitch_knight_err',
-      name: 'Saltos Corruptos',
+      name: 'Caballero Troyano',
       difficultyLabel: 'Medio-Difícil',
       aiDifficulty: 3,
       isFinalBoss: false,
@@ -317,15 +317,15 @@ export const GLITCH_CAMPAIGN = {
       allowAnomalies: true,
       anomalyLevel: 2,
       xpReward: 340,
-      unitIntroduced: 'Grietas (4t) + Caballos Anómalos · 2 Cortafuegos',
-      briefing: 'Grietas cada 4 turnos y Caballos con salto largo (3,1). Mantén a tus piezas clave junto a un Cortafuegos para anular los ataques corruptos.',
-      openingLine: 'STACK_OVERFLOW:: Tus líneas seguras ya no existen en esta realidad.'
+      unitIntroduced: '🐴 Caballería Troyana (Salto 3×1 + Grietas 4t)',
+      briefing: 'El Caballero Troyano inyecta caballos con salto largo anómalo (3,1) y abre grietas cada 4 turnos. Mantén tus piezas clave escoltadas por los Cortafuegos.',
+      openingLine: '0xDEAD_TROJAN:: He infectado tu flanco con saltos imposibles.'
     },
     {
       id: 4,
       key: 'glitch_4',
       bossId: 'glitch_core',
-      name: 'Núcleo Inestable',
+      name: 'Demonio Kernel',
       difficultyLabel: 'Difícil',
       aiDifficulty: 3,
       isFinalBoss: false,
@@ -333,9 +333,9 @@ export const GLITCH_CAMPAIGN = {
       allowAnomalies: true,
       anomalyLevel: 3,
       xpReward: 400,
-      unitIntroduced: 'Intercambio de Furia + Grietas · 2 Cortafuegos',
-      briefing: 'Antesala del Boss Glitch: grietas, anomalías y permutaciones cada 5 turnos. Usa tus 2 Cortafuegos para cerrar grietas y escudar tu defensa.',
-      openingLine: 'CRITICAL_FAULT:: CHESS.MOD ya no responde a tus reglas.'
+      unitIntroduced: '💀 Sobrecarga Kernel (Fury Swap + 3 Grietas)',
+      briefing: 'El Demonio Kernel provoca intercambios de furia entre sus piezas cada 5 turnos y rasga 3 grietas simultáneas antes del Boss Glitch.',
+      openingLine: 'KERNEL_PANIC:: El núcleo de CHESS.MOD ya no responde a tus leyes.'
     },
     {
       id: 5,
@@ -349,8 +349,8 @@ export const GLITCH_CAMPAIGN = {
       allowAnomalies: true,
       anomalyLevel: 4,
       xpReward: 600,
-      unitIntroduced: 'Rasgado (3t) + Anomalías · Defensa: 2 Cortafuegos',
-      briefing: 'JEFE DEL CAPÍTULO 04. Rasga el tablero cada 3 turnos y usa todas sus anomalías. Tus 2 Cortafuegos inmortales sellan Grietas al pisarlas y bloquean ataques anómalos adyacentes.',
+      unitIntroduced: '💥 Rasgado Total (3t) + Anomalías · 2 Cortafuegos',
+      briefing: 'JEFE DEL CAPÍTULO 04. Rasga el tablero cada 3 turnos, muta la textura del tablero y usa todas las anomalías. Sella grietas con tus 2 Cortafuegos.',
       openingLine: 'FATAL_REALITY_TEAR:: Soy la fractura de todo lo que jugaste. ¡Cae conmigo!'
     }
   ]
@@ -370,7 +370,7 @@ export const CHESS_CAMPAIGN = {
       id: 1,
       key: 'chess_1',
       bossId: 'chess_legion',
-      name: 'Legión de Peones y Caballos',
+      name: 'Aprendiz de Marfil',
       difficultyLabel: 'Medio-Fácil',
       aiDifficulty: 2,
       isFinalBoss: false,
@@ -381,15 +381,15 @@ export const CHESS_CAMPAIGN = {
       blunderChance: 0.28,
       useBook: false,
       xpReward: 320,
-      unitIntroduced: 'Ajedrez 100% Limpio · Sin Poderes',
-      briefing: 'Combate de ajedrez totalmente limpio y justo contra la primera guardia de CHESS. Sin poderes ni trucos: desarrolla tus piezas y aprovecha sus imprecisiones.',
-      openingLine: 'Sin trucos. Sin milagros. Solo el tablero limpio y tu estrategia.'
+      unitIntroduced: '♟️ Apertura Académica · Ajedrez 100% Limpio',
+      briefing: 'El Aprendiz de Marfil custodia la entrada al Plano Puro con juego limpio y clásico. Desarrolla tus piezas y castiga sus errores posicionales.',
+      openingLine: 'Bienvenido al Plano Puro. Aquí solo cuenta la elegancia de tus jugadas.'
     },
     {
       id: 2,
       key: 'chess_2',
       bossId: 'chess_towers',
-      name: 'Maestros de Alfiles y Torres',
+      name: 'Táctico de Caoba',
       difficultyLabel: 'Medio',
       aiDifficulty: 3,
       isFinalBoss: false,
@@ -400,15 +400,15 @@ export const CHESS_CAMPAIGN = {
       blunderChance: 0.20,
       useBook: false,
       xpReward: 380,
-      unitIntroduced: 'Ajedrez 100% Limpio · Control Posicional',
-      briefing: 'Ajedrez puro sin poderes de ningún lado. Mayor atención a columnas abiertas y diagonales, pero aún accesible con juego sólido.',
-      openingLine: 'Cuida tus columnas y diagonales; el tablero limpio no oculta nada.'
+      unitIntroduced: '⏳ Reloj Táctico · Columnas y Diagonales Limpias',
+      briefing: 'El Táctico de Caoba domina clavadas y columnas abiertas sin poderes sobrenaturales. Controla el centro y protege tu enroque.',
+      openingLine: 'Mi monóculo lee cada clavada y cada diagonal que descuidas.'
     },
     {
       id: 3,
       key: 'chess_3',
       bossId: 'chess_queen',
-      name: 'La Dama Absoluta',
+      name: 'Gran Maestro de Platino',
       difficultyLabel: 'Medio-Difícil',
       aiDifficulty: 3,
       isFinalBoss: false,
@@ -419,15 +419,15 @@ export const CHESS_CAMPAIGN = {
       blunderChance: 0.14,
       useBook: true,
       xpReward: 450,
-      unitIntroduced: 'Ajedrez 100% Limpio · Presión Táctica',
-      briefing: 'Ajedrez completamente limpio con apertura clásica y cálculo táctico intermedio.',
-      openingLine: 'Cada tiempo cuenta cuando el tablero es puro.'
+      unitIntroduced: '🏛️ Teoría de Maestros · Libro de Aperturas',
+      briefing: 'El Gran Maestro de Platino responde con teoría clásica de aperturas y combinaciones tácticas puras.',
+      openingLine: 'Cada tiempo perdido en la apertura se paga en el final.'
     },
     {
       id: 4,
       key: 'chess_4',
       bossId: 'chess_court',
-      name: 'La Corte Real Perfecta',
+      name: 'Arquitecto del Tablero',
       difficultyLabel: 'Difícil',
       aiDifficulty: 4,
       isFinalBoss: false,
@@ -438,9 +438,9 @@ export const CHESS_CAMPAIGN = {
       blunderChance: 0.08,
       useBook: true,
       xpReward: 520,
-      unitIntroduced: 'Ajedrez 100% Limpio · Antesala del Origen',
-      briefing: 'La última prueba de ajedrez totalmente limpio antes del desafío final contra CHESS.',
-      openingLine: 'Demuestra que mereces pararte frente al origen del juego.'
+      unitIntroduced: '📐 Simetría Absoluta · Última Prueba Antes de CHESS',
+      briefing: 'El Arquitecto del Tablero construye estructuras casi impecables. Supéralo en ajedrez puro para ganar audiencia ante el propio CHESS.',
+      openingLine: 'Yo tracé las 64 casillas. Demuestra que mereces enfrentar al Soberano CHESS.'
     },
     {
       id: 5,
@@ -458,7 +458,7 @@ export const CHESS_CAMPAIGN = {
       blunderChance: 0.04,
       useBook: true,
       xpReward: 800,
-      unitIntroduced: 'CHESS 100% Limpio · Elige 1 de 3 Poderes',
+      unitIntroduced: '👑 CHESS 100% Limpio · Elige 1 de 3 Poderes',
       briefing: 'JEFE FINAL ABSOLUTO. CHESS juega ajedrez 100% limpio sin poderes enemigos. Antes de iniciar elige 1 poder (Mittens, Torre Maya o Galaxia) para enfrentarlo.',
       openingLine: 'No necesito pirámides, cadenas, estrellas ni grietas. Soy CHESS. Elige tu poder y enfréntame en un tablero limpio.'
     }

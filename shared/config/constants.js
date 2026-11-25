@@ -199,6 +199,33 @@ export const SPECIAL_GAME_MODES = [
     icon: '🌀',
     badge: 'CAOS EXTREMO',
     description: 'Ruleta de poderes OP cada turno + terremotos cada 2 turnos + mutaciones sorpresivas en medio de la batalla. ¡Locura total!'
+  },
+  {
+    id: 'special_teams_2v2',
+    name: 'Equipos 2 vs 2 (4 Facciones)',
+    icon: '🤝',
+    badge: 'EQUIPOS · 4 JUGADORES/BOTS',
+    boardSize: 10,
+    multiPartyVariant: '2v2',
+    description: '¡Batalla en Equipos 2 vs 2 en Arena 10×10! Tú (Blanco) + Aliado Cian contra Equipo Carmesí + Ámbar. Protege a tu compañero y derriba ambos Reyes enemigos.'
+  },
+  {
+    id: 'special_ffa_4p',
+    name: 'Batalla Real (4 Jugadores)',
+    icon: '👑',
+    badge: '4 FACCIONES · FFA',
+    boardSize: 10,
+    multiPartyVariant: 'ffa4',
+    description: '¡4 ejércitos (Blanco, Cian, Carmesí y Ámbar) en una arena 10×10 todos contra todos! Turnos rotativos: el último Rey en pie se corona campeón.'
+  },
+  {
+    id: 'special_trio_3p',
+    name: 'Triada 3 Facciones (1v1v1)',
+    icon: '⚔️',
+    badge: '3 JUGADORES / BOTS',
+    boardSize: 10,
+    multiPartyVariant: 'ffa3',
+    description: '¡3 ejércitos en guerra simultánea en arena 10×10 (Blanco vs Carmesí vs Ámbar)! Calcula alianzas temporales y sobrevive hasta el final.'
   }
 ];
 

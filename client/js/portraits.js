@@ -576,7 +576,95 @@ function buildBossPortraitSVG(bossId) {
       </svg>`;
   }
 
-  // === CAP. 3: ENTIDAD GALÁCTICA Y HERALDOS CÓSMICOS (COLOSO ESTELAR CON HALO SOLAR Y ANILLOS ORBITALES) ===
+  // === CAP. 3 NIVELES 1-4: PERSONAJES ÚNICOS DE GALAXIA (COMETA, PÚLSAR, NEBULOSA, QUÁSAR — DISTINTOS AL BOSS) ===
+  if (bossId === 'galaxy_herald') {
+    // Nv.1: Explorador Cometa — Yelmo cristalino de hielo cósmico con estela azul-cian
+    return `
+      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Explorador Cometa">
+        <defs>
+          <radialGradient id="gComBg" cx="35%" cy="30%" r="76%"><stop offset="0%" stop-color="#1e6b8a"/><stop offset="56%" stop-color="#0d2840"/><stop offset="100%" stop-color="#040b14"/></radialGradient>
+          <linearGradient id="gComIce" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#e0f7ff"/><stop offset="48%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#1d4ed8"/></linearGradient>
+        </defs>
+        <rect width="240" height="240" fill="url(#gComBg)"/>
+        <path d="M12 36 Q92 48 164 114 L138 144 Q72 86 6 66 Z" fill="#38bdf8" opacity="0.28"/>
+        <path d="M22 18 Q106 38 178 96" fill="none" stroke="#bae6fd" stroke-width="3" stroke-dasharray="10 6" opacity="0.7"/>
+        <path d="M24 240 L62 170 H178 L216 240 Z" fill="#133452" stroke="#7dd3fc" stroke-width="2.4"/>
+        <polygon points="120,176 138,202 120,224 102,202" fill="url(#gComIce)" stroke="#ffffff" stroke-width="1.6"/>
+        <g class="portrait-float-part">
+          <polygon points="120,20 156,64 172,118 148,174 120,188 92,174 68,118 84,64" fill="url(#gComIce)" stroke="#e0f2fe" stroke-width="2.8"/>
+          <polygon points="120,20 136,68 120,104 104,68" fill="#ffffff" opacity="0.45"/>
+          <polygon points="78,104 162,104 152,134 88,134" fill="#071829" stroke="#7dd3fc" stroke-width="2"/>
+        </g>
+        ${chessVisorEyes('#7dd3fc', '#fde047', 'gcomet')}
+      </svg>`;
+  }
+
+  if (bossId === 'galaxy_weaver') {
+    // Nv.2: Centinela Púlsar — Estrella de neutrones turquesa con chorros polares y anillos magnéticos
+    return `
+      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Centinela Púlsar">
+        <defs>
+          <radialGradient id="gPulBg" cx="50%" cy="46%" r="72%"><stop offset="0%" stop-color="#135d66"/><stop offset="56%" stop-color="#082830"/><stop offset="100%" stop-color="#030d10"/></radialGradient>
+          <radialGradient id="gPulCore" cx="50%" cy="44%" r="54%"><stop offset="0%" stop-color="#ffffff"/><stop offset="35%" stop-color="#5eead4"/><stop offset="75%" stop-color="#0f766e"/><stop offset="100%" stop-color="#042f2e"/></radialGradient>
+        </defs>
+        <rect width="240" height="240" fill="url(#gPulBg)"/>
+        <polygon points="120,116 98,0 142,0" fill="#5eead4" opacity="0.28"/>
+        <polygon points="120,116 98,240 142,240" fill="#5eead4" opacity="0.22"/>
+        <ellipse class="portrait-aura-ring" cx="120" cy="114" rx="98" ry="38" fill="none" stroke="#2dd4bf" stroke-width="2.6" transform="rotate(-24 120 114)"/>
+        <ellipse class="portrait-aura-ring" cx="120" cy="114" rx="98" ry="38" fill="none" stroke="#99f6e4" stroke-width="1.6" stroke-dasharray="8 6" transform="rotate(24 120 114)"/>
+        <path d="M36 240 L72 174 H168 L204 240 Z" fill="#0d3d42" stroke="#5eead4" stroke-width="2.4"/>
+        <g class="portrait-float-part">
+          <circle cx="120" cy="114" r="52" fill="url(#gPulCore)" stroke="#ccfbf1" stroke-width="3"/>
+          <rect x="76" y="102" width="88" height="28" rx="12" fill="#041c1e" stroke="#5eead4" stroke-width="2"/>
+        </g>
+        ${chessVisorEyes('#5eead4', '#fb7185', 'gpulsar')}
+      </svg>`;
+  }
+
+  if (bossId === 'galaxy_warden') {
+    // Nv.3: Tejedora de Nebulosa — Velo cósmico rosa-magenta y astrolabio dorado
+    return `
+      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Tejedora de Nebulosa">
+        <defs>
+          <radialGradient id="gNebBg" cx="50%" cy="35%" r="74%"><stop offset="0%" stop-color="#9d174d"/><stop offset="52%" stop-color="#3b0764"/><stop offset="100%" stop-color="#090314"/></radialGradient>
+          <linearGradient id="gNebVeil" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fbcfe8"/><stop offset="45%" stop-color="#c026d3"/><stop offset="100%" stop-color="#31105c"/></linearGradient>
+        </defs>
+        <rect width="240" height="240" fill="url(#gNebBg)"/>
+        <circle class="portrait-aura-ring" cx="120" cy="116" r="96" fill="none" stroke="#f472b6" stroke-width="2.2" stroke-dasharray="14 6"/>
+        <path d="M14 240 C30 156 58 112 120 112 C182 112 210 156 226 240 Z" fill="url(#gNebVeil)" stroke="#fde68a" stroke-width="2.2"/>
+        <g class="portrait-float-part">
+          <path d="M64 114 C64 56 88 32 120 32 C152 32 176 56 176 114 L158 176 L120 190 L82 176 Z" fill="#2e1065" stroke="#f9a8d4" stroke-width="2.8"/>
+          <path d="M74 68 Q120 26 166 68" fill="none" stroke="#fde68a" stroke-width="3"/>
+          <circle cx="120" cy="44" r="8" fill="#fde68a" stroke="#3b0764" stroke-width="2"/>
+          <rect x="78" y="102" width="84" height="28" rx="9" fill="#130529" stroke="#f472b6" stroke-width="2"/>
+        </g>
+        ${chessVisorEyes('#f9a8d4', '#fde047', 'gneb')}
+      </svg>`;
+  }
+
+  if (bossId === 'galaxy_archon') {
+    // Nv.4: Guardián Quásar — Titán solar dorado-ámbar con disco de acreción ardiente
+    return `
+      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Guardián Quásar">
+        <defs>
+          <radialGradient id="gQuaBg" cx="50%" cy="38%" r="74%"><stop offset="0%" stop-color="#d97706"/><stop offset="48%" stop-color="#4c1d95"/><stop offset="100%" stop-color="#0b0517"/></radialGradient>
+          <linearGradient id="gQuaArmor" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fef08a"/><stop offset="48%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#581c87"/></linearGradient>
+        </defs>
+        <rect width="240" height="240" fill="url(#gQuaBg)"/>
+        <ellipse cx="120" cy="116" rx="112" ry="26" fill="none" stroke="#fef08a" stroke-width="4" opacity="0.65" transform="rotate(-10 120 116)"/>
+        <path d="M18 240 L54 166 H186 L222 240 Z" fill="url(#gQuaArmor)" stroke="#fef08a" stroke-width="2.6"/>
+        <circle cx="120" cy="202" r="16" fill="#0f0720" stroke="#fde047" stroke-width="3"/>
+        <circle cx="120" cy="202" r="7" fill="#ffffff"/>
+        <g class="portrait-float-part">
+          <path d="M62 96 L82 28 L108 62 L120 14 L132 62 L158 28 L178 96 Z" fill="#fde047" stroke="#3b0764" stroke-width="2.4"/>
+          <polygon points="70,92 170,92 162,168 120,188 78,168" fill="url(#gQuaArmor)" stroke="#fef9c3" stroke-width="2.8"/>
+          <polygon points="78,104 162,104 154,134 86,134" fill="#130826" stroke="#fde047" stroke-width="2"/>
+        </g>
+        ${chessVisorEyes('#fef08a', '#fb7185', 'gquasar')}
+      </svg>`;
+  }
+
+  // === CAP. 3 NIVEL 5: ENTIDAD GALÁCTICA (BOSS CON COLOSO ESTELAR Y ANILLOS ORBITALES) ===
   if (bossId && bossId.startsWith('galaxy_')) {
     const isBoss = bossId === 'galaxy_entity';
     return `
@@ -664,7 +752,99 @@ function buildBossPortraitSVG(bossId) {
       </svg>`;
   }
 
-  // === CAP. 4: BOSS GLITCH (TEXTURA REAL SUBIDA + SHARDS RGB + NÚCLEO FRACTURADO) ===
+  // === CAP. 4 NIVELES 1-4: PERSONAJES ÚNICOS DE GLITCH (BIT, GUSANO, TROYANO, DEMONIO KERNEL — DISTINTOS AL BOSS) ===
+  if (bossId === 'glitch_shard') {
+    // Nv.1: Bit Corrupto — Entidad vóxel verde neón & matriz binaria
+    return `
+      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Bit Corrupto">
+        <defs>
+          <radialGradient id="glBitBg" cx="50%" cy="40%" r="72%"><stop offset="0%" stop-color="#065f46"/><stop offset="60%" stop-color="#04221b"/><stop offset="100%" stop-color="#020b09"/></radialGradient>
+        </defs>
+        <rect width="240" height="240" fill="url(#glBitBg)"/>
+        <g fill="#34d399" opacity="0.24" font-family="monospace" font-size="14" font-weight="700">
+          <text x="16" y="34">01001101</text><text x="148" y="42">10110010</text><text x="18" y="218">ERR_BIT</text><text x="150" y="220">0x00FF</text>
+        </g>
+        <g class="portrait-glitch-jitter">
+          <rect x="44" y="168" width="152" height="72" rx="8" fill="#064e3b" stroke="#34d399" stroke-width="2.6"/>
+          <rect x="66" y="52" width="108" height="114" rx="10" fill="#0f766e" stroke="#6ee7b7" stroke-width="3"/>
+          <rect x="76" y="62" width="32" height="24" fill="#34d399" opacity="0.45"/>
+          <rect x="132" y="62" width="32" height="24" fill="#22d3ee" opacity="0.45"/>
+          <rect x="74" y="98" width="92" height="34" rx="4" fill="#021410" stroke="#34d399" stroke-width="2.2"/>
+          <rect x="34" y="80" width="18" height="18" fill="#34d399" opacity="0.85"/>
+          <rect x="188" y="102" width="16" height="16" fill="#22d3ee" opacity="0.85"/>
+        </g>
+        ${chessVisorEyes('#4ade80', '#22d3ee', 'glbit')}
+      </svg>`;
+  }
+
+  if (bossId === 'glitch_pawn_err') {
+    // Nv.2: Gusano de Memoria — Serpiente cibernética segmentada ámbar-naranja
+    return `
+      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Gusano de Memoria">
+        <defs>
+          <radialGradient id="glWormBg" cx="50%" cy="38%" r="72%"><stop offset="0%" stop-color="#7c2d12"/><stop offset="56%" stop-color="#291007"/><stop offset="100%" stop-color="#0d0502"/></radialGradient>
+          <linearGradient id="glWormSeg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fdba74"/><stop offset="52%" stop-color="#ea580c"/><stop offset="100%" stop-color="#431407"/></linearGradient>
+        </defs>
+        <rect width="240" height="240" fill="url(#glWormBg)"/>
+        <g class="portrait-glitch-jitter">
+          <ellipse cx="70" cy="212" rx="44" ry="26" fill="url(#glWormSeg)" stroke="#fed7aa" stroke-width="2.4"/>
+          <ellipse cx="166" cy="202" rx="46" ry="28" fill="url(#glWormSeg)" stroke="#fed7aa" stroke-width="2.4"/>
+          <ellipse cx="120" cy="176" rx="54" ry="30" fill="url(#glWormSeg)" stroke="#fde047" stroke-width="2.6"/>
+          <!-- Cabeza mecánica de Gusano de Memoria con antenas de datos -->
+          <path d="M84 62 L62 24 M156 62 L178 24" stroke="#fde047" stroke-width="3.5" stroke-linecap="round"/>
+          <circle cx="62" cy="24" r="6" fill="#fde047"/><circle cx="178" cy="24" r="6" fill="#fde047"/>
+          <path d="M68 114 C68 62 92 50 120 50 C148 50 172 62 172 114 L156 164 L120 176 L84 164 Z" fill="url(#glWormSeg)" stroke="#fef08a" stroke-width="3"/>
+          <rect x="76" y="100" width="88" height="32" rx="8" fill="#180803" stroke="#fb923c" stroke-width="2"/>
+          <path d="M92 148 L104 158 L120 148 L136 158 L148 148" fill="none" stroke="#fef08a" stroke-width="2.6"/>
+        </g>
+        ${chessVisorEyes('#fde047', '#ff3d5a', 'glworm')}
+      </svg>`;
+  }
+
+  if (bossId === 'glitch_knight_err') {
+    // Nv.3: Caballero Troyano — Corcel cibernético violeta-magenta con visor 0xDEAD
+    return `
+      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Caballero Troyano">
+        <defs>
+          <radialGradient id="glTroBg" cx="50%" cy="35%" r="72%"><stop offset="0%" stop-color="#6b21a8"/><stop offset="56%" stop-color="#240b3b"/><stop offset="100%" stop-color="#090312"/></radialGradient>
+          <linearGradient id="glTroSteel" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#e9d5ff"/><stop offset="48%" stop-color="#9333ea"/><stop offset="100%" stop-color="#2e1065"/></linearGradient>
+        </defs>
+        <rect width="240" height="240" fill="url(#glTroBg)"/>
+        <path d="M0 70 H240 M0 170 H240" stroke="#e879f9" stroke-width="1.4" opacity="0.28"/>
+        <g class="portrait-glitch-jitter">
+          <path d="M26 240 L62 164 H178 L214 240 Z" fill="url(#glTroSteel)" stroke="#f0abfc" stroke-width="2.4"/>
+          <!-- Cresta dentada cibernética de Caballo Troyano -->
+          <path d="M84 68 L98 20 L118 46 L138 18 L156 68 Z" fill="#f472b6" stroke="#ffffff" stroke-width="2"/>
+          <polygon points="70,74 170,74 162,164 120,184 78,164" fill="url(#glTroSteel)" stroke="#f5d0fe" stroke-width="2.8"/>
+          <rect x="74" y="100" width="92" height="34" rx="6" fill="#120422" stroke="#22d3ee" stroke-width="2.2"/>
+          <text x="120" y="156" text-anchor="middle" font-family="monospace" font-size="11" font-weight="800" fill="#f0abfc">0xDEAD</text>
+        </g>
+        ${chessVisorEyes('#f0abfc', '#22d3ee', 'gltroj')}
+      </svg>`;
+  }
+
+  if (bossId === 'glitch_core') {
+    // Nv.4: Demonio Kernel — Cráneo-procesador carmesí con pines de cobre y alertas críticas
+    return `
+      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Demonio Kernel">
+        <defs>
+          <radialGradient id="glKerBg" cx="50%" cy="38%" r="72%"><stop offset="0%" stop-color="#991b1b"/><stop offset="54%" stop-color="#330808"/><stop offset="100%" stop-color="#0c0202"/></radialGradient>
+          <linearGradient id="glKerCpu" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fca5a5"/><stop offset="48%" stop-color="#dc2626"/><stop offset="100%" stop-color="#450a0a"/></linearGradient>
+        </defs>
+        <rect width="240" height="240" fill="url(#glKerBg)"/>
+        <g class="portrait-glitch-jitter">
+          <!-- Pines de procesador alrededor -->
+          <path d="M40 82 H64 M40 108 H64 M40 134 H64 M176 82 H200 M176 108 H200 M176 134 H200" stroke="#fbbf24" stroke-width="4" stroke-linecap="round"/>
+          <path d="M24 240 L60 168 H180 L216 240 Z" fill="#450a0a" stroke="#f87171" stroke-width="2.6"/>
+          <path d="M68 78 L96 34 L120 56 L144 34 L172 78 L164 166 L120 186 L76 166 Z" fill="url(#glKerCpu)" stroke="#fef2f2" stroke-width="2.8"/>
+          <rect x="76" y="100" width="88" height="32" rx="6" fill="#170303" stroke="#fbbf24" stroke-width="2"/>
+          <path d="M96 154 V168 M112 154 V170 M128 154 V170 M144 154 V168" stroke="#fef2f2" stroke-width="3" stroke-linecap="round"/>
+        </g>
+        ${chessVisorEyes('#ff4d4f', '#fbbf24', 'glkern')}
+      </svg>`;
+  }
+
+  // === CAP. 4 NIVEL 5: BOSS GLITCH (TEXTURA REAL SUBIDA + SHARDS RGB + NÚCLEO FRACTURADO) ===
   if (bossId && (bossId.startsWith('glitch_') || bossId === 'boss_glitch')) {
     return `
       <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Boss Glitch">
@@ -696,7 +876,99 @@ function buildBossPortraitSVG(bossId) {
       </svg>`;
   }
 
-  // === CAP. 5: CHESS — MONARCA IMPONENTE DEL ORIGEN DEL AJEDREZ (HALO DIVINO, CORONA IMPERIAL DE 7 PUNTAS Y TORRES MONOLÍTICAS) ===
+  // === CAP. 5 NIVELES 1-4: PERSONAJES ÚNICOS DEL PLANO PURO (MARFIL, CAOBA, PLATINO, ARQUITECTO — DISTINTOS A CHESS) ===
+  if (bossId === 'chess_legion') {
+    // Nv.1: Aprendiz de Marfil — Escudero de marfil y plata con corona de laurel
+    return `
+      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Aprendiz de Marfil">
+        <defs>
+          <radialGradient id="cIvBg" cx="50%" cy="32%" r="74%"><stop offset="0%" stop-color="#64748b"/><stop offset="56%" stop-color="#1e293b"/><stop offset="100%" stop-color="#090d14"/></radialGradient>
+          <linearGradient id="cIvBody" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="54%" stop-color="#e2d9c8"/><stop offset="100%" stop-color="#948874"/></linearGradient>
+        </defs>
+        <rect width="240" height="240" fill="url(#cIvBg)"/>
+        <circle class="portrait-aura-ring" cx="120" cy="116" r="94" fill="none" stroke="#e2e8f0" stroke-width="2" stroke-dasharray="10 6" opacity="0.55"/>
+        <path d="M26 240 L64 166 H176 L214 240 Z" fill="url(#cIvBody)" stroke="#475569" stroke-width="2.4"/>
+        <path d="M90 168 L120 218 L150 168" fill="#1e293b" stroke="#cbd5e1" stroke-width="2.8"/>
+        <g class="portrait-float-part">
+          <path d="M74 86 Q120 34 166 86" fill="none" stroke="#94a3b8" stroke-width="5" stroke-linecap="round"/>
+          <ellipse cx="120" cy="116" rx="46" ry="54" fill="url(#cIvBody)" stroke="#334155" stroke-width="2.8"/>
+          <rect x="78" y="102" width="84" height="28" rx="8" fill="#1e293b" stroke="#cbd5e1" stroke-width="2"/>
+          <path d="M100 150 Q120 158 140 150" fill="none" stroke="#334155" stroke-width="2.8" stroke-linecap="round"/>
+        </g>
+        ${chessVisorEyes('#e2e8f0', '#38bdf8', 'civory')}
+      </svg>`;
+  }
+
+  if (bossId === 'chess_towers') {
+    // Nv.2: Táctico de Caoba — Estratega de madera noble y latón con monóculo dorado y reloj de arena
+    return `
+      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Táctico de Caoba">
+        <defs>
+          <radialGradient id="cMahBg" cx="50%" cy="32%" r="74%"><stop offset="0%" stop-color="#78350f"/><stop offset="56%" stop-color="#321608"/><stop offset="100%" stop-color="#120703"/></radialGradient>
+          <linearGradient id="cMahWood" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#d99a6c"/><stop offset="50%" stop-color="#7c3a1d"/><stop offset="100%" stop-color="#2e1207"/></linearGradient>
+        </defs>
+        <rect width="240" height="240" fill="url(#cMahBg)"/>
+        <path d="M22 240 L58 168 H182 L218 240 Z" fill="url(#cMahWood)" stroke="#f59e0b" stroke-width="2.4"/>
+        <!-- Reloj de arena en el pecho -->
+        <polygon points="108,180 132,180 120,198 132,216 108,216 120,198" fill="#fde68a" stroke="#451a03" stroke-width="1.8"/>
+        <g class="portrait-float-part">
+          <!-- Sombrero-torre clásico de madera caoba -->
+          <path d="M72 86 V48 H92 V60 H108 V48 H132 V60 H148 V48 H168 V86 Z" fill="url(#cMahWood)" stroke="#fbbf24" stroke-width="2.4"/>
+          <path d="M74 86 H166 L158 168 L120 184 L82 168 Z" fill="url(#cMahWood)" stroke="#fbbf24" stroke-width="2.8"/>
+          <rect x="78" y="102" width="84" height="28" rx="6" fill="#1c0b04" stroke="#f59e0b" stroke-width="2"/>
+          <!-- Monóculo dorado sobre ojo derecho -->
+          <circle cx="143" cy="116" r="16" fill="none" stroke="#fde047" stroke-width="2.8"/>
+          <path d="M156 126 Q164 150 156 172" fill="none" stroke="#fde047" stroke-width="1.8"/>
+        </g>
+        ${chessVisorEyes('#fde047', '#fb923c', 'cmahog')}
+      </svg>`;
+  }
+
+  if (bossId === 'chess_queen') {
+    // Nv.3: Gran Maestro de Platino — Sabio de platino, manto carmesí y corona armilar
+    return `
+      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Gran Maestro de Platino">
+        <defs>
+          <radialGradient id="cPlatBg" cx="50%" cy="32%" r="74%"><stop offset="0%" stop-color="#6d2846"/><stop offset="56%" stop-color="#281020"/><stop offset="100%" stop-color="#0c050a"/></radialGradient>
+          <linearGradient id="cPlatMetal" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f8fafc"/><stop offset="52%" stop-color="#94a3b8"/><stop offset="100%" stop-color="#334155"/></linearGradient>
+        </defs>
+        <rect width="240" height="240" fill="url(#cPlatBg)"/>
+        <ellipse class="portrait-aura-ring" cx="120" cy="108" rx="96" ry="30" fill="none" stroke="#e2e8f0" stroke-width="2" transform="rotate(-18 120 108)"/>
+        <path d="M18 240 L56 164 H184 L222 240 Z" fill="#7f1d3a" stroke="#e2e8f0" stroke-width="2.6"/>
+        <path d="M68 166 Q120 208 172 166" fill="none" stroke="#f8fafc" stroke-width="6" stroke-linecap="round"/>
+        <g class="portrait-float-part">
+          <path d="M66 86 L86 30 L120 56 L154 30 L174 86 Z" fill="url(#cPlatMetal)" stroke="#f8fafc" stroke-width="2.2"/>
+          <polygon points="72,86 168,86 158,166 120,186 82,166" fill="url(#cPlatMetal)" stroke="#ffffff" stroke-width="2.6"/>
+          <rect x="78" y="102" width="84" height="28" rx="8" fill="#180a14" stroke="#f8fafc" stroke-width="2"/>
+        </g>
+        ${chessVisorEyes('#f8fafc', '#fb7185', 'cplat')}
+      </svg>`;
+  }
+
+  if (bossId === 'chess_court') {
+    // Nv.4: Arquitecto del Tablero — Escultor geométrico de mármol blanco y obsidiana con escuadra dorada
+    return `
+      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Arquitecto del Tablero">
+        <defs>
+          <radialGradient id="cArcBg" cx="50%" cy="32%" r="74%"><stop offset="0%" stop-color="#334155"/><stop offset="56%" stop-color="#141820"/><stop offset="100%" stop-color="#06080c"/></radialGradient>
+          <linearGradient id="cArcMarble" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="50%" stop-color="#cbd5e1"/><stop offset="100%" stop-color="#1e293b"/></linearGradient>
+        </defs>
+        <rect width="240" height="240" fill="url(#cArcBg)"/>
+        <!-- Rejilla arquitectónica dorada -->
+        <path d="M20 40 H220 M20 200 H220 M40 20 V220 M200 20 V220" stroke="#efd083" stroke-width="1" opacity="0.22"/>
+        <path d="M22 240 L60 166 H180 L218 240 Z" fill="#0f172a" stroke="#efd083" stroke-width="2.4"/>
+        <!-- Compás y escuadra dorados -->
+        <path d="M120 170 L94 228 M120 170 L146 228 M96 206 H144" stroke="#efd083" stroke-width="3.2" stroke-linecap="round"/>
+        <g class="portrait-float-part">
+          <polygon points="120,18 176,78 164,168 120,190 76,168 64,78" fill="url(#cArcMarble)" stroke="#efd083" stroke-width="3"/>
+          <polygon points="120,18 176,78 164,168 120,190" fill="#0f172a" opacity="0.52"/>
+          <rect x="76" y="102" width="88" height="30" rx="4" fill="#090c12" stroke="#efd083" stroke-width="2.2"/>
+        </g>
+        ${chessVisorEyes('#efd083', '#38bdf8', 'carch')}
+      </svg>`;
+  }
+
+  // === CAP. 5 NIVEL 5: CHESS — MONARCA IMPONENTE DEL ORIGEN DEL AJEDREZ ===
   if (bossId && bossId.startsWith('chess_')) {
     const isFinal = bossId === 'chess_god';
     return `

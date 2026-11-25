@@ -41,6 +41,7 @@
             <button class="nav-btn active" data-screen="play"><span class="nav-ico">⚔️</span><span data-i18n="nav_play">Jugar</span></button>
             <button class="nav-btn" data-screen="multiplayer"><span class="nav-ico">🌐</span><span data-i18n="nav_multiplayer">Multijugador</span></button>
             <button class="nav-btn" data-screen="story"><span class="nav-ico">📜</span><span data-i18n="nav_story">Modo Historia</span></button>
+            <button class="nav-btn" data-screen="missions"><span class="nav-ico">🎯</span><span data-i18n="nav_missions">Misiones</span></button>
             <button class="nav-btn" data-screen="shop"><span class="nav-ico">🛒</span><span data-i18n="nav_shop">Tienda</span></button>
             <button class="nav-btn" data-screen="customize"><span class="nav-ico">🎒</span><span data-i18n="nav_customize">Inventario</span></button>
             <button class="nav-btn" data-screen="mods"><span class="nav-ico">🧩</span><span data-i18n="nav_mods">Taller de Mods</span></button>
@@ -310,6 +311,26 @@
         <div id="campaign-levels-container" class="campaign-level-list"></div>
       </section>
 
+      <!-- 3A-2. MISIONES (RECOMPENSA MÁXIMA: 30 MODS) -->
+      <section id="screen-missions" class="screen-section">
+        <div class="screen-header">
+          <div>
+            <div class="screen-kicker">DESAFÍOS CHESS.MOD · HASTA 30 MODS MÁXIMO POR MISIÓN</div>
+            <h1 class="screen-title">🎯 MISIONES</h1>
+            <p class="screen-subtitle">Completa misiones fáciles, difíciles y extremas jugando partidas. Cada misión otorga entre <strong>10 y 30 Mods máximo</strong> (incluso la más difícil).</p>
+          </div>
+          <button id="btn-refresh-missions" class="btn btn-sm">↻ Actualizar</button>
+        </div>
+
+        <div id="missions-guest-box" class="panel-card" style="text-align:center;">
+          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:8px;">Inicia sesión para completar Misiones</h3>
+          <p style="font-size:0.84rem;color:var(--text-muted);margin-bottom:12px;">Gana recompensas de 10 hasta 30 Mods máximo al superar desafíos en cualquier modo.</p>
+          <button id="btn-missions-open-auth" class="btn btn-gold">Iniciar sesión / Crear cuenta</button>
+        </div>
+
+        <div id="missions-list-grid" class="shop-grid hidden"></div>
+      </section>
+
       <!-- 3B. TIENDA & MOD VIP -->
       <section id="screen-shop" class="screen-section">
         <div class="screen-header">
@@ -376,9 +397,10 @@
                 <div class="xp-mini-track" style="height:9px;margin-top:10px;"><div id="bp-xp-bar" class="xp-mini-fill" style="background:linear-gradient(90deg,#38bdf8,#f472b6,#ffd859);"></div></div>
                 <div id="bp-xp-label" style="font-size:0.75rem;color:#7dd3fc;margin-top:4px;font-weight:700;">0 / 3,920 XP Temporada 1</div>
               </div>
-              <div id="bp-buy-actions" style="display:flex;flex-direction:column;gap:8px;min-width:220px;">
-                <button id="btn-bp-buy-usd" class="btn btn-gold">💳 Comprar Pase Premium ($10.00 USD)</button>
-                <span style="font-size:0.71rem;color:var(--text-muted);text-align:center;">Pase de Paga exclusivo ($10 USD) · Carril Gratis siempre disponible</span>
+              <div id="bp-buy-actions" style="display:flex;flex-direction:column;gap:8px;min-width:230px;">
+                <button id="btn-bp-buy-usd" class="btn btn-gold">💳 Comprar con Tarjeta / Dinero ($10 USD)</button>
+                <button id="btn-bp-buy-mods" class="btn btn-primary">🪙 Comprar con 5,000 Mods</button>
+                <span style="font-size:0.71rem;color:var(--text-muted);text-align:center;">Paga con Dinero/Tarjeta ($10 USD) o 5,000 Mods · Carril Gratis siempre disponible</span>
               </div>
             </div>
           </div>
@@ -411,13 +433,52 @@
         <div class="mods-workshop-grid">
           <div class="panel-card" style="display:flex;flex-direction:column;gap:12px;">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-              <h3 style="font-family:var(--font-display);color:var(--gold-bright);">Editor de Código Abierto (.json)</h3>
+              <h3 style="font-family:var(--font-display);color:var(--gold-bright);">Editor de Código Abierto y Modos de Juego (.json)</h3>
               <div class="time-pills">
                 <button class="time-opt" data-mod-template="0">🌋 Titán 2×2</button>
                 <button class="time-opt" data-mod-template="1">🔫 Rayo Cuántico</button>
                 <button class="time-opt" data-mod-template="2">🧠 Traición</button>
+                <button class="time-opt" data-mod-template="3">💣 Modo 10×10 Atómico</button>
               </div>
             </div>
+
+            <!-- CONSTRUCTOR VISUAL DE MODO DE JUEGO PROPIO (SINCRONIZADO CON EL JSON) -->
+            <div class="host-settings-grid" id="mod-gamemode-builder">
+              <div>
+                <label for="mod-gm-boardsize" style="font-size:0.7rem;color:var(--gold);display:block;margin-bottom:3px;">📐 Tamaño de Tablero</label>
+                <select id="mod-gm-boardsize" class="input-field" style="padding:5px 8px;font-size:0.76rem;">
+                  <option value="6">6×6 Mini</option>
+                  <option value="8" selected>8×8 Clásico</option>
+                  <option value="10">10×10 Mega</option>
+                  <option value="12">12×12 Colosal</option>
+                </select>
+              </div>
+              <div>
+                <label for="mod-gm-army" style="font-size:0.7rem;color:var(--gold);display:block;margin-bottom:3px;">♟️ Ejército Inicial</label>
+                <select id="mod-gm-army" class="input-field" style="padding:5px 8px;font-size:0.76rem;">
+                  <option value="standard" selected>Estándar</option>
+                  <option value="all_queens">👑 Invasión de Damas</option>
+                  <option value="cavalry_swarm">🐎 Solo Caballos</option>
+                  <option value="rooks_fortress">🏰 Fortaleza de Torres</option>
+                  <option value="pawns_legion">♟️ Legión de Peones</option>
+                </select>
+              </div>
+              <div>
+                <label for="mod-gm-team" style="font-size:0.7rem;color:var(--gold);display:block;margin-bottom:3px;">🤝 Equipos / Jugadores</label>
+                <select id="mod-gm-team" class="input-field" style="padding:5px 8px;font-size:0.76rem;">
+                  <option value="" selected>1 vs 1 Normal</option>
+                  <option value="2v2">🤝 Equipos 2 vs 2 (4 Bots/Jug.)</option>
+                  <option value="ffa4">👑 4 Facciones FFA</option>
+                  <option value="ffa3">⚔️ 3 Facciones (1v1v1)</option>
+                </select>
+              </div>
+              <div style="display:flex;flex-direction:column;justify-content:center;gap:4px;">
+                <label class="host-toggle-label"><input type="checkbox" id="mod-gm-atomic"> 💣 Explosiones Atómicas 3×3</label>
+                <label class="host-toggle-label"><input type="checkbox" id="mod-gm-random"> 🎰 Poderes Aleatorios</label>
+                <label class="host-toggle-label"><input type="checkbox" id="mod-gm-quake"> 🌋 Terremoto cada 3t</label>
+              </div>
+            </div>
+            <button id="btn-mod-apply-gamemode" type="button" class="btn btn-sm btn-primary" style="align-self:flex-start;">⚙️ Aplicar Modo de Juego al Código JSON</button>
 
             <textarea id="mod-code-editor" class="mod-code-editor" spellcheck="false" rows="16"></textarea>
             <div id="mod-validation-msg" style="font-size:0.78rem;color:var(--text-muted);">
@@ -646,9 +707,9 @@
               </div>
             </div>
             <div>
-              <label style="font-size:0.76rem;color:var(--text-muted);display:block;margin-bottom:6px;">Subir foto desde galería del celular o PC (cualquier formato de imagen · máx. 20 MB)</label>
-              <input id="input-avatar-file" type="file" accept="image/*" class="hidden">
-              <button id="btn-upload-avatar" class="btn">📷 Subir imagen de galería / PC</button>
+              <label style="font-size:0.76rem;color:var(--text-muted);display:block;margin-bottom:6px;">Subir foto de perfil — acepta CUALQUIER tipo de imagen (PNG, JPG, WebP, GIF, SVG, AVIF, BMP, HEIC, ICO, etc.)</label>
+              <input id="input-avatar-file" type="file" accept="image/*,.heic,.heif,.avif,.webp,.svg,.bmp,.ico,.tiff,.tif,.jfif,.png,.jpg,.jpeg,.gif" class="hidden">
+              <button id="btn-upload-avatar" class="btn">📷 Subir cualquier imagen de galería / PC</button>
             </div>
           </div>
 
@@ -829,6 +890,12 @@
               <button class="time-opt" data-set-lang="en">🇺🇸 English</button>
               <button class="time-opt" data-set-lang="pt">🇧🇷 Português</button>
               <button class="time-opt" data-set-lang="fr">🇫🇷 Français</button>
+              <button class="time-opt" data-set-lang="de">🇩🇪 Deutsch</button>
+              <button class="time-opt" data-set-lang="it">🇮🇹 Italiano</button>
+              <button class="time-opt" data-set-lang="ja">🇯🇵 日本語</button>
+              <button class="time-opt" data-set-lang="ko">🇰🇷 한국어</button>
+              <button class="time-opt" data-set-lang="ru">🇷🇺 Русский</button>
+              <button class="time-opt" data-set-lang="zh">🇨🇳 中文</button>
             </div>
           </div>
 
@@ -1217,6 +1284,7 @@
         <div class="hud-card hidden" id="online-controls-card">
           <div class="hud-card-header"><span>Acciones Online</span></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button id="btn-online-add-friend" class="btn btn-sm btn-primary" style="width:100%;">🤝 Agregar Amigo (Rival / Compañero)</button>
             <button id="btn-online-draw" class="btn btn-sm" style="flex:1;">🤝 Tablas</button>
             <button id="btn-online-resign" class="btn btn-sm btn-danger" style="flex:1;">🏳️ Rendirse</button>
             <button id="btn-online-report" class="btn btn-sm" style="width:100%;">🚨 Reportar Hack / Cheat</button>
@@ -1400,6 +1468,12 @@
         <button type="button" class="lang-choice-card" data-pick-lang="en"><span class="lang-flag">🇺🇸</span><strong>English</strong><small>Play in English</small></button>
         <button type="button" class="lang-choice-card" data-pick-lang="pt"><span class="lang-flag">🇧🇷</span><strong>Português</strong><small>Jogar em Português</small></button>
         <button type="button" class="lang-choice-card" data-pick-lang="fr"><span class="lang-flag">🇫🇷</span><strong>Français</strong><small>Jouer en Français</small></button>
+        <button type="button" class="lang-choice-card" data-pick-lang="de"><span class="lang-flag">🇩🇪</span><strong>Deutsch</strong><small>Auf Deutsch</small></button>
+        <button type="button" class="lang-choice-card" data-pick-lang="it"><span class="lang-flag">🇮🇹</span><strong>Italiano</strong><small>In Italiano</small></button>
+        <button type="button" class="lang-choice-card" data-pick-lang="ja"><span class="lang-flag">🇯🇵</span><strong>日本語</strong><small>日本語でプレイ</small></button>
+        <button type="button" class="lang-choice-card" data-pick-lang="ko"><span class="lang-flag">🇰🇷</span><strong>한국어</strong><small>한국어로 플레이</small></button>
+        <button type="button" class="lang-choice-card" data-pick-lang="ru"><span class="lang-flag">🇷🇺</span><strong>Русский</strong><small>На русском</small></button>
+        <button type="button" class="lang-choice-card" data-pick-lang="zh"><span class="lang-flag">🇨🇳</span><strong>中文</strong><small>简体中文</small></button>
       </div>
     </div>
   </div>
@@ -1418,6 +1492,24 @@
         <span id="trainer-pending-label" style="font-size:0.8rem;color:var(--text-muted);margin-right:auto;">Selecciona una tarjeta de entrenador arriba para continuar.</span>
         <button id="btn-confirm-permanent-trainer" class="btn btn-gold" disabled style="padding:11px 20px;font-size:0.9rem;" data-i18n="trainer_confirm_btn">🔒 Confirmar Entrenador Permanente</button>
       </div>
+    </div>
+  </div>
+
+  <!-- MODAL CHAT PRIVADO ENTRE AMIGOS -->
+  <div id="modal-friend-chat" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Chat privado con amigo">
+    <div class="modal-box" style="max-width:480px;text-align:left;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;">
+        <div>
+          <span class="pill jade" style="font-size:0.64rem;">💬 CHAT PRIVADO DE AMIGOS</span>
+          <h2 id="fchat-friend-name" style="margin:4px 0 0;font-size:1.15rem;text-align:left;">Amigo</h2>
+        </div>
+        <button id="btn-close-friend-chat" class="btn btn-sm btn-icon">✕</button>
+      </div>
+      <div id="fchat-messages-box" style="height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:7px;padding:10px;border-radius:9px;background:rgba(10,9,8,0.85);border:1px solid var(--border-subtle);margin-bottom:10px;"></div>
+      <form id="form-friend-chat" style="display:flex;gap:8px;">
+        <input id="fchat-input" class="input-field" type="text" maxlength="400" required placeholder="Escribe un mensaje a tu amigo..." style="flex:1;">
+        <button type="submit" class="btn btn-gold">Enviar</button>
+      </form>
     </div>
   </div>
 

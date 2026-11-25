@@ -61,56 +61,74 @@ function showToast(message, type = 'info') {
 
 async function processAvatarUpload(file) {
   if (!file) throw new Error('Selecciona una imagen de tu galería.');
-  if (file.type && !file.type.startsWith('image/')) {
+  const ext = (file.name || '').toLowerCase();
+  const looksLikeImage = !file.type
+    || file.type.startsWith('image/')
+    || /\.(png|jpe?g|jfif|webp|gif|svg|avif|bmp|ico|heic|heif|tiff?)$/.test(ext);
+  if (!looksLikeImage) {
     throw new Error('El archivo seleccionado no es una imagen.');
   }
-  if (file.size > 20 * 1024 * 1024) {
-    throw new Error('La imagen supera el máximo de 20 MB.');
+  if (file.size > 25 * 1024 * 1024) {
+    throw new Error('La imagen supera el máximo de 25 MB.');
   }
 
-  const size = 160;
+  const readAsDataUrl = () => new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || ''));
+    fr.onerror = () => reject(new Error('No se pudo leer el archivo seleccionado.'));
+    fr.readAsDataURL(file);
+  });
+
+  // Preservar GIF animado o SVG directamente si pesa < 600 KB
+  if ((file.type === 'image/gif' || file.type === 'image/svg+xml' || ext.endsWith('.gif') || ext.endsWith('.svg')) && file.size <= 600 * 1024) {
+    const raw = await readAsDataUrl();
+    if (/^data:image\/[a-zA-Z0-9.+_-]+(;charset=[^;,]+)?;base64,/.test(raw)) return raw;
+  }
+
+  const size = 180;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d');
 
-  // Soporta cualquier imagen de galería móvil (HEIC, AVIF, PNG, JPG, WebP, GIF, BMP, fotos de cámara)
+  // 1) createImageBitmap (rápido y soporta WebP, AVIF, PNG, JPG, BMP, etc.)
   if (typeof createImageBitmap === 'function') {
     try {
       const bmp = await createImageBitmap(file);
       const side = Math.min(bmp.width, bmp.height);
       ctx.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
       bmp.close?.();
-      let out = canvas.toDataURL('image/webp', 0.82);
-      if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/jpeg', 0.82);
+      let out = canvas.toDataURL('image/webp', 0.84);
+      if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/jpeg', 0.84);
       return out;
-    } catch {
-      // Fallback a Image() tradicional
-    }
+    } catch {}
   }
 
-  return new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file);
-    const img = new Image();
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('No se pudo leer ese formato de imagen en este navegador. Intenta otra foto de tu galería.'));
-    };
-    img.onload = () => {
-      try {
-        const side = Math.min(img.width, img.height);
-        ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
-        let out = canvas.toDataURL('image/webp', 0.82);
-        if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/jpeg', 0.82);
-        resolve(out);
-      } catch (e) {
-        reject(new Error('Error al procesar la foto.'));
-      } finally {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-    img.src = objectUrl;
-  });
+  // 2) Fallback Image() sobre ObjectURL o DataURL
+  try {
+    return await new Promise((resolve, reject) => {
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('decode_failed')); };
+      img.onload = () => {
+        try {
+          const side = Math.min(img.width, img.height);
+          ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+          let out = canvas.toDataURL('image/webp', 0.84);
+          if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/jpeg', 0.84);
+          resolve(out);
+        } catch (e) { reject(e); } finally { URL.revokeObjectURL(objectUrl); }
+      };
+      img.src = objectUrl;
+    });
+  } catch {
+    // 3) Fallback universal: subir el DataURL original de cualquier formato de imagen (< 650 KB)
+    const raw = await readAsDataUrl();
+    if (/^data:image\/[a-zA-Z0-9.+_-]+(;charset=[^;,]+)?;base64,/.test(raw) && raw.length < 880000) {
+      return raw;
+    }
+    throw new Error('Este navegador no pudo convertir ese archivo pesado. Intenta con una imagen menor a 600 KB o en PNG/JPG/WebP/GIF/SVG.');
+  }
 }
 
 class ChessModApp {
@@ -133,6 +151,7 @@ class ChessModApp {
     this.queueBetMods = 0;
     this.queueSpecialModeId = null;
     this.pendingLaunchMode = null;
+    this.activeChatFriend = null;
     this.livePvpMatches = [];
     this.pending2FAChallengeToken = null;
     this.pendingAuthAfterLang = null;
@@ -353,6 +372,7 @@ class ChessModApp {
 
     if (screenName === 'ranking') this.loadLeaderboard();
     if (screenName === 'story') this.renderCampaignScreen();
+    if (screenName === 'missions') this.loadMissionsScreen();
     if (screenName === 'shop') this.renderShopScreen();
     if (screenName === 'battlepass') this.renderBattlePassScreen();
     if (screenName === 'mods') this.renderModsWorkshop();
@@ -590,9 +610,48 @@ class ChessModApp {
       try {
         const res = await api.startBattlePassCheckout();
         if (res.checkoutUrl) {
-          showToast('Redirigiendo a pago seguro ($10.00 USD)...', 'info');
+          showToast('Redirigiendo a pago seguro con Tarjeta / Dinero ($10.00 USD)...', 'info');
           window.location.href = res.checkoutUrl;
         }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+    on('btn-bp-buy-mods', 'click', async () => {
+      if (!this.user) {
+        this.openAuthModal('register');
+        showToast('Inicia sesión para comprar el Pase de Batalla con 5,000 Mods.', 'info');
+        return;
+      }
+      try {
+        const res = await api.buyBattlePassMods();
+        this.sound.play('vip_activate');
+        if (res.user) this.setUser(res.user);
+        showToast('🎖️ ¡Pase de Batalla Temporada 1 comprado con 5,000 Mods!', 'success');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
+    // === MISIONES (MÁX. 30 MODS) ===
+    on('btn-refresh-missions', 'click', () => this.loadMissionsScreen());
+    on('btn-missions-open-auth', 'click', () => this.openAuthModal('login'));
+
+    // === CHAT PRIVADO ENTRE AMIGOS ===
+    on('btn-close-friend-chat', 'click', () => {
+      this.activeChatFriend = null;
+      document.getElementById('modal-friend-chat')?.classList.remove('open');
+    });
+    on('form-friend-chat', 'submit', async (e) => {
+      e.preventDefault();
+      if (!this.activeChatFriend) return;
+      const inp = document.getElementById('fchat-input');
+      const text = inp?.value.trim();
+      if (!text) return;
+      try {
+        await api.sendFriendMessage(this.activeChatFriend.userId, text);
+        if (inp) inp.value = '';
+        await this.loadFriendChatMessages();
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -627,15 +686,30 @@ class ChessModApp {
       mpSocket.emit('private:join', { code });
     });
 
-    // === 3C. TALLER DE MODS (CÓDIGO ABIERTO) ===
+    // === 3C. TALLER DE MODS (CÓDIGO ABIERTO + CONSTRUCTOR DE MODOS DE JUEGO) ===
     document.querySelectorAll('[data-mod-template]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const idx = parseInt(btn.dataset.modTemplate, 10) || 0;
         const tpl = MOD_TEMPLATES[idx] || MOD_TEMPLATES[0];
         const ed = document.getElementById('mod-code-editor');
         if (ed) ed.value = JSON.stringify(tpl, null, 2);
+        this.syncModGameModeBuilderFromObj(tpl);
         showToast(`Plantilla abierta cargada: ${tpl.name}`, 'info');
       });
+    });
+    on('btn-mod-apply-gamemode', 'click', () => {
+      const ed = document.getElementById('mod-code-editor');
+      let obj = {};
+      try { obj = JSON.parse(ed?.value || '{}'); } catch { obj = { ...MOD_TEMPLATES[0] }; }
+      const boardSize = parseInt(document.getElementById('mod-gm-boardsize')?.value || '8', 10) || 8;
+      const armyPreset = document.getElementById('mod-gm-army')?.value || 'standard';
+      const teamMode = document.getElementById('mod-gm-team')?.value || null;
+      const atomicMode = Boolean(document.getElementById('mod-gm-atomic')?.checked);
+      const randomPowers = Boolean(document.getElementById('mod-gm-random')?.checked);
+      const earthquakeEvery = document.getElementById('mod-gm-quake')?.checked ? 3 : 0;
+      obj.gameMode = { boardSize, atomicMode, armyPreset, randomPowers, earthquakeEvery, teamMode: teamMode || null };
+      if (ed) ed.value = JSON.stringify(obj, null, 2);
+      showToast('⚙️ Configuración de Modo de Juego aplicada al código JSON del Mod.', 'success');
     });
     on('btn-mod-validate-save', 'click', () => {
       const parsed = this.parseEditorMod();
@@ -1156,6 +1230,112 @@ class ChessModApp {
     mpSocket.on('spectate:error', ({ error }) => {
       showToast(error || 'No se pudo espectear la partida.', 'error');
     });
+
+    mpSocket.on('friend:message', (msg) => {
+      if (this.activeChatFriend && (msg.senderId === this.activeChatFriend.userId || msg.receiverId === this.activeChatFriend.userId)) {
+        this.loadFriendChatMessages();
+      } else {
+        showToast(`💬 Nuevo mensaje de ${msg.senderUsername}: ${msg.content.slice(0, 60)}`, 'info');
+      }
+    });
+  }
+
+  syncModGameModeBuilderFromObj(mod) {
+    const gm = mod?.gameMode || {};
+    const bs = document.getElementById('mod-gm-boardsize');
+    const ar = document.getElementById('mod-gm-army');
+    const tm = document.getElementById('mod-gm-team');
+    const at = document.getElementById('mod-gm-atomic');
+    const rp = document.getElementById('mod-gm-random');
+    const eq = document.getElementById('mod-gm-quake');
+    if (bs) bs.value = String(gm.boardSize || 8);
+    if (ar) ar.value = gm.armyPreset || 'standard';
+    if (tm) tm.value = gm.teamMode || '';
+    if (at) at.checked = Boolean(gm.atomicMode);
+    if (rp) rp.checked = Boolean(gm.randomPowers);
+    if (eq) eq.checked = Number(gm.earthquakeEvery) > 0;
+  }
+
+  async loadMissionsScreen() {
+    const guestBox = document.getElementById('missions-guest-box');
+    const grid = document.getElementById('missions-list-grid');
+    if (guestBox) guestBox.classList.toggle('hidden', Boolean(this.user));
+    if (grid) grid.classList.toggle('hidden', !this.user);
+    if (!this.user || !grid) return;
+    try {
+      const { missions } = await api.getMissions();
+      grid.innerHTML = (missions || []).map((m) => `
+        <div class="shop-card ${m.claimed ? 'owned' : (m.canClaim ? 'equipped' : '')}">
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;">
+              <span class="pill ${m.badgeClass || 'muted'}">${m.difficulty}</span>
+              <span class="pill" style="border-color:var(--gold);color:#ffe27a;">🪙 +${m.rewardMods} Mods</span>
+            </div>
+            <h3 style="font-family:var(--font-display);font-size:0.98rem;color:var(--gold-bright);margin-bottom:4px;">🎯 ${m.title}</h3>
+            <p style="font-size:0.78rem;color:var(--text-muted);line-height:1.45;margin-bottom:8px;">${m.description}</p>
+            <div class="xp-mini-track" style="height:7px;"><div class="xp-mini-fill" style="width:${m.pct}%;"></div></div>
+            <div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;">Progreso: <strong>${m.progress} / ${m.target}</strong> (${m.pct}%)</div>
+          </div>
+          <div class="shop-card-actions">
+            ${m.claimed
+              ? `<button class="btn btn-sm" disabled style="width:100%;">✓ Reclamada</button>`
+              : (m.canClaim
+                ? `<button class="btn btn-sm btn-gold" data-claim-mission="${m.id}" style="width:100%;">🎁 Reclamar +${m.rewardMods} Mods</button>`
+                : `<button class="btn btn-sm" disabled style="width:100%;">En progreso (${m.progress}/${m.target})</button>`)}
+          </div>
+        </div>`).join('');
+
+      grid.querySelectorAll('[data-claim-mission]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          try {
+            const res = await api.claimMission(b.dataset.claimMission);
+            this.sound.play('shop_buy');
+            if (res.user) this.setUser(res.user);
+            showToast(`🎯 ¡Misión completada! Recibiste +${res.rewardMods} Mods.`, 'success');
+            this.loadMissionsScreen();
+          } catch (err) {
+            showToast(err.message, 'error');
+          }
+        });
+      });
+    } catch (err) {
+      grid.innerHTML = `<p style="color:#ffaca3;font-size:0.82rem;">${err.message}</p>`;
+    }
+  }
+
+  async openFriendChat(friend) {
+    if (!friend?.userId) return;
+    this.activeChatFriend = friend;
+    const title = document.getElementById('fchat-friend-name');
+    if (title) title.textContent = `💬 ${friend.username}`;
+    document.getElementById('modal-friend-chat')?.classList.add('open');
+    await this.loadFriendChatMessages();
+    document.getElementById('fchat-input')?.focus();
+  }
+
+  async loadFriendChatMessages() {
+    if (!this.activeChatFriend) return;
+    const box = document.getElementById('fchat-messages-box');
+    if (!box) return;
+    try {
+      const { messages } = await api.getFriendMessages(this.activeChatFriend.userId);
+      if (!messages?.length) {
+        box.innerHTML = '<p style="font-size:0.78rem;color:var(--text-muted);text-align:center;margin:auto;">Aún no hay mensajes. ¡Saluda a tu amigo!</p>';
+        return;
+      }
+      const myId = this.user?.id;
+      box.innerHTML = messages.map((m) => {
+        const mine = m.senderId === myId;
+        return `
+          <div style="align-self:${mine ? 'flex-end' : 'flex-start'};max-width:82%;padding:7px 10px;border-radius:10px;background:${mine ? 'rgba(207,166,76,0.22)' : 'rgba(38,84,61,0.34)'};border:1px solid ${mine ? 'rgba(207,166,76,0.45)' : 'rgba(81,150,116,0.45)'};">
+            <div style="font-size:0.66rem;color:var(--gold);margin-bottom:2px;">${mine ? 'Tú' : m.senderUsername}</div>
+            <div style="font-size:0.8rem;color:#f4efe6;word-break:break-word;">${m.content}</div>
+          </div>`;
+      }).join('');
+      box.scrollTop = box.scrollHeight;
+    } catch (err) {
+      box.innerHTML = `<p style="color:#ffaca3;font-size:0.78rem;">${err.message}</p>`;
+    }
   }
 
   parseEditorMod() {
@@ -2403,12 +2583,16 @@ class ChessModApp {
                 <div style="font-size:0.7rem;color:var(--text-muted);">${f.elo} Elo</div>
               </div>
             </div>
-            <div style="display:flex;gap:6px;">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="btn btn-sm btn-primary" data-friend-chat="${f.userId}" data-friend-name="${f.username}">💬 Mensaje</button>
               <button class="btn btn-sm btn-gold" data-friend-invite="1">🔐 Sala Privada</button>
               <button class="btn btn-sm btn-danger" data-friend-remove="${f.friendshipId}">✕</button>
             </div>
           </div>`).join('')
         : '<p style="font-size:0.8rem;color:var(--text-muted);">Aún no tienes amigos agregados.</p>';
+      acc.querySelectorAll('[data-friend-chat]').forEach((b) => b.addEventListener('click', () => {
+        this.openFriendChat({ userId: b.dataset.friendChat, username: b.dataset.friendName });
+      }));
       acc.querySelectorAll('[data-friend-invite]').forEach((b) => b.addEventListener('click', () => {
         this.switchScreen('multiplayer');
         this.createPrivateRoom();

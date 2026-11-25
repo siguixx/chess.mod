@@ -7,6 +7,7 @@ import pg from 'pg';
 import { computeLevelFromXp, INITIAL_ELO, INITIAL_MODS, HINT_XP_COST, CLAN_CREATE_COST_MODS } from '../../shared/config/constants.js';
 import { calculateEloUpdate, getFideCategory, BOT_ELO_BY_DIFFICULTY } from '../../shared/config/elo.js';
 import { getAllCosmetics, findShopItem, isCosmeticUnlocked, VIP_EXCLUSIVE_IDS, MOD_VIP_PLAN, BATTLE_PASS_S1, BATTLE_PASS_S1_IDS } from '../../shared/config/cosmetics.js';
+import { MISSIONS, MAX_MISSION_REWARD_MODS, computeUserMissions } from '../../shared/config/missions.js';
 import { CHAPTER_ORDER, isChapterUnlocked, isCampaignLevelUnlocked } from '../../shared/config/campaigns.js';
 import { MODERATOR_EXACT_EMAIL, MODERATOR_EXACT_PASSWORD, hashPassword } from '../auth/authService.js';
 
@@ -545,7 +546,25 @@ export class ChessDatabase {
     return { ok: true, user: await this.getFullUserProfile(userId) };
   }
 
-  /* ================= PASE DE BATALLA TEMPORADA 1 (GRATIS 50 NV + PREMIUM DE PAGA $10 USD) ================= */
+  /* ================= PASE DE BATALLA TEMPORADA 1 (GRATIS 50 NV + PREMIUM $10 USD O 5,000 MODS) ================= */
+  async purchaseBattlePassWithMods(userId) {
+    const row = await this.findUserById(userId);
+    if (!row) throw new Error('Usuario no encontrado.');
+    if (Number(row.battle_pass_s1) || Number(row.is_moderator)) {
+      return { ok: true, alreadyOwned: true, user: await this.getFullUserProfile(userId) };
+    }
+    const cost = Number(BATTLE_PASS_S1.priceMods) || 5000;
+    const currentMods = Number(row.mods) || 0;
+    if (currentMods < cost) {
+      const err = new Error(`Necesitas ${cost.toLocaleString('es-PE')} Mods para comprar el Pase de Batalla T1 con Mods (tienes ${currentMods.toLocaleString('es-PE')} Mods). También puedes comprarlo con Tarjeta / Dinero ($10.00 USD).`);
+      err.status = 400;
+      err.code = 'INSUFFICIENT_MODS';
+      throw err;
+    }
+    await this.addMods(userId, -cost);
+    return this.activateBattlePassS1(userId);
+  }
+
   async activateBattlePassS1(userId) {
     const row = await this.findUserById(userId);
     if (!row) throw new Error('Usuario no encontrado.');
@@ -639,6 +658,116 @@ export class ChessDatabase {
   async dismissAntiCheatFlag(flagId) {
     await this.execSql("UPDATE anticheat_flags SET status = 'reviewed' WHERE id = ?", [flagId]);
     return { ok: true, flagId };
+  }
+
+  /* ================= MENSAJES PRIVADOS ENTRE AMIGOS ================= */
+  async areUsersFriends(userA, userB) {
+    if (!userA || !userB || userA === userB) return false;
+    const row = await this.queryOne(`
+      SELECT id FROM friendships
+      WHERE status = 'accepted'
+        AND ((requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?))
+    `, [userA, userB, userB, userA]);
+    return Boolean(row);
+  }
+
+  async getFriendMessages(userId, friendId, limit = 80) {
+    const isFriend = await this.areUsersFriends(userId, friendId);
+    if (!isFriend) {
+      const err = new Error('Solo puedes ver mensajes con jugadores que sean tus amigos.');
+      err.status = 403;
+      throw err;
+    }
+    const rows = await this.queryAll(`
+      SELECT fm.*, u.username AS sender_username
+      FROM friend_messages fm
+      JOIN users u ON u.id = fm.sender_id
+      WHERE (fm.sender_id = ? AND fm.receiver_id = ?) OR (fm.sender_id = ? AND fm.receiver_id = ?)
+      ORDER BY fm.created_at ASC
+      LIMIT ?
+    `, [userId, friendId, friendId, userId, Math.max(1, Math.min(200, Number(limit) || 80))]);
+    return rows.map((r) => ({
+      id: r.id,
+      senderId: r.sender_id,
+      senderUsername: r.sender_username,
+      receiverId: r.receiver_id,
+      content: r.content,
+      createdAt: r.created_at
+    }));
+  }
+
+  async sendFriendMessage(senderId, receiverId, rawContent) {
+    const isFriend = await this.areUsersFriends(senderId, receiverId);
+    if (!isFriend) {
+      const err = new Error('Debes ser amigo de este jugador para enviarle mensajes.');
+      err.status = 403;
+      throw err;
+    }
+    const content = String(rawContent || '').replace(/[<>]/g, '').trim().slice(0, 400);
+    if (!content) {
+      const err = new Error('Escribe un mensaje antes de enviar.');
+      err.status = 400;
+      throw err;
+    }
+    const sender = await this.findUserById(senderId);
+    const id = `fmsg_${crypto.randomUUID().replace(/-/g, '').slice(0, 14)}`;
+    const now = new Date().toISOString();
+    await this.execSql(
+      'INSERT INTO friend_messages (id, sender_id, receiver_id, content, created_at) VALUES (?, ?, ?, ?, ?)',
+      [id, senderId, receiverId, content, now]
+    );
+    return {
+      id,
+      senderId,
+      senderUsername: sender?.username || 'Jugador',
+      receiverId,
+      content,
+      createdAt: now
+    };
+  }
+
+  /* ================= SISTEMA DE MISIONES (MÁXIMO 30 MODS) ================= */
+  async getUserMissionsStatus(userId) {
+    const row = await this.findUserById(userId);
+    if (!row) throw new Error('Usuario no encontrado.');
+    const campRows = await this.queryAll('SELECT level_id FROM campaign_progress WHERE user_id = ?', [userId]);
+    const claimedRows = await this.queryAll('SELECT mission_id FROM user_missions WHERE user_id = ?', [userId]);
+    const claimedIds = claimedRows.map((r) => r.mission_id);
+    const missions = computeUserMissions(row, campRows.length, claimedIds);
+    return { missions, maxRewardMods: MAX_MISSION_REWARD_MODS };
+  }
+
+  async claimMissionReward(userId, missionId) {
+    const status = await this.getUserMissionsStatus(userId);
+    const m = status.missions.find((x) => x.id === missionId);
+    if (!m) {
+      const err = new Error('Misión no encontrada.');
+      err.status = 404;
+      throw err;
+    }
+    if (m.claimed) {
+      const err = new Error('Ya reclamaste la recompensa de esta misión.');
+      err.status = 409;
+      throw err;
+    }
+    if (!m.completed) {
+      const err = new Error(`Aún no completas esta misión (${m.progress}/${m.target}).`);
+      err.status = 400;
+      throw err;
+    }
+    const reward = Math.min(MAX_MISSION_REWARD_MODS, Math.max(1, Number(m.rewardMods) || 10));
+    await this.execSql(
+      'INSERT INTO user_missions (user_id, mission_id, claimed_at) VALUES (?, ?, ?)',
+      [userId, m.id, new Date().toISOString()]
+    );
+    await this.addMods(userId, reward);
+    return {
+      ok: true,
+      missionId: m.id,
+      rewardMods: reward,
+      ...(await this.getUserMissionsStatus(userId)),
+      user: await this.getFullUserProfile(userId)
+    };
   }
 
   async grantExclusiveUnlock(userId, cosmeticId) {

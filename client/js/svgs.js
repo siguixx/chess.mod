@@ -39,25 +39,44 @@ export const SVGS = {
     <circle cx="50" cy="50" r="3.6" fill="#efd083"/>
   </svg>`,
 
-  /* EL HOMBRE GALAXIA COMO PIEZA 2×2 (Exclusivo Cap. 3 Nivel 5) */
-  galaxyMan2x2: `<svg viewBox="0 0 100 100" style="width:100%;height:100%;">
+  /* GALAXIA ESPIRAL 2×2 (Exclusivo Cap. 3 Nivel 5 — Galaxia viva con brazos espirales y núcleo estelar) */
+  galaxyMan2x2: `<svg viewBox="0 0 100 100" style="width:100%;height:100%;filter:drop-shadow(0 0 10px rgba(168,85,247,0.75));">
     <defs>
-      <radialGradient id="gxCore" cx="50%" cy="42%" r="55%">
-        <stop offset="0%" stop-color="#f5e3a1"/>
-        <stop offset="35%" stop-color="#5a45a8"/>
-        <stop offset="75%" stop-color="#1e1945"/>
-        <stop offset="100%" stop-color="#0b091c"/>
+      <radialGradient id="gxSpiralBg" cx="50%" cy="50%" r="54%">
+        <stop offset="0%" stop-color="#fffbe6"/>
+        <stop offset="16%" stop-color="#fde047"/>
+        <stop offset="36%" stop-color="#c084fc"/>
+        <stop offset="66%" stop-color="#312e81"/>
+        <stop offset="100%" stop-color="#070516"/>
       </radialGradient>
+      <linearGradient id="gxArmA" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#38bdf8"/>
+        <stop offset="50%" stop-color="#c084fc"/>
+        <stop offset="100%" stop-color="#f472b6" stop-opacity="0.25"/>
+      </linearGradient>
+      <linearGradient id="gxArmB" x1="1" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#fde047"/>
+        <stop offset="50%" stop-color="#a855f7"/>
+        <stop offset="100%" stop-color="#22d3ee" stop-opacity="0.2"/>
+      </linearGradient>
     </defs>
-    <rect x="4" y="4" width="92" height="92" rx="12" fill="url(#gxCore)" stroke="#9d8df2" stroke-width="2.6"/>
-    <ellipse cx="50" cy="52" rx="36" ry="14" fill="none" stroke="#efd083" stroke-width="1.6" stroke-dasharray="4 3" transform="rotate(-18 50 52)"/>
-    <!-- Silueta humanoide cósmica -->
-    <circle cx="50" cy="30" r="14" fill="#281f5e" stroke="#efd083" stroke-width="2"/>
-    <path d="M24 88 L32 48 H68 L76 88 Z" fill="#1b1542" stroke="#8b7ae6" stroke-width="2"/>
-    <circle cx="44" cy="29" r="2.6" fill="#fff3c2"/><circle cx="56" cy="29" r="2.6" fill="#fff3c2"/>
-    <circle cx="20" cy="20" r="1.8" fill="#ffffff"/><circle cx="80" cy="22" r="1.5" fill="#efd083"/>
-    <circle cx="18" cy="76" r="1.5" fill="#9d8df2"/><circle cx="82" cy="78" r="2" fill="#ffffff"/>
-    <circle cx="50" cy="64" r="6" fill="#efd083" opacity="0.9"/>
+    <rect x="4" y="4" width="92" height="92" rx="18" fill="url(#gxSpiralBg)" stroke="#c4b5fd" stroke-width="2.4"/>
+    <!-- Brazos espirales de galaxia real -->
+    <g fill="none" stroke-linecap="round">
+      <path d="M50 50 C62 34, 84 36, 86 58 C88 76, 66 88, 42 84" stroke="url(#gxArmA)" stroke-width="7.5" opacity="0.88"/>
+      <path d="M50 50 C38 66, 16 64, 14 42 C12 24, 34 12, 58 16" stroke="url(#gxArmA)" stroke-width="7.5" opacity="0.88"/>
+      <path d="M50 50 C36 36, 40 16, 62 14 C78 13, 88 30, 82 48" stroke="url(#gxArmB)" stroke-width="5.2" opacity="0.8"/>
+      <path d="M50 50 C64 64, 60 84, 38 86 C22 87, 12 70, 18 52" stroke="url(#gxArmB)" stroke-width="5.2" opacity="0.8"/>
+      <ellipse cx="50" cy="50" rx="38" ry="15" stroke="#e9d5ff" stroke-width="1.3" stroke-dasharray="4 4" transform="rotate(-24 50 50)" opacity="0.72"/>
+    </g>
+    <!-- Núcleo galáctico resplandeciente -->
+    <circle cx="50" cy="50" r="14" fill="#fde047" opacity="0.45"/>
+    <circle cx="50" cy="50" r="8.5" fill="#fffdf0"/>
+    <circle cx="50" cy="50" r="4" fill="#ffffff"/>
+    <!-- Estrellas orbitantes -->
+    <circle cx="20" cy="22" r="2.2" fill="#ffffff"/><circle cx="80" cy="24" r="1.9" fill="#7dd3fc"/>
+    <circle cx="18" cy="78" r="2" fill="#f9a8d4"/><circle cx="82" cy="78" r="2.3" fill="#fff4c4"/>
+    <circle cx="68" cy="34" r="1.6" fill="#ffffff"/><circle cx="32" cy="68" r="1.6" fill="#fde047"/>
   </svg>`,
 
   /* Grieta de Vacío del Boss Glitch (con textura real subida) */
@@ -182,7 +201,7 @@ export function renderAvatarMarkup(avatarVal) {
     const key = avatarVal.slice(7);
     return AVATAR_PRESETS[key] || AVATAR_PRESETS.obsidian_king;
   }
-  if (avatarVal && (/^data:image\/(png|jpeg|webp);base64,/.test(avatarVal) || /^https?:\/\//.test(avatarVal))) {
+  if (avatarVal && (/^data:image\/[a-zA-Z0-9.+_-]+(;charset=[^;,]+)?;base64,/.test(avatarVal) || /^https?:\/\//.test(avatarVal))) {
     return `<img src="${avatarVal}" alt="Avatar" referrerpolicy="no-referrer">`;
   }
   return AVATAR_PRESETS.obsidian_king;

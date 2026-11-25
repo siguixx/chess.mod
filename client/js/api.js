@@ -208,12 +208,22 @@ class ApiClient {
   joinClan(clanId) { return this.request(`/api/clans/${encodeURIComponent(clanId)}/join`, { method: 'POST', body: '{}' }); }
   leaveClan() { return this.request('/api/clans/leave', { method: 'POST', body: '{}' }); }
 
-  // Amigos
+  // Amigos y Mensajes Privados
   getFriends() { return this.request('/api/friends'); }
   sendFriendRequest(username) { return this.request('/api/friends/request', { method: 'POST', body: JSON.stringify({ username }) }); }
   acceptFriend(id) { return this.request(`/api/friends/${encodeURIComponent(id)}/accept`, { method: 'POST', body: '{}' }); }
   rejectFriend(id) { return this.request(`/api/friends/${encodeURIComponent(id)}/reject`, { method: 'POST', body: '{}' }); }
   removeFriend(id) { return this.request(`/api/friends/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
+  getFriendMessages(friendId) { return this.request(`/api/friends/${encodeURIComponent(friendId)}/messages`); }
+  sendFriendMessage(friendId, content) { return this.request(`/api/friends/${encodeURIComponent(friendId)}/messages`, { method: 'POST', body: JSON.stringify({ content }) }); }
+
+  // Misiones (máx. 30 Mods)
+  getMissions() { return this.request('/api/missions'); }
+  async claimMission(missionId) {
+    const res = await this.request(`/api/missions/${encodeURIComponent(missionId)}/claim`, { method: 'POST', body: '{}' });
+    this.syncSnapshot();
+    return res;
+  }
 
   // Reportes de Hacks y Cheats
   submitReport(payload) { return this.request('/api/reports', { method: 'POST', body: JSON.stringify(payload) }); }

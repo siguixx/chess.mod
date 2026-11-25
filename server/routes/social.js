@@ -88,6 +88,28 @@ export function createSocialRouter(db, authMiddleware, multiplayer) {
     }
   });
 
+  // ================= MENSAJES ENTRE AMIGOS =================
+  router.get('/friends/:friendId/messages', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const messages = await db.getFriendMessages(req.userId, req.params.friendId);
+      return res.json({ messages });
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+  });
+
+  router.post('/friends/:friendId/messages', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const msg = await db.sendFriendMessage(req.userId, req.params.friendId, req.body?.content);
+      if (multiplayer?.notifyUser) {
+        multiplayer.notifyUser(req.params.friendId, 'friend:message', msg);
+      }
+      return res.status(201).json({ ok: true, message: msg });
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+  });
+
   // ================= REPORTES DE HACKS Y CHEATS =================
   router.post('/reports', authMiddleware.requireAuth, async (req, res) => {
     try {

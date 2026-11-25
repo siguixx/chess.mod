@@ -1428,9 +1428,10 @@ try {
     });
     assert.equal(claimPaidBlocked.status, 402);
 
-    // Intentar comprar Pase Premium con Mods -> 402 PAYMENT_REQUIRED (solo de paga $10)
+    // Intentar comprar Pase Premium con Mods cuando no tiene 5,000 Mods -> 400 INSUFFICIENT_MODS
     const bpNoMods = await fetch(`${url}/api/battlepass/buy-mods`, { method: 'POST', headers: targetH, body: '{}' });
-    assert.equal(bpNoMods.status, 402);
+    assert.equal(bpNoMods.status, 400);
+    assert.equal((await bpNoMods.json()).code, 'INSUFFICIENT_MODS');
 
     // Webhook verificado de pago real $10 USD activa el Pase Premium
     const bpPaidWh = await fetch(`${url}/api/battlepass/webhook`, {
@@ -1596,6 +1597,91 @@ try {
     assert.equal(bCount, 4, 'Blacky arranca reforzado con 4 Alfiles');
     assert.equal(nCount, 4, 'Blacky arranca reforzado con 4 Caballos');
     assert.equal(bkHard.cooldowns.seal, 0, 'Blacky sella desde su primer turno');
+  });
+
+  await test('Misiones (máx 30 Mods), Chat entre Amigos, Pase con Mods/Dinero, Avatares de cualquier imagen, 10 idiomas, Modos Custom y Equipos 2v2 / 4P', async () => {
+    const { MISSIONS, MAX_MISSION_REWARD_MODS } = await import('../shared/config/missions.js');
+    const { MultiPartyChessEngine, chooseMultiPartyAIMove } = await import('../shared/rules/multiPartyEngine.js');
+
+    // 1. Ninguna misión otorga más de 30 Mods
+    assert.equal(MAX_MISSION_REWARD_MODS, 30);
+    assert.ok(MISSIONS.length >= 6);
+    assert.ok(MISSIONS.every((m) => m.rewardMods > 0 && m.rewardMods <= 30), 'Ninguna misión puede superar los 30 Mods');
+    assert.equal(Math.max(...MISSIONS.map((m) => m.rewardMods)), 30, 'La misión más difícil da exactamente 30 Mods');
+
+    // 2. Registrar 2 amigos, aceptar amistad, chatear y reclamar misión
+    const uA = await (await fetch(`${url}/api/auth/register`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'AmigoChatA', email: 'chata@chessmod.test', password: 'Password123' })
+    })).json();
+    const uB = await (await fetch(`${url}/api/auth/register`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'AmigoChatB', email: 'chatb@chessmod.test', password: 'Password123' })
+    })).json();
+    const hA = { Authorization: `Bearer ${uA.token}`, 'Content-Type': 'application/json' };
+    const hB = { Authorization: `Bearer ${uB.token}`, 'Content-Type': 'application/json' };
+
+    // Aceptar amistad y enviar mensaje privado
+    const reqF = await (await fetch(`${url}/api/friends/request`, { method: 'POST', headers: hA, body: JSON.stringify({ username: 'AmigoChatB' }) })).json();
+    const sumB = await (await fetch(`${url}/api/friends`, { headers: hB })).json();
+    const fId = sumB.incoming[0].friendshipId;
+    await fetch(`${url}/api/friends/${fId}/accept`, { method: 'POST', headers: hB, body: '{}' });
+
+    const sentMsg = await fetch(`${url}/api/friends/${uB.user.id}/messages`, {
+      method: 'POST', headers: hA, body: JSON.stringify({ content: '¡Jugamos Equipos 2v2!' })
+    });
+    assert.equal(sentMsg.status, 201);
+    const msgsB = await (await fetch(`${url}/api/friends/${uA.user.id}/messages`, { headers: hB })).json();
+    assert.ok(msgsB.messages.some((m) => m.content.includes('Equipos 2v2')), 'Amigo B recibe el mensaje enviado por Amigo A');
+
+    // 3. Subir avatar SVG / GIF (cualquier tipo de imagen) + cambiar a uno de los 10 idiomas (ej. ja)
+    const svgBase64 = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><circle cx="20" cy="20" r="18" fill="gold"/></svg>').toString('base64');
+    const avRes = await fetch(`${url}/api/profile/avatar`, { method: 'PATCH', headers: hA, body: JSON.stringify({ avatar: svgBase64 }) });
+    assert.equal(avRes.status, 200, 'Avatar SVG debe ser aceptado');
+    const langJa = await fetch(`${url}/api/profile/language`, { method: 'PATCH', headers: hA, body: JSON.stringify({ language: 'ja' }) });
+    assert.equal(langJa.status, 200, 'Idioma japonés (ja) debe ser soportado');
+
+    // 4. Completar 1 partida -> reclamar misión Primer Movimiento (+10 Mods, <= 30)
+    await fetch(`${url}/api/game/report`, {
+      method: 'POST', headers: hA,
+      body: JSON.stringify({ mode: 'classic', opponentName: 'Bot', winner: 'w', turns: 12 })
+    });
+    const mList = await (await fetch(`${url}/api/missions`, { headers: hA })).json();
+    const firstM = mList.missions.find((x) => x.id === 'mission_first_match');
+    assert.equal(firstM.canClaim, true);
+    const claimM = await (await fetch(`${url}/api/missions/mission_first_match/claim`, { method: 'POST', headers: hA, body: '{}' })).json();
+    assert.equal(claimM.ok, true);
+    assert.ok(claimM.rewardMods <= 30);
+
+    // 5. Comprar Pase de Batalla con 5,000 Mods cuando tiene fondos suficientes
+    await server.db.addMods(uA.user.id, 5000);
+    const bpBuyMods = await fetch(`${url}/api/battlepass/buy-mods`, { method: 'POST', headers: hA, body: '{}' });
+    assert.equal(bpBuyMods.status, 200);
+    assert.equal((await bpBuyMods.json()).user.battlePassS1.owned, true);
+
+    // 6. Motor Equipos 2 vs 2 (4 facciones) y Batalla Real 4P / Triada 3P
+    const e2v2 = new MultiPartyChessEngine('2v2', 10);
+    assert.equal(e2v2.boardSize, 10);
+    assert.equal(e2v2.areAllies('w', 'c'), true, 'Blanco y Cian son aliados en 2v2');
+    assert.equal(e2v2.areAllies('w', 'r'), false, 'Blanco y Carmesí son enemigos en 2v2');
+    const wMoves = e2v2.getAllLegalMoves('w');
+    assert.ok(wMoves.length > 0);
+    e2v2.executeMove(wMoves[0]);
+    assert.equal(e2v2.turn, 'c', 'Tras Blanco sigue Aliado Cian');
+    const cMove = chooseMultiPartyAIMove(e2v2, 'c');
+    assert.ok(cMove);
+    e2v2.executeMove(cMove);
+    assert.equal(e2v2.turn, 'r', 'Tras Cian sigue Carmesí');
+
+    // 7. Taller de Mods: crear modo de juego personalizado (gameMode)
+    const modCheck = validateAndNormalizeMod({
+      name: 'Mi Modo 10x10 Explosivo',
+      gameMode: { boardSize: 10, atomicMode: true, armyPreset: 'rooks_fortress', randomPowers: true, earthquakeEvery: 3 }
+    });
+    assert.equal(modCheck.ok, true);
+    assert.equal(modCheck.mod.gameMode.boardSize, 10);
+    assert.equal(modCheck.mod.gameMode.atomicMode, true);
+    assert.equal(modCheck.mod.gameMode.armyPreset, 'rooks_fortress');
   });
 } finally {
   await server.stop();

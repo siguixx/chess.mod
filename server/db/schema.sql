@@ -164,6 +164,24 @@ CREATE TABLE IF NOT EXISTS anticheat_flags (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS friend_messages (
+  id TEXT PRIMARY KEY,
+  sender_id TEXT NOT NULL,
+  receiver_id TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS user_missions (
+  user_id TEXT NOT NULL,
+  mission_id TEXT NOT NULL,
+  claimed_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, mission_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_users_elo ON users(elo DESC, wins DESC);
 CREATE INDEX IF NOT EXISTS idx_matches_white ON matches(white_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_matches_black ON matches(black_user_id, created_at DESC);
@@ -171,4 +189,5 @@ CREATE INDEX IF NOT EXISTS idx_xp_user ON xp_transactions(user_id, created_at DE
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_friends_req ON friendships(requester_id, status);
 CREATE INDEX IF NOT EXISTS idx_friends_addr ON friendships(addressee_id, status);
+CREATE INDEX IF NOT EXISTS idx_friend_msgs_pair ON friend_messages(sender_id, receiver_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sec_events_user ON security_events(user_id, created_at DESC);

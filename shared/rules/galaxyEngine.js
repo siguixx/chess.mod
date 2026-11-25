@@ -584,6 +584,35 @@ export class GalaxyEngine {
       this.teleportCooldown--;
     }
 
+    // Mecánica exclusiva Nv.2 (Centinela Púlsar) y Nv.4 (Guardián Quásar): Pulso Gravitatorio cada 4 turnos
+    if (actingColor === 'b' && recordHistory && (this.levelId === 2 || this.levelId === 4) && this.turnNumber % 4 === 0) {
+      for (let r = 2; r <= 6; r++) {
+        let pulsed = false;
+        for (let c = 0; c < 8; c++) {
+          const wp = this.board[r][c];
+          if (wp && wp.color === 'w' && wp.type !== 'K' && wp.type !== 'U' && !this.isProtectedByBarrier(r, c)) {
+            const nr = r + 1;
+            if (inBounds(nr, c) && !this.board[nr][c]) {
+              this.board[nr][c] = wp;
+              this.board[r][c] = null;
+              if (!this.isKingInCheck('b')) {
+                this.logs.unshift({
+                  turn: this.turnNumber,
+                  type: 'special',
+                  text: `💫 PULSO GRAVITATORIO: ${PIECE_NAMES[wp.type]} desplazado de ${toAlg(r, c)} a ${toAlg(nr, c)}.`
+                });
+                pulsed = true;
+                break;
+              }
+              this.board[r][c] = wp;
+              this.board[nr][c] = null;
+            }
+          }
+        }
+        if (pulsed) break;
+      }
+    }
+
     // Condición especial Nivel 5: Al eliminar TODOS los Alfiles y Caballos enemigos -> Intervención de Free Mittens!
     if (this.hasGalaxyMan && this.galaxyMan && !this.galaxyMan.destroyed && this.countAliveAnchors() === 0) {
       this.galaxyMan.destroyed = true;

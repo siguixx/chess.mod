@@ -241,13 +241,13 @@ export function createProfileRouter(db, authMiddleware, antiCheat = null) {
     return res.json({ season: BATTLE_PASS_S1, billingConfigured: cfg.billingConfigured });
   });
 
-  router.post('/battlepass/buy-mods', authMiddleware.requireAuth, async (_req, res) => {
-    return res.status(402).json({
-      ok: false,
-      code: 'PAYMENT_REQUIRED',
-      priceLabel: BATTLE_PASS_S1.priceLabel,
-      error: 'El Pase de Batalla Premium Temporada 1 es únicamente de paga ($10.00 USD). El carril gratuito (50 niveles) es gratis para todos.'
-    });
+  router.post('/battlepass/buy-mods', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const result = await db.purchaseBattlePassWithMods(req.userId);
+      return res.json(result);
+    } catch (err) {
+      return res.status(err.status || 400).json({ code: err.code, error: err.message });
+    }
   });
 
   router.post('/battlepass/checkout', authMiddleware.requireAuth, async (req, res) => {
@@ -368,9 +368,10 @@ export function createProfileRouter(db, authMiddleware, antiCheat = null) {
     try {
       const avatar = String(req.body?.avatar || '');
       const isPreset = /^preset:[a-z0-9_]+$/.test(avatar);
-      const isDataImg = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(avatar);
-      if (!isPreset && !isDataImg) return res.status(400).json({ error: 'Formato de avatar inválido.' });
-      if (isDataImg && avatar.length > 260000) return res.status(400).json({ error: 'Imagen demasiado pesada.' });
+      // Aceptar CUALQUIER tipo de imagen (png, jpeg, jpg, webp, gif, svg+xml, avif, bmp, heic, tiff, x-icon, etc.)
+      const isDataImg = /^data:image\/[a-zA-Z0-9.+_-]+(;charset=[^;,]+)?;base64,[A-Za-z0-9+/=\s]+$/.test(avatar);
+      if (!isPreset && !isDataImg) return res.status(400).json({ error: 'Formato de imagen inválido.' });
+      if (isDataImg && avatar.length > 900000) return res.status(400).json({ error: 'Imagen demasiado pesada tras compresión.' });
       const profile = isPreset
         ? await db.updateCosmetics(req.userId, { avatar })
         : await db.updateAvatar(req.userId, avatar);
@@ -410,17 +411,36 @@ export function createProfileRouter(db, authMiddleware, antiCheat = null) {
     }
   });
 
-  // Cambio de idioma desde el selector inicial o desde Configuración
+  // Cambio de idioma desde el selector inicial o desde Configuración (10 idiomas)
   router.patch('/profile/language', authMiddleware.requireAuth, async (req, res) => {
     try {
       const language = String(req.body?.language || 'es').trim().toLowerCase();
-      if (!['es', 'en', 'pt', 'fr'].includes(language)) {
+      if (!['es', 'en', 'pt', 'fr', 'de', 'it', 'ja', 'ko', 'ru', 'zh'].includes(language)) {
         return res.status(400).json({ error: 'Idioma no soportado.' });
       }
       const profile = await db.updateUserLanguage(req.userId, language);
       return res.json({ ok: true, user: profile });
     } catch (err) {
       return res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Sistema de Misiones (máx. 30 Mods incluso la más difícil)
+  router.get('/missions', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const data = await db.getUserMissionsStatus(req.userId);
+      return res.json(data);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  });
+
+  router.post('/missions/:id/claim', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const result = await db.claimMissionReward(req.userId, req.params.id);
+      return res.json(result);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
     }
   });
 

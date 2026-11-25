@@ -26,6 +26,9 @@ export const ALLOWED_MOD_TEXTURES = [
   'texture-vip-gold'
 ];
 
+export const ALLOWED_ARMY_PRESETS = ['standard', 'all_queens', 'cavalry_swarm', 'rooks_fortress', 'pawns_legion'];
+export const ALLOWED_TEAM_MODES = [null, '2v2', 'ffa4', 'ffa3'];
+
 export const MOD_TEMPLATES = [
   {
     format: 'chessmod-v1',
@@ -34,6 +37,14 @@ export const MOD_TEMPLATES = [
     author: 'Comunidad CHESS.MOD',
     version: '1.0',
     description: 'Invoca un Coloso 2×2 que aplasta cualquier enemigo dentro del bloque y deja el tablero en llamas.',
+    gameMode: {
+      boardSize: 8,
+      atomicMode: false,
+      armyPreset: 'standard',
+      randomPowers: false,
+      earthquakeEvery: 0,
+      teamMode: null
+    },
     board: {
       light: '#f3d4b8',
       dark: '#5e2318',
@@ -62,6 +73,14 @@ export const MOD_TEMPLATES = [
     author: 'Comunidad CHESS.MOD',
     version: '1.0',
     description: 'Tablero Glitch Neón donde cualquier pieza puede disparar rayos láser a 5 casillas destruyendo objetivos.',
+    gameMode: {
+      boardSize: 8,
+      atomicMode: false,
+      armyPreset: 'standard',
+      randomPowers: false,
+      earthquakeEvery: 0,
+      teamMode: null
+    },
     board: {
       light: '#d8f0f6',
       dark: '#1f2338',
@@ -87,6 +106,14 @@ export const MOD_TEMPLATES = [
     author: 'Comunidad CHESS.MOD',
     version: '1.0',
     description: 'Empieza con Caballos avanzados y un poder que corrompe y roba fichas enemigas para tu ejército.',
+    gameMode: {
+      boardSize: 8,
+      atomicMode: false,
+      armyPreset: 'standard',
+      randomPowers: false,
+      earthquakeEvery: 0,
+      teamMode: null
+    },
     board: {
       light: '#e4dcf2',
       dark: '#2b1b42',
@@ -105,6 +132,39 @@ export const MOD_TEMPLATES = [
       duration: 2,
       color: '#c084fc',
       description: 'Corrompe a cualquier pieza rival (no Rey) convirtiéndola en tu aliada en su misma casilla.'
+    }
+  },
+  {
+    format: 'chessmod-v1',
+    id: 'mod_modo_colosal_atomico',
+    name: 'Modo Custom: Arena 10×10 Atómica',
+    author: 'Comunidad CHESS.MOD',
+    version: '1.0',
+    description: '¡Modo de juego personalizado 10×10 con explosiones atómicas 3×3 en cada captura, fortaleza de Torres y terremotos cada 3 turnos!',
+    gameMode: {
+      boardSize: 10,
+      atomicMode: true,
+      armyPreset: 'rooks_fortress',
+      randomPowers: true,
+      earthquakeEvery: 3,
+      teamMode: null
+    },
+    board: {
+      light: '#f4e6d2',
+      dark: '#4a213b',
+      pedestal: 'linear-gradient(145deg, #f43f5e 0%, #140b16 55%, #f59e0b 100%)',
+      textureClass: 'texture-magma'
+    },
+    extraPieces: [],
+    power: {
+      name: 'Explosión Sísmica',
+      icon: '💣',
+      effect: 'rift_destroy',
+      cooldown: 2,
+      range: 6,
+      duration: 2,
+      color: '#f43f5e',
+      description: 'Rasga una grieta en la arena personalizada destruyendo piezas enemigas.'
     }
   }
 ];
@@ -163,6 +223,12 @@ export function validateAndNormalizeMod(input) {
     }
   }
 
+  const gmRaw = obj.gameMode || {};
+  const boardSize = [6, 8, 10, 12].includes(Number(gmRaw.boardSize)) ? Number(gmRaw.boardSize) : 8;
+  const armyPreset = ALLOWED_ARMY_PRESETS.includes(gmRaw.armyPreset) ? gmRaw.armyPreset : 'standard';
+  const teamMode = ALLOWED_TEAM_MODES.includes(gmRaw.teamMode) ? gmRaw.teamMode : null;
+  const earthquakeEvery = [0, 2, 3, 4].includes(Number(gmRaw.earthquakeEvery)) ? Number(gmRaw.earthquakeEvery) : 0;
+
   const idSlug = sanitizeText(obj.id, 40, `mod_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`).replace(/[^a-zA-Z0-9_-]/g, '');
 
   const normalized = {
@@ -172,6 +238,14 @@ export function validateAndNormalizeMod(input) {
     author: sanitizeText(obj.author, 32, 'Jugador'),
     version: sanitizeText(obj.version, 12, '1.0'),
     description: sanitizeText(obj.description, 220, 'Mod personalizado de código abierto para Salas Privadas.'),
+    gameMode: {
+      boardSize,
+      atomicMode: Boolean(gmRaw.atomicMode),
+      armyPreset,
+      randomPowers: Boolean(gmRaw.randomPowers),
+      earthquakeEvery,
+      teamMode
+    },
     board: { light, dark, pedestal, textureClass },
     extraPieces,
     power: {
@@ -193,15 +267,50 @@ export function validateAndNormalizeMod(input) {
 }
 
 export function applyCustomModSetupToEngine(engine, mod) {
-  if (!engine || !mod || !Array.isArray(mod.extraPieces)) return;
+  if (!engine || !mod) return;
+  const N = engine.boardSize || engine.board?.length || 8;
+  const preset = mod.gameMode?.armyPreset || 'standard';
+
+  // Aplicar presets de ejército de modo de juego personalizado
+  if (preset === 'all_queens') {
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        const p = engine.board[r]?.[c];
+        if (p && p.type !== 'K' && p.type !== 'R') p.type = 'Q';
+      }
+    }
+  } else if (preset === 'cavalry_swarm') {
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        const p = engine.board[r]?.[c];
+        if (p && p.type !== 'K') p.type = 'N';
+      }
+    }
+  } else if (preset === 'rooks_fortress') {
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        const p = engine.board[r]?.[c];
+        if (p && (p.type === 'B' || p.type === 'N')) p.type = 'R';
+      }
+    }
+  } else if (preset === 'pawns_legion') {
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        const p = engine.board[r]?.[c];
+        if (p && p.type !== 'K') p.type = 'P';
+      }
+    }
+  }
+
+  if (!Array.isArray(mod.extraPieces)) return;
   let idx = 1;
   for (const ep of mod.extraPieces) {
-    // Blancas en (r, c) y Negras en espejo (7 - r, c) para que la sala privada sea justa
-    if (inBounds(ep.r, ep.c) && !engine.board[ep.r][ep.c]) {
+    // Blancas en (r, c) y Negras en espejo (N - 1 - r, c) para que la sala privada sea justa
+    if (ep.r >= 0 && ep.r < N && ep.c >= 0 && ep.c < N && !engine.board[ep.r][ep.c]) {
       engine.board[ep.r][ep.c] = { id: `modW_${idx}`, color: 'w', type: ep.type, hasMoved: false };
     }
-    const mr = 7 - ep.r;
-    if (inBounds(mr, ep.c) && !engine.board[mr][ep.c]) {
+    const mr = (N - 1) - ep.r;
+    if (mr >= 0 && mr < N && ep.c >= 0 && ep.c < N && !engine.board[mr][ep.c]) {
       engine.board[mr][ep.c] = { id: `modB_${idx}`, color: 'b', type: ep.type, hasMoved: false };
     }
     idx++;

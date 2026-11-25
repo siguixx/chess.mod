@@ -23,6 +23,7 @@ import { ChessFinalEngine } from '/shared/rules/chessFinalEngine.js';
 import { BlackySecretEngine } from '/shared/rules/blackyEngine.js';
 import { ClassicChessEngine } from '/shared/rules/classicEngine.js';
 import { LargeBoardChessEngine, chooseLargeBoardAIMove } from '/shared/rules/largeBoardEngine.js';
+import { MultiPartyChessEngine, chooseMultiPartyAIMove, FACTION_META } from '/shared/rules/multiPartyEngine.js';
 import { MayaBossAI } from '/shared/ai/mayaAI.js';
 import { MayaCampaignAI } from '/shared/ai/mayaCampaignAI.js';
 import { FreeMittensAI } from '/shared/ai/mittensAI.js';
@@ -282,8 +283,18 @@ export class BattleController {
     // Botón de Poder equipado de Tienda / Mod VIP en batalla
     on('btn-shop-power', 'click', () => this.toggleShopPowerMode());
 
-    // Online buttons
+    // Online buttons (incluye enviar solicitud de amistad al rival o compañero en plena partida)
     on('btn-exit-spectate', 'click', () => this.exitBattle());
+    on('btn-online-add-friend', 'click', async () => {
+      const oppName = this.onlineMeta?.opponent?.username;
+      if (!oppName) return this.toast('No hay un jugador rival conectado para agregar.', 'info');
+      try {
+        const res = await api.sendFriendRequest(oppName);
+        this.toast(res.autoAccepted ? `🤝 ¡Ahora eres amigo de ${oppName}!` : `🤝 Solicitud de amistad enviada a ${oppName}.`, 'success');
+      } catch (err) {
+        this.toast(err.message || `No se pudo enviar solicitud a ${oppName}.`, 'error');
+      }
+    });
     on('btn-online-resign', 'click', () => {
       if (this.mode === 'online' && this.onlineMeta?.matchId) mpSocket.emit('match:resign', { matchId: this.onlineMeta.matchId });
     });
@@ -1117,17 +1128,39 @@ export class BattleController {
   startClassicMatch({ difficulty = 3, label = 'Vs IA', minutes = this.selectedMinutes, showGuide = true, customMod = null } = {}) {
     this.mode = 'classic';
     this.trainerMeta = null;
+    this.specialMeta = null;
     this.customMod = customMod || null;
     this.bossId = 'classic_ai';
     this.bossName = customMod ? `Mod Privado: ${customMod.name}` : `${label} (IA Nv.${difficulty})`;
     this.aiDifficulty = difficulty;
     this.campaignMeta = null;
     this.onlineMeta = null;
-    this.engine = new ClassicChessEngine(minutes);
+
+    const gm = customMod?.gameMode || null;
+    if (gm?.teamMode) {
+      this.engine = new MultiPartyChessEngine(gm.teamMode, minutes);
+    } else if (gm && (gm.boardSize === 12 || gm.boardSize === 10 || gm.atomicMode)) {
+      this.engine = new LargeBoardChessEngine(gm.boardSize || 8, minutes, { atomicMode: Boolean(gm.atomicMode) });
+    } else {
+      this.engine = new ClassicChessEngine(minutes);
+      if (gm?.boardSize === 6) {
+        this.specialMeta = { id: 'special_6x6', name: customMod.name };
+        this.engine.board = Array.from({ length: 8 }, () => Array(8).fill(null));
+        const row6 = ['R', 'N', 'Q', 'K', 'B', 'R'];
+        for (let i = 0; i < 6; i++) {
+          const c = i + 1;
+          this.engine.board[1][c] = { id: `cm6b_${i}`, color: 'b', type: row6[i], hasMoved: true };
+          this.engine.board[2][c] = { id: `cm6bp_${i}`, color: 'b', type: 'P', hasMoved: true };
+          this.engine.board[5][c] = { id: `cm6wp_${i}`, color: 'w', type: 'P', hasMoved: true };
+          this.engine.board[6][c] = { id: `cm6w_${i}`, color: 'w', type: row6[i], hasMoved: true };
+        }
+      }
+    }
     if (customMod) applyCustomModSetupToEngine(this.engine, customMod);
     this.sound.stopBossMusic();
 
     this.showBattleScreen();
+    if (gm?.randomPowers) this.rollRandomSpecialPower();
     this.configureBattlePanels();
     this.phase = 'PLAYER_TURN';
     this.render();
@@ -1241,7 +1274,9 @@ export class BattleController {
     this.campaignMeta = null;
     this.onlineMeta = null;
 
-    if (specialCfg.id === 'special_colossal_12x12') {
+    if (specialCfg.multiPartyVariant) {
+      this.engine = new MultiPartyChessEngine(specialCfg.multiPartyVariant, minutes);
+    } else if (specialCfg.id === 'special_colossal_12x12') {
       this.engine = new LargeBoardChessEngine(12, minutes);
     } else if (specialCfg.id === 'special_mega_10x10_chaos') {
       this.engine = new LargeBoardChessEngine(10, minutes);
@@ -2042,7 +2077,9 @@ export class BattleController {
           color: 'b'
         });
         bestMove = aiRes?.move || this.engine.getAllLegalMoves('b')[0] || null;
-      } else if (this.mode === 'special' && (this.getBoardSize() > 8 || this.specialMeta?.id === 'special_atomic_boom')) {
+      } else if (this.engine.mode === 'multiparty') {
+        bestMove = chooseMultiPartyAIMove(this.engine, this.engine.turn);
+      } else if (this.getBoardSize() > 8 || this.engine.atomicMode || this.specialMeta?.id === 'special_atomic_boom') {
         bestMove = chooseLargeBoardAIMove(this.engine, 'b');
       } else if (this.mode === 'special' && this.specialMeta?.id === 'special_6x6') {
         const legal6 = this.engine.getAllLegalMoves('b').filter((m) => !this.isVoid6x6Square(m.tr, m.tc));
@@ -2270,7 +2307,17 @@ export class BattleController {
     }
     if (this.engine.winner) {
       this.handleSinglePlayerGameOver();
+    } else if (this.engine.mode === 'multiparty' && this.engine.turn !== 'w') {
+      // Encadenar el siguiente turno de Bot aliado/rival en Equipos 2v2, 4P FFA o 3P Triada
+      this.render();
+      this.runAITurn();
     } else {
+      if (this.customMod?.gameMode?.earthquakeEvery && this.engine.turnNumber % this.customMod.gameMode.earthquakeEvery === 0 && this.getBoardSize() === 8) {
+        this.triggerEarthquakeChaos();
+      }
+      if (this.customMod?.gameMode?.randomPowers) {
+        this.rollRandomSpecialPower();
+      }
       this.phase = 'PLAYER_TURN';
       this.sound.play('turnChange');
       this.configureBattlePanels();
@@ -2522,6 +2569,9 @@ export class BattleController {
     if (this.mode === 'maya_campaign' && piece.type === 'G' && !piece.shieldIntact) {
       return 'bG_broken';
     }
+    if (['c', 'r', 'y'].includes(piece.color)) {
+      return `b${piece.type}`;
+    }
     return `${piece.color}${piece.type}`;
   }
 
@@ -2626,8 +2676,9 @@ export class BattleController {
             const skinCls = applySkin ? ` ${this.getActivePieceSkin().cssClass}` : '';
             const frozenLeft = this.powerState?.frozenPieces?.[piece.id] || 0;
             if (frozenLeft > 0) sq.classList.add('golden-frozen');
+            const factionCls = ['c', 'r', 'y'].includes(piece.color) ? ` faction-${piece.color}` : '';
             const wrap = document.createElement('div');
-            wrap.className = `piece-wrap${skinCls}${piece.betrayed ? ' blacky-betrayed' : ''}${frozenLeft > 0 ? ' piece-golden-frozen' : ''}`;
+            wrap.className = `piece-wrap${skinCls}${factionCls}${piece.betrayed ? ' blacky-betrayed' : ''}${frozenLeft > 0 ? ' piece-golden-frozen' : ''}`;
             wrap.innerHTML = SVGS[svgKey] || MITTENS_SVGS[svgKey] || GALAXY_SVGS[svgKey] || GLITCH_SVGS[svgKey] || CHESS_ORIGIN_SVGS[svgKey] || '';
             if (piece.isBase || (this.mode === 'galaxy' && this.engine.hasGalaxyMan && piece.color === 'b' && (piece.type === 'B' || piece.type === 'N'))) {
               wrap.insertAdjacentHTML('beforeend', `<span class="base-crest" title="Objetivo Crítico"></span>`);
@@ -2756,7 +2807,11 @@ export class BattleController {
       bannerText.textContent = this.engine.winner === 'draw' ? 'TABLAS' : (won ? 'VICTORIA' : 'DERROTA');
     } else if (this.phase === 'AI_THINKING') {
       banner.classList.add('ai-thinking');
-      bannerText.textContent = this.mode === 'online' ? `TURNO DE ${this.onlineMeta.opponent.username.toUpperCase()}` : `${this.bossName.toUpperCase()} CALCULANDO...`;
+      if (this.engine.mode === 'multiparty' && FACTION_META[this.engine.turn]) {
+        bannerText.textContent = `TURNO DE ${FACTION_META[this.engine.turn].name.toUpperCase()}...`;
+      } else {
+        bannerText.textContent = this.mode === 'online' ? `TURNO DE ${this.onlineMeta.opponent.username.toUpperCase()}` : `${this.bossName.toUpperCase()} CALCULANDO...`;
+      }
     } else if (this.phase === 'AI_EXECUTING') {
       banner.classList.add('ai-executing');
       bannerText.textContent = `TURNO DE ${this.bossName.toUpperCase()}`;

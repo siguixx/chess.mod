@@ -38,7 +38,7 @@ export function createChessServer({
   const authMiddleware = createAuthMiddleware(db);
   const multiplayer = new MultiplayerManager(io, db, antiCheat);
 
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json({ limit: '3mb' }));
   app.use(cookieParser());
 
   // Healthcheck público para Render.com / Koyeb ($0 Free Tier)
