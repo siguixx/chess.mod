@@ -128,6 +128,7 @@ export class SuperChessAI {
     this.nodes = 0;
     this.deadline = 0;
     this.aborted = false;
+    this.qDepth = 5;
   }
 
   hashBoard(board, turn) {
@@ -507,7 +508,7 @@ export class SuperChessAI {
     }
 
     if (depth <= 0) {
-      return this.quiescence(board, alpha, beta, color, 5);
+      return this.quiescence(board, alpha, beta, color, this.qDepth);
     }
 
     const moves = this.generateLegalMoves(board, color, false);
@@ -556,14 +557,14 @@ export class SuperChessAI {
     return bestScore;
   }
 
-  chooseBestMove(state, { maxDepth = 5, thinkTimeMs = 1100, color = 'b' } = {}) {
+  chooseBestMove(state, { maxDepth = 5, thinkTimeMs = 1100, color = 'b', qDepth = 5, noise = 0, blunderChance = 0, useBook = true } = {}) {
     const board = state.board.map((row) => row.map((p) => (p ? { ...p } : null)));
     const legal = this.generateLegalMoves(board, color, false);
     if (legal.length === 0) return null;
     if (legal.length === 1) return { move: legal[0], depth: 1, nodes: 1, book: false };
 
-    // Libro de aperturas básico en turno 1 para Negras
-    if (color === 'b' && state.turnNumber === 1 && state.lastMoveSquares?.length === 2) {
+    // Libro de aperturas básico en turno 1 para Negras (cuando useBook está activo)
+    if (useBook && color === 'b' && state.turnNumber === 1 && state.lastMoveSquares?.length === 2) {
       const [[fr, fc], [tr, tc]] = state.lastMoveSquares;
       const bookPool = OPENING_RESPONSES_BLACK[`${fr},${fc}->${tr},${tc}`];
       if (bookPool) {
@@ -575,28 +576,35 @@ export class SuperChessAI {
 
     this.nodes = 0;
     this.aborted = false;
+    this.qDepth = Math.max(0, Number.isFinite(qDepth) ? qDepth : 5);
     this.deadline = performance.now() + thinkTimeMs;
     this.killers.forEach((k) => { k[0] = null; k[1] = null; });
     this.history.fill(0);
 
     let bestMove = legal[0];
     let completedDepth = 1;
+    let lastScoredMoves = [];
     const opp = color === 'w' ? 'b' : 'w';
+    const humanized = noise > 0 || blunderChance > 0;
 
     for (let depth = 1; depth <= maxDepth; depth++) {
       let iterBest = bestMove;
       let iterScore = -Infinity;
       let alpha = -Infinity;
       const beta = Infinity;
+      const iterScored = [];
 
       const bestKey = this.moveKey(bestMove);
       legal.sort((a, b) => this.scoreMoveOrder(board, b, bestKey, 0) - this.scoreMoveOrder(board, a, bestKey, 0));
 
       for (const m of legal) {
         const undo = this.makeMove(board, m);
-        const score = -this.alphaBeta(board, depth - 1, -beta, -alpha, opp, 1);
+        // En modo humanizado (Cap. 5 progresivo) evaluamos cada jugada raíz con ventana completa para rankear alternativas reales
+        const searchAlpha = humanized && depth === maxDepth ? -Infinity : alpha;
+        const score = -this.alphaBeta(board, depth - 1, -beta, -searchAlpha, opp, 1);
         this.unmakeMove(board, m, undo);
         if (this.aborted) break;
+        iterScored.push({ move: m, score });
         if (score > iterScore) {
           iterScore = score;
           iterBest = m;
@@ -607,9 +615,33 @@ export class SuperChessAI {
       if (!this.aborted) {
         bestMove = iterBest;
         completedDepth = depth;
+        lastScoredMoves = iterScored;
         if (iterScore >= 85000) break; // Mate forzado encontrado
       } else {
         break;
+      }
+    }
+
+    if (humanized && lastScoredMoves.length > 1) {
+      lastScoredMoves.sort((a, b) => b.score - a.score);
+      // Nunca dejar escapar un jaque mate inmediato
+      if (lastScoredMoves[0].score < 85000) {
+        if (noise > 0) {
+          const jittered = lastScoredMoves.map((entry) => ({
+            move: entry.move,
+            score: entry.score,
+            noisy: entry.score + (Math.random() * noise * 2 - noise)
+          }));
+          jittered.sort((a, b) => b.noisy - a.noisy);
+          bestMove = jittered[0].move;
+        }
+        if (blunderChance > 0 && Math.random() < blunderChance) {
+          const topMargin = lastScoredMoves[0].score - 280;
+          const candidates = lastScoredMoves.slice(1, 4).filter((e) => e.score > -50000 && e.score >= topMargin);
+          if (candidates.length > 0) {
+            bestMove = candidates[Math.floor(Math.random() * candidates.length)].move;
+          }
+        }
       }
     }
 

@@ -14,7 +14,11 @@ export class SoundEngine {
 
     this.tracks = {
       maya: document.getElementById('boss-music-audio'),
+      maya_campaign: document.getElementById('maya-campaign-music-audio'),
       mittens: document.getElementById('mittens-music-audio'),
+      galaxy: document.getElementById('galaxy-music-audio'),
+      glitch: document.getElementById('glitch-music-audio'),
+      chess: document.getElementById('chess-music-audio'),
       blacky: document.getElementById('blacky-music-audio')
     };
     this.bossAudio = this.tracks.maya;

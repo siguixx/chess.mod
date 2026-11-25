@@ -8,19 +8,29 @@ const rootDir = path.resolve(__dirname, '..');
 const clientDir = path.join(rootDir, 'client');
 const outHtmlPath = path.join(rootDir, 'CHESS_MOD_COMPLETO.html');
 
-// 1. Codificar assets binarios en base64 (logo, mittens_ref.png, glitch_texture.jpg y 3 pistas MP3)
+// 1. Codificar assets binarios en base64 (logo, mittens_ref.png, blacky_ref.jpg, glitch_texture.jpg y 7 pistas MP3)
 const mittensImgPath = path.join(clientDir, 'assets', 'images', 'mittens_ref.png');
+const blackyImgPath = path.join(clientDir, 'assets', 'images', 'blacky_ref.jpg');
 const logoImgPath = path.join(clientDir, 'assets', 'images', 'chess_mod_logo.jpg');
 const glitchTexPath = path.join(clientDir, 'assets', 'images', 'glitch_texture.jpg');
 const musicPath = path.join(clientDir, 'assets', 'audio', 'Ultimate Battle.mp3');
+const mayaCampMusicPath = path.join(clientDir, 'assets', 'audio', 'MayaCampaignBattle.mp3');
 const mittensMusicPath = path.join(clientDir, 'assets', 'audio', 'FreeMittensBattle.mp3');
+const galaxyMusicPath = path.join(clientDir, 'assets', 'audio', 'GalaxyBattle.mp3');
+const glitchMusicPath = path.join(clientDir, 'assets', 'audio', 'GlitchBattle.mp3');
+const chessMusicPath = path.join(clientDir, 'assets', 'audio', 'ChessBattle.mp3');
 const blackyMusicPath = path.join(clientDir, 'assets', 'audio', 'BlackyBattle.mp3');
 
 const mittensDataUri = `data:image/png;base64,${fs.readFileSync(mittensImgPath).toString('base64')}`;
+const blackyDataUri = `data:image/jpeg;base64,${fs.readFileSync(blackyImgPath).toString('base64')}`;
 const logoDataUri = `data:image/jpeg;base64,${fs.readFileSync(logoImgPath).toString('base64')}`;
 const glitchTexDataUri = `data:image/jpeg;base64,${fs.readFileSync(glitchTexPath).toString('base64')}`;
 const musicDataUri = `data:audio/mpeg;base64,${fs.readFileSync(musicPath).toString('base64')}`;
+const mayaCampMusicDataUri = `data:audio/mpeg;base64,${fs.readFileSync(mayaCampMusicPath).toString('base64')}`;
 const mittensMusicDataUri = `data:audio/mpeg;base64,${fs.readFileSync(mittensMusicPath).toString('base64')}`;
+const galaxyMusicDataUri = `data:audio/mpeg;base64,${fs.readFileSync(galaxyMusicPath).toString('base64')}`;
+const glitchMusicDataUri = `data:audio/mpeg;base64,${fs.readFileSync(glitchMusicPath).toString('base64')}`;
+const chessMusicDataUri = `data:audio/mpeg;base64,${fs.readFileSync(chessMusicPath).toString('base64')}`;
 const blackyMusicDataUri = `data:audio/mpeg;base64,${fs.readFileSync(blackyMusicPath).toString('base64')}`;
 
 // 2. CSS combinado inline (todos los 4 archivos CSS)
@@ -328,6 +338,7 @@ const appBuild = await esbuild.build({
         build.onLoad({ filter: /(portraits|svgs)\.js$/ }, (args) => {
           let src = fs.readFileSync(args.path, 'utf8');
           src = src.replaceAll('/assets/images/mittens_ref.png', mittensDataUri);
+          src = src.replaceAll('/assets/images/blacky_ref.jpg', blackyDataUri);
           src = src.replaceAll('/assets/images/glitch_texture.jpg', glitchTexDataUri);
           return { contents: src, loader: 'js' };
         });
@@ -356,10 +367,15 @@ html = html.replace(
   `<style>\n${combinedCss}\n</style>`
 );
 
-// Reemplazar el logo oficial y las 3 pistas de jefes por Data URIs embebidos
+// Reemplazar el logo oficial, retrato de Blacky y las 7 pistas de batallas/jefes por Data URIs embebidos
 html = html.replaceAll('/assets/images/chess_mod_logo.jpg', logoDataUri);
+html = html.replaceAll('/assets/images/blacky_ref.jpg', blackyDataUri);
 html = html.replaceAll('/assets/audio/Ultimate%20Battle.mp3', musicDataUri);
+html = html.replaceAll('/assets/audio/MayaCampaignBattle.mp3', mayaCampMusicDataUri);
 html = html.replaceAll('/assets/audio/FreeMittensBattle.mp3', mittensMusicDataUri);
+html = html.replaceAll('/assets/audio/GalaxyBattle.mp3', galaxyMusicDataUri);
+html = html.replaceAll('/assets/audio/GlitchBattle.mp3', glitchMusicDataUri);
+html = html.replaceAll('/assets/audio/ChessBattle.mp3', chessMusicDataUri);
 html = html.replaceAll('/assets/audio/BlackyBattle.mp3', blackyMusicDataUri);
 
 // Quitar socket.io externo (no aplica en modo archivo descargable offline) y reemplazar el <script type="module"> por nuestro bundle inline

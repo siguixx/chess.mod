@@ -28,52 +28,57 @@ export class MayaCampaignEngine {
     this.hasPyramid = false;
     this.board = Array.from({ length: 8 }, () => Array(8).fill(null));
 
-    // Ejército blanco estándar (16 piezas clásicas)
+    // Ejército blanco estándar (16 piezas clásicas) + Casas Inmortales defensivas
     const back = ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'];
     for (let c = 0; c < 8; c++) {
       this.board[7][c] = { id: `w${back[c]}${c}`, color: 'w', type: back[c], hasMoved: false };
       this.board[6][c] = { id: `wP${c}`, color: 'w', type: 'P', hasMoved: false };
     }
+    if (this.levelId <= 2) {
+      // Niveles 1-2: 1 Casa Blanca Inmortal en d3 para cubrir el avance
+      this.board[5][3] = { id: 'wH1', color: 'w', type: 'H' };
+    } else {
+      // Niveles 3-4: 2 Casas Blancas Inmortales (c3 y f3)
+      this.board[5][2] = { id: 'wH1', color: 'w', type: 'H' };
+      this.board[5][5] = { id: 'wH2', color: 'w', type: 'H' };
+    }
 
-    // Formación Maya según nivel (1-4), SIEMPRE sin Pirámide 2×2
+    // Formación Maya progresiva (Muy Fácil -> Medio), SIEMPRE sin Pirámide 2×2
     for (let c = 0; c < 8; c++) {
       this.board[0][c] = { id: `b${back[c]}${c}`, color: 'b', type: back[c], hasMoved: false };
       this.board[1][c] = { id: `bP${c}`, color: 'b', type: 'P', hasMoved: false };
     }
 
     if (this.levelId === 1) {
-      // Nivel 1 — Centinelas de Obsidiana: Fichas Arqueras (A)
+      // Nivel 1 — Centinelas de Obsidiana (Muy Fácil): sin Dama enemiga y solo 2 Arqueras (A)
       this.board[0][2] = { id: 'bA1', color: 'b', type: 'A' }; // c8
       this.board[0][5] = { id: 'bA2', color: 'b', type: 'A' }; // f8
-      this.board[2][1] = { id: 'bA3', color: 'b', type: 'A' }; // b6
-      this.board[2][6] = { id: 'bA4', color: 'b', type: 'A' }; // g6
+      this.board[0][3] = null; // Sin Dama en el primer nivel
       this.board[1][1] = null;
       this.board[1][6] = null;
     } else if (this.levelId === 2) {
-      // Nivel 2 — Guardia de Jade: Escuderos de Jade (G)
-      this.board[2][2] = { id: 'bG1', color: 'b', type: 'G', shieldIntact: true }; // c6
-      this.board[2][3] = { id: 'bG2', color: 'b', type: 'G', shieldIntact: true }; // d6
-      this.board[2][4] = { id: 'bG3', color: 'b', type: 'G', shieldIntact: true }; // e6
-      this.board[2][5] = { id: 'bG4', color: 'b', type: 'G', shieldIntact: true }; // f6
+      // Nivel 2 — Guardia de Jade (Fácil): sin Dama enemiga y 2 Escuderos de Jade (G)
+      this.board[0][3] = null;
+      this.board[2][3] = { id: 'bG1', color: 'b', type: 'G', shieldIntact: true }; // d6
+      this.board[2][4] = { id: 'bG2', color: 'b', type: 'G', shieldIntact: true }; // e6
       this.board[1][2] = null;
       this.board[1][5] = null;
     } else if (this.levelId === 3) {
-      // Nivel 3 — Acechadores del Jaguar: Jaguares de Piedra (J)
+      // Nivel 3 — Acechadores del Jaguar (Fácil-Medio): 3 Jaguares de Piedra (J)
       this.board[0][1] = { id: 'bJ1', color: 'b', type: 'J' };
       this.board[0][6] = { id: 'bJ2', color: 'b', type: 'J' };
       this.board[2][3] = { id: 'bJ3', color: 'b', type: 'J' };
-      this.board[2][4] = { id: 'bJ4', color: 'b', type: 'J' };
       this.board[1][3] = null;
       this.board[1][4] = null;
     } else if (this.levelId === 4) {
-      // Nivel 4 — Sacerdotes del Eclipse: Chamanes Solares (C) + Arqueras (A) + Escuderos (G)
+      // Nivel 4 — Sacerdotes del Eclipse (Medio): 1 Chamán Solar (C) + 2 Arqueras (A) + 2 Escuderos (G)
       this.board[0][2] = { id: 'bA1', color: 'b', type: 'A' };
       this.board[0][5] = { id: 'bA2', color: 'b', type: 'A' };
       this.board[2][2] = { id: 'bG1', color: 'b', type: 'G', shieldIntact: true };
       this.board[2][5] = { id: 'bG2', color: 'b', type: 'G', shieldIntact: true };
-      this.board[2][3] = { id: 'bC1', color: 'b', type: 'C', pushCooldown: 0 };
-      this.board[2][4] = { id: 'bC2', color: 'b', type: 'C', pushCooldown: 1 };
+      this.board[2][3] = { id: 'bC1', color: 'b', type: 'C', pushCooldown: 1 };
       this.board[1][2] = null;
+      this.board[1][3] = null;
       this.board[1][5] = null;
     }
 
@@ -88,10 +93,10 @@ export class MayaCampaignEngine {
     this.clocks = minutes > 0 ? { w: minutes * 60, b: minutes * 60 } : { w: null, b: null };
 
     const introTexts = {
-      1: 'Nivel 1 — Centinelas de Obsidiana: Cuidado con las Arqueras de Obsidiana (A), disparan en diagonal sin moverse.',
-      2: 'Nivel 2 — Guardia de Jade: Los Escuderos de Jade (G) absorben el primer ataque frontal con su escudo. Flanquéalos o golpea dos veces.',
-      3: 'Nivel 3 — Acechadores del Jaguar: Los Jaguares de Piedra (J) saltan exactamente 2 casillas en línea recta sobre cualquier pieza.',
-      4: 'Nivel 4 — Sacerdotes del Eclipse: Los Chamanes Solares (C) empujan piezas adyacentes cada 3 turnos junto a Arqueras y Escuderos.'
+      1: 'Nivel 1 — Centinelas de Obsidiana: Las Arqueras (A) disparan hasta 3 casillas en diagonal. Tu Casa Inmortal (d3) escuda a tus piezas adyacentes contra flechas.',
+      2: 'Nivel 2 — Guardia de Jade: Los Escuderos de Jade (G) absorben el primer ataque frontal. Flanquéalos o golpea dos veces; tu Casa Inmortal asegura el centro.',
+      3: 'Nivel 3 — Acechadores del Jaguar: Los Jaguares (J) saltan 2 casillas en línea recta, pero tus 2 Casas Inmortales (c3, f3) impiden que ataquen piezas escudadas.',
+      4: 'Nivel 4 — Sacerdotes del Eclipse: El Chamán Solar (C) empuja cada 4 turnos junto a Arqueras y Escuderos. Tus 2 Casas Inmortales bloquean flechas y empujes.'
     };
     this.logs = [{ turn: 0, type: 'special', text: introTexts[this.levelId] }];
     this.history = [];
@@ -161,6 +166,28 @@ export class MayaCampaignEngine {
     return null;
   }
 
+  isProtectedByCasa(r, c) {
+    const p = this.board[r]?.[c];
+    if (!p || p.color !== 'w' || p.type === 'H') return false;
+    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      const nr = r + dr, nc = c + dc;
+      if (inBounds(nr, nc) && this.board[nr][nc]?.color === 'w' && this.board[nr][nc]?.type === 'H') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  getProtectedWhiteSquares() {
+    const set = new Set();
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        if (this.isProtectedByCasa(r, c)) set.add(`${r},${c}`);
+      }
+    }
+    return set;
+  }
+
   /**
    * Comprueba si un ataque desde (fr, fc) hacia el Escudero de Jade en (tr, tc) es frontal.
    * Los Escuderos negros miran hacia el sur (hacia las filas blancas), por lo que un ataque
@@ -179,12 +206,13 @@ export class MayaCampaignEngine {
         const p = this.board[r][c];
         if (!p || p.type !== 'A') continue;
         for (const [dr, dc] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
-          for (let step = 1; step <= 4; step++) {
+          for (let step = 1; step <= 3; step++) {
             const nr = r + dr * step;
             const nc = c + dc * step;
             if (!inBounds(nr, nc)) break;
             const occ = this.board[nr][nc];
             if (occ && occ.color === p.color) break;
+            if (occ?.type === 'H') break;
             set.add(`${nr},${nc}`);
             if (occ) break;
           }
@@ -199,16 +227,28 @@ export class MayaCampaignEngine {
     if (!p) return [];
     const moves = [];
 
-    // 1. ARQUERA DE OBSIDIANA ('A'): NO puede moverse; ataca a distancia en diagonal (hasta 4 casillas)
+    // 0. CASA BLANCA INMORTAL ('H'): 1 casilla ortogonal a casilla vacía, inmortal, escuda piezas adyacentes
+    if (p.type === 'H') {
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const nr = r + dr, nc = c + dc;
+        if (inBounds(nr, nc) && !this.board[nr][nc]) {
+          moves.push({ fr: r, fc: c, tr: nr, tc: nc });
+        }
+      }
+      return moves;
+    }
+
+    // 1. ARQUERA DE OBSIDIANA ('A'): NO puede moverse; ataca a distancia en diagonal (hasta 3 casillas)
+    //    No puede herir a una Casa Inmortal ni a piezas blancas escudadas por una Casa.
     if (p.type === 'A') {
       for (const [dr, dc] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
-        for (let step = 1; step <= 4; step++) {
+        for (let step = 1; step <= 3; step++) {
           const nr = r + dr * step;
           const nc = c + dc * step;
           if (!inBounds(nr, nc)) break;
           const occ = this.board[nr][nc];
           if (!occ) continue;
-          if (occ.color !== p.color) {
+          if (occ.color !== p.color && occ.type !== 'H' && !this.isProtectedByCasa(nr, nc)) {
             moves.push({ fr: r, fc: c, tr: nr, tc: nc, isRangedAttack: true });
           }
           break;
@@ -223,7 +263,7 @@ export class MayaCampaignEngine {
         const nr = r + dr, nc = c + dc;
         if (!inBounds(nr, nc)) continue;
         const occ = this.board[nr][nc];
-        if (!occ || occ.color !== p.color) {
+        if (!occ || (occ.color !== p.color && occ.type !== 'H')) {
           moves.push({ fr: r, fc: c, tr: nr, tc: nc });
         }
       }
@@ -231,19 +271,20 @@ export class MayaCampaignEngine {
     }
 
     // 3. JAGUAR DE PIEDRA ('J'): Salta exactamente 2 casillas en línea recta ortogonal (salta piezas intermedias)
+    //    No puede aterrizar sobre una Casa ni sobre una pieza blanca protegida por Casa.
     if (p.type === 'J') {
       for (const [dr, dc] of [[-2, 0], [2, 0], [0, -2], [0, 2]]) {
         const nr = r + dr, nc = c + dc;
         if (!inBounds(nr, nc)) continue;
         const occ = this.board[nr][nc];
-        if (!occ || occ.color !== p.color) {
+        if (!occ || (occ.color !== p.color && occ.type !== 'H' && !this.isProtectedByCasa(nr, nc))) {
           moves.push({ fr: r, fc: c, tr: nr, tc: nc, isJaguarLeap: true });
         }
       }
       return moves;
     }
 
-    // 4. CHAMÁN SOLAR ('C'): Se mueve 1 casilla SIN capturar; cada 3 turnos empuja 1 casilla a un rival adyacente
+    // 4. CHAMÁN SOLAR ('C'): Se mueve 1 casilla SIN capturar; cada 4 turnos empuja 1 casilla a un rival adyacente no protegido por Casa
     if (p.type === 'C') {
       for (let dr = -1; dr <= 1; dr++) {
         for (let dc = -1; dc <= 1; dc++) {
@@ -253,7 +294,7 @@ export class MayaCampaignEngine {
           const occ = this.board[nr][nc];
           if (!occ) {
             moves.push({ fr: r, fc: c, tr: nr, tc: nc });
-          } else if (occ.color !== p.color && (p.pushCooldown || 0) === 0) {
+          } else if (occ.color !== p.color && occ.type !== 'H' && !this.isProtectedByCasa(nr, nc) && (p.pushCooldown || 0) === 0) {
             const pr = nr + dr;
             const pc = nc + dc;
             if (inBounds(pr, pc) && !this.board[pr][pc]) {
@@ -285,7 +326,7 @@ export class MayaCampaignEngine {
         const tc = c + dc;
         if (inBounds(nr, tc)) {
           const target = this.board[nr][tc];
-          if (target && target.color !== p.color) {
+          if (target && target.color !== p.color && target.type !== 'H') {
             moves.push({ fr: r, fc: c, tr: nr, tc });
           } else if (this.enPassantTarget && this.enPassantTarget.r === nr && this.enPassantTarget.c === tc) {
             const epPawn = this.board[r][tc];
@@ -300,7 +341,7 @@ export class MayaCampaignEngine {
         const nr = r + dr, nc = c + dc;
         if (!inBounds(nr, nc)) continue;
         const target = this.board[nr][nc];
-        if (!target || target.color !== p.color) moves.push({ fr: r, fc: c, tr: nr, tc: nc });
+        if (!target || (target.color !== p.color && target.type !== 'H')) moves.push({ fr: r, fc: c, tr: nr, tc: nc });
       }
     } else if (p.type === 'K') {
       for (let dr = -1; dr <= 1; dr++) {
@@ -309,7 +350,7 @@ export class MayaCampaignEngine {
           const nr = r + dr, nc = c + dc;
           if (!inBounds(nr, nc)) continue;
           const target = this.board[nr][nc];
-          if (!target || target.color !== p.color) moves.push({ fr: r, fc: c, tr: nr, tc: nc });
+          if (!target || (target.color !== p.color && target.type !== 'H')) moves.push({ fr: r, fc: c, tr: nr, tc: nc });
         }
       }
       if (includeCastling && !p.hasMoved && c === 4 && (r === 7 || r === 0)) {
@@ -340,7 +381,7 @@ export class MayaCampaignEngine {
           if (!target) {
             moves.push({ fr: r, fc: c, tr: nr, tc: nc });
           } else {
-            if (target.color !== p.color) moves.push({ fr: r, fc: c, tr: nr, tc: nc });
+            if (target.color !== p.color && target.type !== 'H') moves.push({ fr: r, fc: c, tr: nr, tc: nc });
             break;
           }
           nr += dr; nc += dc;
@@ -355,8 +396,7 @@ export class MayaCampaignEngine {
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 8; c++) {
         const p = this.board[r][c];
-        if (!p || p.color !== color) continue;
-        if (p.type === 'C') continue; // El Chamán no captura
+        if (!p || p.color !== color || p.type === 'H' || p.type === 'C') continue;
         if (p.type === 'P') {
           const nr = r + (color === 'w' ? -1 : 1);
           for (const dc of [-1, 1]) {
@@ -364,11 +404,13 @@ export class MayaCampaignEngine {
           }
         } else if (p.type === 'A') {
           for (const [dr, dc] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
-            for (let step = 1; step <= 4; step++) {
+            for (let step = 1; step <= 3; step++) {
               const nr = r + dr * step, nc = c + dc * step;
               if (!inBounds(nr, nc)) break;
-              set.add(`${nr},${nc}`);
-              if (this.board[nr][nc]) break;
+              const occ = this.board[nr][nc];
+              if (occ?.type === 'H') break;
+              if (!this.isProtectedByCasa(nr, nc)) set.add(`${nr},${nc}`);
+              if (occ) break;
             }
           }
         } else {
@@ -466,6 +508,8 @@ export class MayaCampaignEngine {
       shieldBlocked: false,
       isRangedAttack: false,
       isShamanPush: false,
+      casaMoved: piece?.type === 'H',
+      casaProtectedCount: 0,
       pushTo: null,
       to: [move.tr, move.tc]
     };
@@ -493,11 +537,11 @@ export class MayaCampaignEngine {
         });
       }
     } else if (move.isShamanPush) {
-      // Chamán Solar empuja 1 casilla a una pieza rival adyacente y entra en enfriamiento de 3 turnos
+      // Chamán Solar empuja 1 casilla a una pieza rival adyacente y entra en enfriamiento de 4 turnos
       const victim = this.board[move.tr][move.tc];
       this.board[move.pushR][move.pushC] = victim;
       this.board[move.tr][move.tc] = null;
-      piece.pushCooldown = 3;
+      piece.pushCooldown = 4;
       events.isShamanPush = true;
       events.pushTo = [move.pushR, move.pushC];
       this.enPassantTarget = null;
@@ -553,6 +597,15 @@ export class MayaCampaignEngine {
           events.captured = target;
           if (actingColor === 'w') this.capturedByWhite.push({ color: target.color, type: target.type });
           else this.capturedByBlack.push({ color: target.color, type: target.type });
+        }
+
+        if (events.casaMoved) {
+          for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+            const nr = move.tr + dr, nc = move.tc + dc;
+            if (inBounds(nr, nc) && this.board[nr][nc]?.color === 'w' && this.board[nr][nc]?.type !== 'H') {
+              events.casaProtectedCount++;
+            }
+          }
         }
 
         this.lastMoveSquares = [[move.fr, move.fc], [move.tr, move.tc]];

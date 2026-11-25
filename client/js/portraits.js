@@ -211,83 +211,59 @@ export function getBossPortraitSVG(bossId) {
       </svg>`;
   }
 
-  // === BOSS SECRETO OCULTO POR URL: BLACKY (EL SCHNAUZER · IMPOSIBLE) ===
+  // === BOSS SECRETO OCULTO POR URL: BLACKY (SCHNAUZER HUMANOIDE ESTILO MITTENS · AÚN MÁS EXTREMO) ===
   if (bossId === 'blacky_secret') {
     return `
       <svg class="boss-portrait-svg blacky-portrait-svg" viewBox="0 0 240 240" aria-label="Retrato del Boss Secreto BLACKY">
         <defs>
-          <radialGradient id="bkBg" cx="50%" cy="38%" r="68%">
-            <stop offset="0%" stop-color="#2c2432"/>
-            <stop offset="55%" stop-color="#110e15"/>
-            <stop offset="100%" stop-color="#050407"/>
+          <pattern id="bkCrownCheck" width="10" height="10" patternUnits="userSpaceOnUse">
+            <rect width="10" height="10" fill="#f5f7fb"/>
+            <rect width="5" height="5" fill="#131418"/>
+            <rect x="5" y="5" width="5" height="5" fill="#131418"/>
+          </pattern>
+          <radialGradient id="bkExtremeGlow" cx="50%" cy="46%" r="54%">
+            <stop offset="0%" stop-color="rgba(225,235,255,0.22)"/>
+            <stop offset="65%" stop-color="rgba(160,175,205,0.06)"/>
+            <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
           </radialGradient>
-          <linearGradient id="bkFur" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#232227"/>
-            <stop offset="100%" stop-color="#0b0a0e"/>
-          </linearGradient>
-          <linearGradient id="bkSilver" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#e5e8f0"/>
-            <stop offset="55%" stop-color="#9aa2b0"/>
-            <stop offset="100%" stop-color="#5d6370"/>
-          </linearGradient>
         </defs>
-        <rect width="240" height="240" fill="url(#bkBg)"/>
-        <!-- Partículas oscuras flotantes -->
-        <g class="portrait-star-pulse">
-          <circle cx="28" cy="40" r="2.6" fill="#c94b3c" opacity="0.8"/>
-          <circle cx="212" cy="54" r="2.2" fill="#e5e8f0" opacity="0.7"/>
-          <circle cx="38" cy="178" r="2.4" fill="#9d8df2" opacity="0.65"/>
-          <circle cx="204" cy="170" r="2.8" fill="#c94b3c" opacity="0.8"/>
-          <circle cx="120" cy="22" r="2" fill="#ffffff" opacity="0.6"/>
+        <rect width="240" height="240" fill="#1d1d20"/>
+        <!-- Doble anillo de energía plateada extrema detrás de Blacky (no demoníaco) -->
+        <circle class="portrait-aura-ring" cx="120" cy="122" r="102" fill="none" stroke="rgba(230,238,255,0.34)" stroke-width="2.2" stroke-dasharray="12 5"/>
+        <circle class="portrait-aura-ring" cx="120" cy="122" r="88" fill="url(#bkExtremeGlow)" stroke="rgba(195,212,245,0.22)" stroke-width="1.4" stroke-dasharray="6 8"/>
+        <!-- Retrato oficial estilo Mittens de BLACKY (Schnauzer humanoide) -->
+        <image href="/assets/images/blacky_ref.jpg" x="0" y="12" width="240" height="228" preserveAspectRatio="xMidYMid slice"/>
+        <!-- Rayos y aura blanca/plateada extrema alrededor de sus hombros y cabeza -->
+        <g class="mittens-arm-aura">
+          <path class="mittens-arm-wisp" d="M26 236 C24 184, 58 164, 78 198" stroke="#eaf2ff" stroke-width="3.2"/>
+          <path class="mittens-arm-wisp" d="M214 236 C216 184, 182 164, 162 198" stroke="#eaf2ff" stroke-width="3.2"/>
+          <path class="mittens-arm-wisp" d="M36 122 L48 106 L42 94 L58 76" fill="none" stroke="#ffffff" stroke-width="2.2" opacity="0.82"/>
+          <path class="mittens-arm-wisp" d="M204 122 L192 106 L198 94 L182 76" fill="none" stroke="#ffffff" stroke-width="2.2" opacity="0.82"/>
+          <circle class="mittens-arm-spark" cx="38" cy="184" r="3.4"/>
+          <circle class="mittens-arm-spark" cx="202" cy="184" r="3.4"/>
+          <circle class="mittens-arm-spark" cx="54" cy="54" r="2.4"/>
+          <circle class="mittens-arm-spark" cx="186" cy="54" r="2.4"/>
         </g>
-        <circle class="portrait-aura-ring" cx="120" cy="118" r="98" fill="none" stroke="#c94b3c" stroke-width="2" stroke-dasharray="10 6" opacity="0.5"/>
-
-        <!-- Hombros oscuros y collar con emblema de tablero roto -->
-        <path d="M22 240 L52 178 H188 L218 240 Z" fill="url(#bkFur)" stroke="#3e3c46" stroke-width="2"/>
-        <path d="M62 184 Q120 206 178 184 L184 202 Q120 226 56 202 Z" fill="#17141d" stroke="#c94b3c" stroke-width="2"/>
-        <!-- Emblema de tablero roto en el collar -->
-        <g transform="translate(106,192)">
-          <rect width="28" height="24" rx="4" fill="#100e14" stroke="#efd083" stroke-width="1.6"/>
-          <rect x="3" y="3" width="10" height="8" fill="#ece6d8"/>
-          <rect x="15" y="12" width="10" height="9" fill="#ece6d8"/>
-          <path d="M5 21 L14 11 L23 4" stroke="#c94b3c" stroke-width="2.2"/>
+        <!-- Corona ajedrezada plateada flotante (rango extremo superior) -->
+        <g class="portrait-float-part" transform="translate(120, 34)">
+          <path d="M-30 5 L-36 -18 L-16 -7 L0 -28 L16 -7 L36 -18 L30 5 Z" fill="url(#bkCrownCheck)" stroke="#e5ecf7" stroke-width="2.2" stroke-linejoin="round"/>
+          <rect x="-30" y="2" width="60" height="5.5" rx="2.5" fill="#d9e2f0" stroke="#181a20" stroke-width="1.3"/>
+          <circle cx="0" cy="-29" r="3.8" fill="#ffffff" stroke="#181a20" stroke-width="1.2"/>
         </g>
-
-        <!-- Cabeza de Schnauzer con orejas puntiagudas alerta -->
-        <g class="portrait-float-part">
-          <!-- Orejas puntiagudas de Schnauzer -->
-          <polygon points="68,94 46,24 98,66" fill="#17161b" stroke="#626675" stroke-width="2.2"/>
-          <polygon points="72,82 58,39 91,68" fill="#2b2633"/>
-          <polygon points="172,94 194,24 142,66" fill="#17161b" stroke="#626675" stroke-width="2.2"/>
-          <polygon points="168,82 182,39 149,68" fill="#2b2633"/>
-
-          <!-- Cráneo oscuro de Schnauzer -->
-          <path d="M66 84 Q120 48 174 84 L168 158 Q120 184 72 158 Z" fill="url(#bkFur)" stroke="#484b57" stroke-width="2.4"/>
-
-          <!-- Cejas espesas plateadas características del Schnauzer -->
-          <path d="M62 96 Q88 78 114 96 L108 110 Q84 98 64 108 Z" fill="url(#bkSilver)" stroke="#1b1a20" stroke-width="1.6"/>
-          <path d="M178 96 Q152 78 126 96 L132 110 Q156 98 176 108 Z" fill="url(#bkSilver)" stroke="#1b1a20" stroke-width="1.6"/>
-
-          <!-- Ojos penetrantes con seguimiento ocular -->
-          <g class="js-tracked-eyes">
-            <polygon points="78,108 106,113 102,124 82,122" fill="#09070a"/>
-            <polygon points="162,108 134,113 138,124 158,122" fill="#09070a"/>
-            <circle cx="94" cy="116" r="5" fill="#ff4949"/>
-            <circle cx="146" cy="116" r="5" fill="#ff4949"/>
-            <circle cx="95.5" cy="114.5" r="2" fill="#ffffff"/>
-            <circle cx="147.5" cy="114.5" r="2" fill="#ffffff"/>
+        <!-- Reacciones expresivas nítidas y frías (sin ojos rojos demoníacos) -->
+        <g class="boss-pupil-group js-tracked-eyes">
+          <g class="expr-layer on-thinking">
+            <path d="M74 96 L108 104 M166 96 L132 104" stroke="#e8effa" stroke-width="3.2" stroke-linecap="round"/>
           </g>
-
-          <!-- Barba y bigote plateado espeso de Schnauzer -->
-          <path d="M74 128 Q96 118 120 124 Q144 118 166 128 L172 154 L154 176 L138 166 L120 188 L102 166 L86 176 L68 154 Z" fill="url(#bkSilver)" stroke="#1a1920" stroke-width="2"/>
-          <path d="M90 144 Q120 156 150 144" fill="none" stroke="#454a57" stroke-width="1.8" opacity="0.7"/>
-          <!-- Hocico negro brillante -->
-          <path d="M107 132 Q120 126 133 132 Q130 145 120 146 Q110 145 107 132 Z" fill="#0d0c10" stroke="#4a4e5c" stroke-width="1.4"/>
-          <ellipse cx="116" cy="134" rx="3.2" ry="1.6" fill="#5e6575" opacity="0.65"/>
-
-          <!-- Expresiones de fauces/ladrido -->
-          <path class="expr-layer on-surprised" d="M104 154 Q120 172 136 154 Z" fill="#2c090e" stroke="#ff5e57" stroke-width="2"/>
-          <path class="expr-layer on-happy" d="M102 154 Q120 166 138 154" fill="none" stroke="#ff7a70" stroke-width="2.6" stroke-linecap="round"/>
+          <g class="expr-layer on-happy">
+            <circle cx="94" cy="112" r="5" fill="#ffffff" opacity="0.88"/>
+            <circle cx="146" cy="112" r="5" fill="#ffffff" opacity="0.88"/>
+          </g>
+          <g class="expr-layer on-surprised">
+            <path d="M70 92 L110 106 M170 92 L130 106" stroke="#ffffff" stroke-width="3.8" stroke-linecap="round"/>
+            <circle cx="94" cy="112" r="6" fill="#d8ebff" opacity="0.72"/>
+            <circle cx="146" cy="112" r="6" fill="#d8ebff" opacity="0.72"/>
+          </g>
         </g>
       </svg>`;
   }

@@ -117,14 +117,17 @@ export class HintEngine {
     }
 
     if (engine.mode === 'maya_campaign') {
-      const m = MayaCampaignAI.chooseBestMove(engine, 4, 'w');
+      const m = MayaCampaignAI.chooseBestMove(engine, 5, 'w');
       if (!m) return null;
       const p = engine.board[m.fr][m.fc];
+      if (p.type === 'H') {
+        return { from: [m.fr, m.fc], to: [m.tr, m.tc], text: `Mueve tu Casa Inmortal (${toAlg(m.fr, m.fc)} → ${toAlg(m.tr, m.tc)}) para escudar tus piezas.` };
+      }
       return { from: [m.fr, m.fc], to: [m.tr, m.tc], text: `Juega ${PIECE_NAMES[p.type]} (${toAlg(m.fr, m.fc)} → ${toAlg(m.tr, m.tc)}).` };
     }
 
     if (engine.mode === 'galaxy') {
-      const m = GalaxyAI.chooseBestMove(engine, 4, 'w');
+      const m = GalaxyAI.chooseBestMove(engine, 5, 'w');
       if (!m) return null;
       const p = engine.board[m.fr][m.fc];
       const t = engine.board[m.tr][m.tc];
@@ -135,10 +138,13 @@ export class HintEngine {
     }
 
     if (engine.mode === 'glitch') {
-      const m = GlitchAI.chooseBestMove(engine, 4, 'w');
+      const m = GlitchAI.chooseBestMove(engine, 5, 'w');
       if (!m) return null;
       const p = engine.board[m.fr][m.fc];
-      return { from: [m.fr, m.fc], to: [m.tr, m.tc], text: `Esquiva las grietas con ${PIECE_NAMES[p.type]} (${toAlg(m.fr, m.fc)} → ${toAlg(m.tr, m.tc)}).` };
+      if (m.sealsRift) {
+        return { from: [m.fr, m.fc], to: [m.tr, m.tc], text: `Mueve tu Cortafuegos (${toAlg(m.fr, m.fc)} → ${toAlg(m.tr, m.tc)}) para sellar la Grieta de Vacío.` };
+      }
+      return { from: [m.fr, m.fc], to: [m.tr, m.tc], text: `Juega ${PIECE_NAMES[p.type]} (${toAlg(m.fr, m.fc)} → ${toAlg(m.tr, m.tc)}).` };
     }
 
     if (engine.mode === 'chess_final') {

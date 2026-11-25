@@ -89,18 +89,18 @@ export class MayaBossAI {
     return s;
   }
 
-  static chooseBestMove(engine, difficulty = 5) {
+  static chooseBestMove(engine, difficulty = 3) {
     const moves = engine.getAllLegalMoves('b');
     if (moves.length === 0) return null;
 
     moves.sort((a, b) => this.scoreMoveOrder(engine, b, 'b') - this.scoreMoveOrder(engine, a, 'b'));
-    const diff = Math.max(1, Math.min(5, difficulty || 5));
-    const maxCandidates = Math.min(diff >= 4 ? 26 : 18, moves.length);
-    const maxReplies = diff >= 4 ? 18 : 12;
-    const noiseRange = [95, 55, 28, 12, 5][diff - 1];
+    const diff = Math.max(1, Math.min(5, difficulty || 3));
+    const maxCandidates = Math.min([12, 15, 18, 22, 26][diff - 1], moves.length);
+    const maxReplies = [0, 6, 9, 13, 18][diff - 1];
+    const noiseRange = [210, 145, 95, 48, 6][diff - 1];
+    const blunderChance = [0.30, 0.20, 0.12, 0.05, 0][diff - 1];
 
-    let bestMove = moves[0];
-    let bestScore = -Infinity;
+    const scored = [];
 
     for (let i = 0; i < maxCandidates; i++) {
       const move = moves[i];
@@ -112,6 +112,8 @@ export class MayaBossAI {
       if (sim.winner === 'b') return move;
       if (sim.winner === 'w') {
         val = -100000;
+      } else if (maxReplies === 0) {
+        val = this.evaluate(sim);
       } else {
         const wMoves = sim.getAllLegalMoves('w');
         if (wMoves.length === 0) {
@@ -126,19 +128,21 @@ export class MayaBossAI {
             sim2.executeWhiteMove(wMoves[j], 'Q', false);
             const ev = this.evaluate(sim2);
             if (ev < val) val = ev;
-            if (val <= bestScore - noiseRange) break;
           }
         }
       }
 
-      if (move.isPyramid) val += 22;
+      if (move.isPyramid) val += 14;
       val += (Math.random() * noiseRange * 2 - noiseRange);
-
-      if (val > bestScore) {
-        bestScore = val;
-        bestMove = move;
-      }
+      scored.push({ move, val });
     }
-    return bestMove;
+
+    scored.sort((a, b) => b.val - a.val);
+    if (blunderChance > 0 && scored.length > 1 && Math.random() < blunderChance) {
+      const poolSize = Math.min(3, scored.length);
+      const pick = scored[1 + Math.floor(Math.random() * (poolSize - 1))];
+      if (pick && pick.val > -50000) return pick.move;
+    }
+    return scored[0].move;
   }
 }

@@ -261,7 +261,7 @@ export class BattleController {
     });
 
     document.addEventListener('pointerdown', () => {
-      if ((this.mode === 'maya' || this.mode === 'blacky' || (this.mode === 'mittens' && this.engine?.isFreeMittensBoss)) && !this.paused) {
+      if (this.sound.musicWanted && !this.paused) {
         this.sound.ensureMusicPlayingOnGesture();
       }
     });
@@ -389,7 +389,7 @@ export class BattleController {
     this.mode = 'maya';
     this.bossId = 'rey_maya';
     this.bossName = 'Dios Maya';
-    this.aiDifficulty = 5;
+    this.aiDifficulty = campaignMeta?.levelCfg?.aiDifficulty || 3;
     this.campaignMeta = campaignMeta;
     this.onlineMeta = null;
     this.engine = new MayaBossEngine(minutes);
@@ -425,7 +425,7 @@ export class BattleController {
     this.campaignMeta = { campaignId: 'maya', levelId: levelCfg.id, levelCfg };
     this.onlineMeta = null;
     this.engine = new MayaCampaignEngine(levelCfg.id, minutes);
-    this.sound.stopBossMusic();
+    this.sound.startBossMusic('maya_campaign', playIntro);
 
     this.showBattleScreen();
     this.configureBattlePanels();
@@ -494,7 +494,7 @@ export class BattleController {
     this.campaignMeta = { campaignId: 'galaxy', levelId: levelCfg.id, levelCfg };
     this.onlineMeta = null;
     this.engine = new GalaxyEngine(levelCfg.id, minutes);
-    this.sound.stopBossMusic();
+    this.sound.startBossMusic('galaxy', playIntro);
 
     this.showBattleScreen();
     this.configureBattlePanels();
@@ -526,7 +526,7 @@ export class BattleController {
     this.campaignMeta = { campaignId: 'glitch', levelId: levelCfg.id, levelCfg };
     this.onlineMeta = null;
     this.engine = new GlitchEngine(levelCfg.id, minutes);
-    this.sound.stopBossMusic();
+    this.sound.startBossMusic('glitch', playIntro);
 
     this.showBattleScreen();
     this.configureBattlePanels();
@@ -558,7 +558,7 @@ export class BattleController {
     this.campaignMeta = { campaignId: 'chess', levelId: levelCfg.id, levelCfg, chosenPower };
     this.onlineMeta = null;
     this.engine = new ChessFinalEngine(levelCfg.id, chosenPower, minutes);
-    this.sound.stopBossMusic();
+    this.sound.startBossMusic('chess', playIntro);
 
     this.showBattleScreen();
     this.configureBattlePanels();
@@ -742,18 +742,20 @@ export class BattleController {
     if (legend) {
       if (isMayaBoss) {
         legend.innerHTML = `<span class="legend-item"><span class="swatch" style="background:rgba(201,75,60,0.58)"></span>Amenaza Pirámide 2×2</span><span class="legend-item"><span class="swatch" style="border:2px solid #efd083"></span>Escudo Casa</span>`;
+      } else if (isMayaCamp) {
+        legend.innerHTML = `<span class="legend-item"><span class="swatch" style="background:rgba(201,75,60,0.45)"></span>Rango Arquera</span><span class="legend-item"><span class="swatch" style="border:2px solid #efd083"></span>Casa Inmortal (escuda contra poderes Maya)</span>`;
       } else if (isGalaxy) {
         legend.innerHTML = this.engine.hasGalaxyMan
           ? `<span class="legend-item">🌌 Hombre Galaxia 2×2 (Torre) · Elimina TODOS los Alfiles y Caballos</span><span class="legend-item"><span class="swatch" style="border:2px solid #9d8df2"></span>Barrera Universal</span>`
           : `<span class="legend-item">🌌 Piezas Galácticas · Teletransporte cada ${this.engine.teleportMaxCooldown}t · 2 Barreras Universales</span>`;
       } else if (isGlitch) {
-        legend.innerHTML = `<span class="legend-item"><span class="swatch" style="background:#3a1a1f;border:1px solid #c94b3c"></span>Grietas de Vacío (Infranqueables)</span><span class="legend-item">⚡ Corrupción CHESS.MOD · Súper Difícil</span>`;
+        legend.innerHTML = `<span class="legend-item"><span class="swatch" style="background:#3a1a1f;border:1px solid #c94b3c"></span>Grietas de Vacío</span><span class="legend-item"><span class="swatch" style="border:2px solid #9d8df2"></span>Cortafuegos (sellan Grietas y bloquean anomalías)</span>`;
       } else if (isMittens) {
         legend.innerHTML = this.engine.isFreeMittensBoss
           ? `<span class="legend-item">⛓️ Sabio Free Mittens · Conversión exacta 1:1</span><span class="legend-item">🔫 Soldados: 1 clic dispara · Doble clic mueve</span>`
-          : `<span class="legend-item">♟️ ${this.bossName}: transformación exclusiva de su tipo de pieza</span>`;
+          : `<span class="legend-item">♟️ ${this.bossName}</span><span class="legend-item">🔫 Soldados de Agua: 1 clic dispara · Doble clic mueve</span>`;
       } else if (isChessFinal) {
-        legend.innerHTML = `<span class="legend-item">👑 CHESS (Estrategia Pura · Súper IA en Web Worker)</span>`;
+        legend.innerHTML = `<span class="legend-item">👑 CHESS · Ajedrez 100% Limpio</span>`;
       } else if (isBlacky) {
         legend.innerHTML = `<span class="legend-item">🐾 SECRET BOSS: BLACKY (IMPOSIBLE) · Sello · Invocación · Absorción · Traición</span>`;
       } else if (isOnline) {
@@ -880,6 +882,19 @@ export class BattleController {
     const myColor = this.mode === 'online' ? this.onlineMeta.yourColor : 'w';
     if (this.engine.turn !== myColor) return;
 
+    const chosen = this.legalMoves.find((m) => m.tr === r && m.tc === c);
+    if (chosen) {
+      const piece = this.engine.board[chosen.fr][chosen.fc];
+      const promoRank = myColor === 'w' ? 0 : 7;
+      if (!chosen.isWaterShot && !chosen.isPlayerTeleport && piece?.type === 'P' && chosen.tr === promoRank) {
+        this.pendingPromoMove = chosen;
+        document.getElementById('modal-promo')?.classList.add('open');
+        return;
+      }
+      this.commitPlayerMove(chosen, 'Q');
+      return;
+    }
+
     if (this.mode === 'mittens' && this.engine.isSprinkler(r, c)) {
       this.sound.play('waterPush');
       this.vfx.spawnWaterBeam(r, c, r, c);
@@ -893,19 +908,6 @@ export class BattleController {
     if (this.mode === 'blacky' && this.engine.isSealed(r, c) && !this.engine.board[r][c]) {
       this.sound.play('blackySeal');
       this.vfx.spawnBlackySeal(r, c);
-      return;
-    }
-
-    const chosen = this.legalMoves.find((m) => m.tr === r && m.tc === c);
-    if (chosen) {
-      const piece = this.engine.board[chosen.fr][chosen.fc];
-      const promoRank = myColor === 'w' ? 0 : 7;
-      if (!chosen.isWaterShot && !chosen.isPlayerTeleport && piece?.type === 'P' && chosen.tr === promoRank) {
-        this.pendingPromoMove = chosen;
-        document.getElementById('modal-promo')?.classList.add('open');
-        return;
-      }
-      this.commitPlayerMove(chosen, 'Q');
       return;
     }
 
@@ -1052,6 +1054,9 @@ export class BattleController {
           this.vfx.spawnShieldPulse(move.tr, move.tc);
           this.setTempBossMood('mood-triumphant', 1200);
           this.showBossSpeech('¡El Escudo de Jade absorbió tu ataque frontal! Ataca de nuevo o flanquéalo.');
+        } else if (ev?.casaMoved) {
+          this.sound.play(ev.casaProtectedCount > 0 ? 'houseShield' : 'houseMove');
+          this.vfx.spawnShieldPulse(move.tr, move.tc);
         } else if (ev?.captured) {
           this.sound.play('capture');
           this.vfx.spawnSquareBurst(move.tr, move.tc, '#e05a4a', 16, 2.6);
@@ -1061,7 +1066,12 @@ export class BattleController {
         }
       } else {
         const ev = this.engine.executeMove(move, promoType, true);
-        if (ev?.anchorDestroyed) {
+        if (ev?.riftSealed) {
+          this.sound.play('houseShield');
+          this.vfx.spawnShieldPulse(move.tr, move.tc);
+          this.setTempBossMood('mood-angry', 1300);
+          this.showBossSpeech('ERR_PATCH:: ¡Tu Cortafuegos acaba de sellar una Grieta!');
+        } else if (ev?.anchorDestroyed) {
           this.sound.play('baseDestroy');
           this.vfx.spawnGalaxyPortal(move.tr, move.tc);
           this.vfx.triggerBoardShake(true);
@@ -1101,8 +1111,12 @@ export class BattleController {
       else if (this.mode === 'chess_final') {
         const cfg = this.campaignMeta?.levelCfg || {};
         const aiRes = await this.runSuperAiAsync(this.engine.cloneState(), {
-          maxDepth: cfg.maxDepth || 5,
-          thinkTimeMs: cfg.thinkTimeMs || 1100,
+          maxDepth: cfg.maxDepth || 3,
+          thinkTimeMs: cfg.thinkTimeMs || 650,
+          qDepth: cfg.qDepth ?? 2,
+          noise: cfg.aiNoise ?? 0,
+          blunderChance: cfg.blunderChance ?? 0,
+          useBook: cfg.useBook ?? true,
           color: 'b'
         });
         bestMove = aiRes?.move || null;
@@ -1530,8 +1544,8 @@ export class BattleController {
       ? this.engine.getPyramidThreatSquares()
       : ((this.mode === 'galaxy' && this.engine.hasGalaxyMan && this.showThreats) ? this.engine.getGalaxyManThreatSquares() : new Set());
     const pushableSet = (this.mode === 'maya' && this.showThreats) ? this.engine.getPushableBlackSquares() : new Set();
-    const protectedCasaSet = this.mode === 'maya' ? this.engine.getProtectedWhiteSquares() : new Set();
-    const protectedBarrierSet = this.mode === 'galaxy' ? this.engine.getProtectedWhiteSquares() : new Set();
+    const protectedCasaSet = (this.mode === 'maya' || this.mode === 'maya_campaign') ? this.engine.getProtectedWhiteSquares() : new Set();
+    const protectedBarrierSet = (this.mode === 'galaxy' || this.mode === 'glitch') ? this.engine.getProtectedWhiteSquares() : new Set();
     const archerZoneSet = (this.mode === 'maya_campaign' && this.showThreats) ? this.engine.getArcherZoneSquares() : new Set();
     const threatenedBases = this.mode === 'maya'
       ? new Set(this.engine.getBasesStatus().filter((b) => b.alive && b.threatened).map((b) => `${b.pos.r},${b.pos.c}`))
@@ -1617,7 +1631,7 @@ export class BattleController {
           } else if (legal.isPlayerTeleport) {
             sq.classList.add('teleport-target');
           } else {
-            const isCap = Boolean(this.engine.board[r][c] || legal.isEnPassant);
+            const isCap = Boolean(this.engine.board[r][c] || legal.isEnPassant || legal.sealsRift);
             sq.insertAdjacentHTML('beforeend', `<div class="${isCap ? 'capture-ring' : 'move-dot'}"></div>`);
           }
         }
@@ -1751,7 +1765,7 @@ export class BattleController {
         if (descEl) descEl.textContent = this.campaignMeta?.levelCfg?.briefing || '';
       }
     } else if (this.mode === 'mittens') {
-      document.getElementById('mittens-soldiers-count').textContent = this.engine.hasWhiteSoldiers ? `${this.engine.countAliveSoldiers()} / 3` : 'No activos';
+      document.getElementById('mittens-soldiers-count').textContent = this.engine.hasWhiteSoldiers ? `${this.engine.countAliveSoldiers()} / ${this.engine.initialSoldiersCount || 3}` : 'No activos';
       document.getElementById('mittens-sprinkler-pos').textContent = this.engine.sprinkler ? toAlg(this.engine.sprinkler.r, this.engine.sprinkler.c) : 'No activo';
       document.getElementById('mittens-conversions-count').textContent = String(this.engine.conversionsCount);
     } else if (this.mode === 'blacky') {

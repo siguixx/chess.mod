@@ -41,6 +41,14 @@ export class GalaxyEngine {
       this.board[6][c] = { id: `wP_${c}`, color: 'w', type: 'P', hasMoved: false };
     }
 
+    // Progresión gradual en Niveles 1-2
+    if (this.levelId === 1) {
+      this.board[0][6] = null; // Menos 1 Caballo en Nivel 1
+      this.board[1][6] = null;
+    } else if (this.levelId === 2) {
+      this.board[1][7] = null;
+    }
+
     // 2 Barreras Universales inmortales del jugador en c3 y f3
     this.board[5][2] = { id: 'wU1', color: 'w', type: 'U' };
     this.board[5][5] = { id: 'wU2', color: 'w', type: 'U' };
@@ -48,9 +56,9 @@ export class GalaxyEngine {
     this.hasGalaxyMan = this.levelId === 5;
     this.galaxyMan = this.hasGalaxyMan ? { r: 2, c: 3, destroyed: false } : null;
 
-    const cdMap = { 1: 4, 2: 3, 3: 3, 4: 2, 5: 3 };
-    this.teleportMaxCooldown = cdMap[this.levelId] || 3;
-    this.teleportCooldown = 2; // Telegrafiado limpio tras el inicio
+    const cdMap = { 1: 6, 2: 5, 3: 4, 4: 4, 5: 4 };
+    this.teleportMaxCooldown = cdMap[this.levelId] || 4;
+    this.teleportCooldown = this.levelId <= 2 || this.levelId === 5 ? 3 : 2; // Telegrafiado limpio tras el inicio
 
     this.enPassantTarget = null;
     this.turn = 'w';
@@ -265,9 +273,19 @@ export class GalaxyEngine {
     return set;
   }
 
+  isAdjacentToBarrier(r, c) {
+    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      const nr = r + dr, nc = c + dc;
+      if (inBounds(nr, nc) && this.board[nr][nc]?.color === 'w' && this.board[nr][nc]?.type === 'U') {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /**
    * Teletransporte Galáctico (juego limpio): mueve 1 pieza negra no-Rey a una casilla vacía legal
-   * sin caer sobre Barrera Universal ni sobre el Hombre Galaxia 2×2.
+   * sin caer sobre Barrera Universal, junto a una Barrera Universal, ni sobre el Hombre Galaxia 2×2.
    */
   getTeleportMoves() {
     if (this.teleportCooldown > 0) return [];
@@ -279,11 +297,11 @@ export class GalaxyEngine {
         if (p && p.color === 'b' && p.type !== 'K' && p.type !== 'P') candidates.push({ r, c, p });
       }
     }
-    // Generar destinos tácticos limpios (casillas vacías centrales o de ataque sin violar seguridad del Rey)
+    // Generar destinos tácticos limpios (casillas vacías centrales o de ataque sin violar Barreras ni Rey)
     for (const src of candidates) {
       for (let tr = 2; tr <= 5; tr++) {
         for (let tc = 1; tc <= 6; tc++) {
-          if (this.board[tr][tc] || this.isSquareInGalaxyMan(tr, tc)) continue;
+          if (this.board[tr][tc] || this.isSquareInGalaxyMan(tr, tc) || this.isAdjacentToBarrier(tr, tc)) continue;
           if (Math.abs(tr - src.r) + Math.abs(tc - src.c) < 2) continue;
           const m = { fr: src.r, fc: src.c, tr, tc, isTeleport: true };
           if (this.isMoveSafeForKing('b', m)) moves.push(m);

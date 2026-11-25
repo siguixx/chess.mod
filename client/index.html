@@ -16,9 +16,13 @@
 <body>
   <canvas id="bg-vfx-canvas"></canvas>
 
-  <!-- Pistas oficiales de jefes en loop automático -->
+  <!-- Pistas oficiales de batallas y jefes en loop automático -->
   <audio id="boss-music-audio" src="/assets/audio/Ultimate%20Battle.mp3" loop preload="auto"></audio>
+  <audio id="maya-campaign-music-audio" src="/assets/audio/MayaCampaignBattle.mp3" loop preload="auto"></audio>
   <audio id="mittens-music-audio" src="/assets/audio/FreeMittensBattle.mp3" loop preload="auto"></audio>
+  <audio id="galaxy-music-audio" src="/assets/audio/GalaxyBattle.mp3" loop preload="auto"></audio>
+  <audio id="glitch-music-audio" src="/assets/audio/GlitchBattle.mp3" loop preload="auto"></audio>
+  <audio id="chess-music-audio" src="/assets/audio/ChessBattle.mp3" loop preload="auto"></audio>
   <audio id="blacky-music-audio" src="/assets/audio/BlackyBattle.mp3" loop preload="auto"></audio>
 
   <div id="toast-container"></div>
@@ -329,7 +333,7 @@
           <div class="panel-card">
             <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:10px;">Audio Independiente</h3>
             <div class="setting-row">
-              <label for="set-music-vol">🎵 Volumen Música de Jefes (Maya / Free Mittens)</label>
+              <label for="set-music-vol">🎵 Volumen Música de Batallas y Jefes</label>
               <div style="display:flex;align-items:center;gap:10px;">
                 <input id="set-music-vol" type="range" min="0" max="1" step="0.05" value="0.65" style="accent-color:var(--gold);">
                 <span id="set-music-pct" style="min-width:38px;text-align:right;font-size:0.78rem;">65%</span>
@@ -423,16 +427,18 @@
           </g>
         </svg>
 
-        <!-- Presencia monumental del Boss Secreto BLACKY (Schnauzer) detrás del tablero -->
+        <!-- Presencia monumental del Boss Secreto BLACKY (Schnauzer humanoide estilo Mittens extremo) -->
         <svg id="blacky-boss-svg" class="mayan-boss-figure blacky-monument hidden" viewBox="0 0 600 320">
-          <polygon points="205,155 155,32 252,102" fill="#18171d" stroke="#525666" stroke-width="2.4"/>
-          <polygon points="395,155 445,32 348,102" fill="#18171d" stroke="#525666" stroke-width="2.4"/>
-          <path d="M196 132 Q300 64 404 132 L392 268 Q300 308 208 268 Z" fill="#121116" stroke="#c94b3c" stroke-width="2.4"/>
-          <path d="M188 154 Q242 122 292 152 L284 176 Q236 156 194 172 Z" fill="#b4bac7"/>
-          <path d="M412 154 Q358 122 308 152 L316 176 Q364 156 406 172 Z" fill="#b4bac7"/>
-          <path d="M214 202 Q300 184 386 202 L396 254 L350 288 L300 306 L250 288 L204 254 Z" fill="#cfd4df" opacity="0.88"/>
-          <circle cx="255" cy="182" r="9" fill="#ff4949"/>
-          <circle cx="345" cy="182" r="9" fill="#ff4949"/>
+          <defs>
+            <clipPath id="blackyMonClip">
+              <circle cx="300" cy="168" r="126"/>
+            </clipPath>
+          </defs>
+          <circle cx="300" cy="168" r="144" fill="none" stroke="rgba(225,236,255,0.28)" stroke-width="2.5" stroke-dasharray="14 8"/>
+          <circle cx="300" cy="168" r="130" fill="#1a1b20" stroke="#dfe8f7" stroke-width="3"/>
+          <image href="/assets/images/blacky_ref.jpg" x="174" y="42" width="252" height="252" clip-path="url(#blackyMonClip)" preserveAspectRatio="xMidYMid slice"/>
+          <path d="M150 220 L170 185 L158 164 L182 128" fill="none" stroke="#eef5ff" stroke-width="2.6" opacity="0.78"/>
+          <path d="M450 220 L430 185 L442 164 L418 128" fill="none" stroke="#eef5ff" stroke-width="2.6" opacity="0.78"/>
         </svg>
       </div>
     </div>
@@ -573,7 +579,7 @@
         <div class="hud-card hidden" id="mittens-controls-card">
           <div class="hud-card-header"><span>Soldados de Agua</span></div>
           <p style="font-size:0.75rem;color:var(--text-muted);line-height:1.45;">
-            Tus 3 Soldados Blancos (<strong>b2, d2, g2</strong>):<br>
+            Tus Soldados Blancos con pistolas de agua:<br>
             • <strong>1 clic:</strong> Disparar agua y repeler sin moverte.<br>
             • <strong>Doble clic:</strong> Mover como peón.
           </p>

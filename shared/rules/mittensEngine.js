@@ -33,39 +33,42 @@ export class FreeMittensEngine {
     };
     this.transformScope = scopeMap[this.bossId] || 'ALL';
     this.isFreeMittensBoss = this.bossId === 'free_mittens';
-    this.hasSprinkler = this.isFreeMittensBoss;
-    this.hasWhiteSoldiers = this.isFreeMittensBoss;
-    this.sprinkler = this.hasSprinkler ? { r: 4, c: 3 } : null; // d4 solo en Free Mittens
+    // Defensa del jugador en todo el Capítulo 02: Soldados con pistolas de agua y Aspersor desde Nivel 3
+    this.hasWhiteSoldiers = true;
+    this.hasSprinkler = ['hombre_alfil', 'mujer_reina', 'free_mittens'].includes(this.bossId);
+    this.sprinkler = this.hasSprinkler ? { r: 4, c: 3 } : null; // d4
+    const soldierCols = ['mujer_reina', 'free_mittens'].includes(this.bossId) ? [1, 3, 6] : [1, 6];
+    this.initialSoldiersCount = soldierCols.length;
 
     const backRank = ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'];
 
-    // Ejército blanco: 16 piezas (+ 3 peones soldados con pistolas de agua en Free Mittens)
+    // Ejército blanco: 16 piezas con Soldados Blancos armados con pistolas de agua
     for (let c = 0; c < 8; c++) {
       this.board[7][c] = { id: `wB_${c}`, color: 'w', type: backRank[c], hasMoved: false };
-      const isSoldier = this.hasWhiteSoldiers && (c === 1 || c === 3 || c === 6);
+      const isSoldier = this.hasWhiteSoldiers && soldierCols.includes(c);
       this.board[6][c] = { id: `wP_${c}`, color: 'w', type: 'P', hasMoved: false, isSoldier };
     }
 
-    // Formación del jefe del Capítulo 02
+    // Formación progresiva del Capítulo 02 (Fácil -> Medio-Difícil)
     let bossBack = [...backRank];
     if (this.bossId === 'hombre_peon') {
-      bossBack = ['R', 'N', 'B', 'P', 'K', 'B', 'N', 'R'];
+      bossBack = ['R', 'N', 'B', 'P', 'K', 'B', 'N', null];
     } else if (this.bossId === 'hombre_caballo') {
-      bossBack = ['R', 'N', 'N', 'Q', 'K', 'N', 'N', 'R'];
+      bossBack = ['R', 'N', 'B', 'P', 'K', 'N', 'N', 'R'];
     } else if (this.bossId === 'hombre_alfil') {
-      bossBack = ['R', 'B', 'B', 'Q', 'K', 'B', 'B', 'R'];
+      bossBack = ['R', 'B', 'B', 'Q', 'K', 'B', 'N', 'R'];
     } else if (this.bossId === 'mujer_reina') {
-      bossBack = ['R', 'N', 'B', 'Q', 'K', 'Q', 'N', 'R'];
+      bossBack = ['R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R'];
     }
 
     for (let c = 0; c < 8; c++) {
-      this.board[0][c] = { id: `mB_${c}`, color: 'b', type: bossBack[c], hasMoved: false };
+      if (bossBack[c]) {
+        this.board[0][c] = { id: `mB_${c}`, color: 'b', type: bossBack[c], hasMoved: false };
+      }
       this.board[1][c] = { id: `mP_${c}`, color: 'b', type: 'P', hasMoved: false };
     }
-    if (this.bossId === 'hombre_peon') {
-      this.board[2][2] = { id: 'mPx1', color: 'b', type: 'P', hasMoved: true };
-      this.board[2][5] = { id: 'mPx2', color: 'b', type: 'P', hasMoved: true };
-    }
+    if (this.bossId === 'hombre_caballo') this.board[1][3] = null;
+    if (this.bossId === 'hombre_alfil') this.board[1][4] = null;
 
     this.enPassantTarget = null;
     this.turn = 'w';
@@ -89,10 +92,10 @@ export class FreeMittensEngine {
     this.bossTitle = bossTitles[this.bossId] || 'Free Mittens';
 
     const ruleSummary = {
-      P: 'SOLO los Peones enemigos se transforman en la pieza exacta que capturan.',
-      N: 'SOLO los Caballos enemigos se transforman en la pieza exacta que capturan.',
-      B: 'SOLO los Alfiles enemigos se transforman en la pieza exacta que capturan.',
-      Q: 'SOLO la Reina enemiga asimila y recluta la pieza exacta que captura sin perder su rango.',
+      P: 'SOLO los Peones enemigos se transforman al capturar. Cuentas con 2 Soldados Blancos (pistolas de agua) para repelerlos.',
+      N: 'SOLO los Caballos enemigos se transforman al capturar. Cuentas con 2 Soldados Blancos (pistolas de agua) para defender tus líneas.',
+      B: 'SOLO los Alfiles enemigos se transforman al capturar. Cuentas con 2 Soldados Blancos y el Aspersor inmóvil en d4.',
+      Q: 'SOLO la Reina enemiga asimila y recluta la pieza exacta que captura sin perder su rango. Cuentas con 3 Soldados Blancos y el Aspersor en d4.',
       ALL: 'Todas las piezas de Free Mittens asimilan exactamente el tipo capturado. Cuentas con 3 Soldados Blancos (pistolas de agua) y el Aspersor inmóvil en d4.'
     }[this.transformScope];
 
@@ -113,6 +116,7 @@ export class FreeMittensEngine {
       isFreeMittensBoss: this.isFreeMittensBoss,
       hasSprinkler: this.hasSprinkler,
       hasWhiteSoldiers: this.hasWhiteSoldiers,
+      initialSoldiersCount: this.initialSoldiersCount,
       board: this.board,
       sprinkler: this.sprinkler,
       enPassantTarget: this.enPassantTarget,
@@ -138,6 +142,7 @@ export class FreeMittensEngine {
     this.isFreeMittensBoss = Boolean(s.isFreeMittensBoss);
     this.hasSprinkler = Boolean(s.hasSprinkler);
     this.hasWhiteSoldiers = Boolean(s.hasWhiteSoldiers);
+    this.initialSoldiersCount = s.initialSoldiersCount || 3;
     this.board = s.board;
     this.sprinkler = s.sprinkler || null;
     this.enPassantTarget = s.enPassantTarget || null;

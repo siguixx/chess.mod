@@ -8,6 +8,7 @@ export class MayaCampaignAI {
     B: 350,
     N: 330,
     P: 100,
+    H: 0,
     A: 370, // Arquera de Obsidiana
     G: 260, // Escudero de Jade
     J: 390, // Jaguar de Piedra
@@ -67,13 +68,13 @@ export class MayaCampaignAI {
 
     moves.sort((a, b) => this.scoreMove(engine, b) - this.scoreMove(engine, a));
     const diff = Math.max(1, Math.min(5, difficulty || 3));
-    const limit = Math.min(diff >= 3 ? 22 : 14, moves.length);
-    const replyLimit = Math.min(diff >= 3 ? 14 : 9, 20);
-    const noiseRange = [110, 65, 32, 14, 6][diff - 1];
+    const limit = Math.min([12, 14, 16, 20, 22][diff - 1], moves.length);
+    const replyLimit = [0, 5, 8, 12, 15][diff - 1];
+    const noiseRange = [220, 155, 100, 45, 4][diff - 1];
+    const blunderChance = [0.34, 0.22, 0.12, 0.04, 0][diff - 1];
     const opp = color === 'b' ? 'w' : 'b';
 
-    let bestMove = moves[0];
-    let bestScore = -Infinity;
+    const scored = [];
 
     for (let i = 0; i < limit; i++) {
       const m = moves[i];
@@ -85,6 +86,8 @@ export class MayaCampaignAI {
       if (sim.winner === color) return m;
       if (sim.winner === opp) {
         val = -100000;
+      } else if (replyLimit === 0) {
+        val = this.evaluate(sim, color);
       } else {
         const replies = sim.getAllLegalMoves(opp);
         if (replies.length === 0) {
@@ -99,16 +102,19 @@ export class MayaCampaignAI {
             sim2.executeMove(replies[j], 'Q', false);
             const ev = this.evaluate(sim2, color);
             if (ev < val) val = ev;
-            if (val <= bestScore - noiseRange) break;
           }
         }
       }
       val += (Math.random() * noiseRange * 2 - noiseRange);
-      if (val > bestScore) {
-        bestScore = val;
-        bestMove = m;
-      }
+      scored.push({ move: m, val });
     }
-    return bestMove;
+
+    scored.sort((a, b) => b.val - a.val);
+    if (blunderChance > 0 && scored.length > 1 && Math.random() < blunderChance) {
+      const poolSize = Math.min(diff === 1 ? 4 : 3, scored.length);
+      const pick = scored[1 + Math.floor(Math.random() * (poolSize - 1))];
+      if (pick && pick.val > -50000) return pick.move;
+    }
+    return scored[0].move;
   }
 }

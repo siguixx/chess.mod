@@ -366,6 +366,56 @@ await test('Cap. 5 CHESS: 3 poderes seleccionables (Mittens, Torre Maya, Galaxia
   assert.ok(elapsed < 1500, `Súper IA debe responder rápido (${Math.round(elapsed)}ms)`);
 });
 
+// 8b. BALANCE DEL MODO HISTORIA (PROGRESIÓN FÁCIL→DIFÍCIL + DEFENSAS CAP 1-4 + CAP 5 LIMPIO)
+await test('Modo Historia balanceado: defensas en Cap. 1-4, progresión gradual y Cap. 5 (CHESS) 100% limpio', () => {
+  // Cap. 1 Maya: Lv1 sin Dama negra + 1 Casa en d3 que bloquea flechas de Arquera
+  const m1 = new MayaCampaignEngine(1);
+  assert.equal(m1.board[0][3], null, 'Maya Lv1 no debe tener Dama enemiga');
+  assert.equal(m1.board[5][3]?.type, 'H', 'Maya Lv1 otorga 1 Casa Inmortal en d3');
+  m1.board = Array.from({ length: 8 }, () => Array(8).fill(null));
+  m1.board[0][4] = { id: 'bK', color: 'b', type: 'K' };
+  m1.board[7][4] = { id: 'wK', color: 'w', type: 'K' };
+  m1.board[2][1] = { id: 'bA', color: 'b', type: 'A' };
+  m1.board[5][4] = { id: 'wN', color: 'w', type: 'N' };
+  m1.board[5][3] = { id: 'wH1', color: 'w', type: 'H' }; // Casa junto al Caballo en (5,4)
+  assert.equal(m1.isProtectedByCasa(5, 4), true);
+  assert.equal(m1.getLegalMovesForPiece(2, 1).length, 0, 'Arquera no puede disparar a pieza escudada por Casa');
+
+  // Cap. 2 Mittens: Soldados de Agua en Lv1-4 y Mujer Reina con solo 1 Reina
+  const mit1 = new FreeMittensEngine('hombre_peon');
+  assert.equal(mit1.countAliveSoldiers(), 2, 'Hombre Peón da 2 Soldados Blancos de defensa');
+  const mit4 = new FreeMittensEngine('mujer_reina');
+  let blackQueens = 0;
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) if (mit4.board[r][c]?.color === 'b' && mit4.board[r][c]?.type === 'Q') blackQueens++;
+  assert.equal(blackQueens, 1, 'Mujer Reina debe tener 1 Reina, no 2');
+  assert.equal(mit4.countAliveSoldiers(), 3, 'Mujer Reina da 3 Soldados Blancos');
+
+  // Cap. 3 Galaxy: Barrera bloquea teletransportes adyacentes
+  const g1 = new GalaxyEngine(1);
+  g1.teleportCooldown = 0;
+  const g1Tp = g1.getTeleportMoves();
+  assert.equal(g1Tp.some((m) => g1.isAdjacentToBarrier(m.tr, m.tc)), false, 'Teletransporte no puede caer adyacente a Barrera Universal');
+
+  // Cap. 4 Glitch: 2 Cortafuegos (U) sellan Grietas al pisarlas y bloquean anomalías adyacentes
+  const gl2 = new GlitchEngine(2);
+  assert.equal(gl2.board[5][2]?.type, 'U', 'Glitch otorga Cortafuegos en c3');
+  assert.equal(gl2.board[5][5]?.type, 'U', 'Glitch otorga Cortafuegos en f3');
+  gl2.rifts = [{ r: 4, c: 2, turnsLeft: 3 }];
+  const sealMove = gl2.getLegalMovesForPiece(5, 2).find((m) => m.tr === 4 && m.tc === 2);
+  assert.ok(sealMove && sealMove.sealsRift, 'Cortafuegos puede pisar una Grieta adyacente para sellarla');
+  const sealEv = gl2.executeMove(sealMove, 'Q', false);
+  assert.equal(sealEv.riftSealed, true);
+  assert.equal(gl2.isRift(4, 2), false, 'La Grieta queda sellada tras pisarla el Cortafuegos');
+
+  // Cap. 5 CHESS niveles 1-4: 100% limpio (16v16 sin Casas, Barreras ni Soldados)
+  for (let lv = 1; lv <= 4; lv++) {
+    const ch = new ChessFinalEngine(lv, null, 10);
+    assert.equal(ch.countPieces('w'), 16, `CHESS Lv${lv} debe ser 100% limpio (16 blancas)`);
+    assert.equal(ch.countPieces('b'), 16, `CHESS Lv${lv} debe ser 100% limpio (16 negras)`);
+    assert.equal(ch.playerPower, null, `CHESS Lv${lv} no debe equipar poderes extra`);
+  }
+});
+
 // 9. SERVIDOR REAL + /health + ELO 0 + DESBLOQUEO ESTRICTO DE CAMPAÑA + MULTIJUGADOR ONLINE SOCKET.IO
 const tmpDb = path.join(os.tmpdir(), `chess_mod_test_${Date.now()}.sqlite`);
 const server = createChessServer({ port: 0, dbPath: tmpDb });
@@ -402,6 +452,16 @@ try {
     const blackyMp3 = await fetch(`${url}/assets/audio/BlackyBattle.mp3`);
     assert.equal(blackyMp3.status, 200);
     assert.ok((await blackyMp3.arrayBuffer()).byteLength > 2_000_000);
+
+    for (const track of ['MayaCampaignBattle.mp3', 'GalaxyBattle.mp3', 'GlitchBattle.mp3', 'ChessBattle.mp3']) {
+      const rTrack = await fetch(`${url}/assets/audio/${track}`);
+      assert.equal(rTrack.status, 200, `${track} debe servir 200`);
+      assert.ok((await rTrack.arrayBuffer()).byteLength > 1_500_000, `${track} debe contener audio MP3 real`);
+    }
+
+    const blackyImg = await fetch(`${url}/assets/images/blacky_ref.jpg`);
+    assert.equal(blackyImg.status, 200);
+    assert.ok((await blackyImg.arrayBuffer()).byteLength > 20_000);
 
     // Ruta secreta /blacky debe servir index.html HTTP 200 (nunca 404)
     const blackyRoute = await fetch(`${url}/blacky`);

@@ -31,13 +31,19 @@ export class GlitchEngine {
       this.board[7][c] = { id: `wB_${c}`, color: 'w', type: back[c], hasMoved: false };
       this.board[6][c] = { id: `wP_${c}`, color: 'w', type: 'P', hasMoved: false };
     }
+    if (this.levelId === 1) {
+      this.board[1][7] = null; // Pequeña ventaja inicial en Nivel 1
+    }
+    // 2 Barreras Cortafuegos inmortales del jugador (c3, f3): sellan Grietas al pisarlas y bloquean ataques anómalos adyacentes
+    this.board[5][2] = { id: 'wU1', color: 'w', type: 'U' };
+    this.board[5][5] = { id: 'wU2', color: 'w', type: 'U' };
 
     const cfg = {
-      1: { riftInterval: 4, anomalyLevel: 0, riftCount: 2 },
-      2: { riftInterval: 4, anomalyLevel: 1, riftCount: 2 },
-      3: { riftInterval: 3, anomalyLevel: 2, riftCount: 3 },
-      4: { riftInterval: 3, anomalyLevel: 3, riftCount: 3 },
-      5: { riftInterval: 2, anomalyLevel: 4, riftCount: 4 }
+      1: { riftInterval: 5, anomalyLevel: 0, riftCount: 2 },
+      2: { riftInterval: 5, anomalyLevel: 1, riftCount: 2 },
+      3: { riftInterval: 4, anomalyLevel: 2, riftCount: 2 },
+      4: { riftInterval: 4, anomalyLevel: 3, riftCount: 3 },
+      5: { riftInterval: 3, anomalyLevel: 4, riftCount: 3 }
     }[this.levelId];
 
     this.riftInterval = cfg.riftInterval;
@@ -45,7 +51,7 @@ export class GlitchEngine {
     this.riftCount = cfg.riftCount;
     this.rifts = []; // [{ r, c, turnsLeft }]
     this.turnsSinceRift = 0;
-    this.swapCooldown = 3;
+    this.swapCooldown = 4;
 
     this.enPassantTarget = null;
     this.turn = 'w';
@@ -59,7 +65,7 @@ export class GlitchEngine {
     this.logs = [{
       turn: 0,
       type: 'special',
-      text: `ERR_CHESS.MOD — Nivel ${this.levelId} Glitch activo. Grietas cada ${this.riftInterval} turnos${this.anomalyLevel > 0 ? ' + Anomalías de movimiento enemigas' : ''}.`
+      text: `ERR_CHESS.MOD — Nivel ${this.levelId} Glitch: Grietas cada ${this.riftInterval} turnos${this.anomalyLevel > 0 ? ' + Anomalías' : ''}. Tus 2 Cortafuegos (c3, f3) sellan Grietas al pisarlas y bloquean ataques anómalos adyacentes.`
     }];
     this.history = [];
   }
@@ -126,6 +132,32 @@ export class GlitchEngine {
     return this.rifts.some((rf) => rf.r === r && rf.c === c);
   }
 
+  /**
+   * Barrera Cortafuegos ('U'): protege piezas blancas adyacentes contra ataques ANÓMALOS del Boss Glitch
+   * (peón frontal corrupto y salto largo de caballo) y sella Grietas de Vacío al pisarlas.
+   */
+  isProtectedByBarrier(r, c) {
+    const p = this.board[r]?.[c];
+    if (!p || p.color !== 'w' || p.type === 'U') return false;
+    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      const nr = r + dr, nc = c + dc;
+      if (inBounds(nr, nc) && this.board[nr][nc]?.color === 'w' && this.board[nr][nc]?.type === 'U') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  getProtectedWhiteSquares() {
+    const set = new Set();
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        if (this.isProtectedByBarrier(r, c)) set.add(`${r},${c}`);
+      }
+    }
+    return set;
+  }
+
   tearBoardRifts(count = this.riftCount) {
     const emptySquares = [];
     for (let r = 2; r <= 5; r++) {
@@ -165,6 +197,17 @@ export class GlitchEngine {
     if (!p) return [];
     const moves = [];
 
+    // BARRERA CORTAFUEGOS ('U'): 1 casilla ortogonal a casilla vacía o Grieta de Vacío (para sellarla)
+    if (p.type === 'U') {
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const nr = r + dr, nc = c + dc;
+        if (inBounds(nr, nc) && !this.board[nr][nc]) {
+          moves.push({ fr: r, fc: c, tr: nr, tc: nc, sealsRift: this.isRift(nr, nc) });
+        }
+      }
+      return moves;
+    }
+
     if (p.type === 'P') {
       const dir = p.color === 'w' ? -1 : 1;
       const startRow = p.color === 'w' ? 6 : 1;
@@ -176,8 +219,14 @@ export class GlitchEngine {
           if (!p.hasMoved && r === startRow && inBounds(nr2, c) && !this.board[nr2][c] && !this.isRift(nr2, c)) {
             moves.push({ fr: r, fc: c, tr: nr2, tc: c, doublePawn: true });
           }
-        } else if (p.color === 'b' && this.anomalyLevel >= 1 && this.board[nr][c].color === 'w') {
-          // ANOMALÍA GLITCH: Peón corrupto puede atacar recto hacia adelante
+        } else if (
+          p.color === 'b'
+          && this.anomalyLevel >= 1
+          && this.board[nr][c].color === 'w'
+          && this.board[nr][c].type !== 'U'
+          && !this.isProtectedByBarrier(nr, c)
+        ) {
+          // ANOMALÍA GLITCH: Peón corrupto puede atacar recto hacia adelante (bloqueado por Cortafuegos)
           moves.push({ fr: r, fc: c, tr: nr, tc: c, isAnomaly: true, anomalyLabel: 'Ataque frontal corrupto' });
         }
       }
@@ -192,7 +241,7 @@ export class GlitchEngine {
         const tc = c + dc;
         if (inBounds(nr, tc) && !this.isRift(nr, tc)) {
           const target = this.board[nr][tc];
-          if (target && target.color !== p.color) {
+          if (target && target.color !== p.color && target.type !== 'U') {
             moves.push({ fr: r, fc: c, tr: nr, tc });
           } else if (this.enPassantTarget && this.enPassantTarget.r === nr && this.enPassantTarget.c === tc) {
             const epPawn = this.board[r][tc];
@@ -208,15 +257,15 @@ export class GlitchEngine {
         const nr = r + dr, nc = c + dc;
         if (!inBounds(nr, nc) || this.isRift(nr, nc)) continue;
         const target = this.board[nr][nc];
-        if (!target || target.color !== p.color) moves.push({ fr: r, fc: c, tr: nr, tc: nc });
+        if (!target || (target.color !== p.color && target.type !== 'U')) moves.push({ fr: r, fc: c, tr: nr, tc: nc });
       }
       if (p.color === 'b' && this.anomalyLevel >= 2) {
-        // ANOMALÍA GLITCH: Caballo corrupto enlaza salto extendido (3,1)
+        // ANOMALÍA GLITCH: Caballo corrupto enlaza salto extendido (3,1) (bloqueado por Cortafuegos en piezas adyacentes)
         for (const [dr, dc] of [[3, -1], [3, 1], [1, -3], [1, 3], [-1, -3], [-1, 3]]) {
           const nr = r + dr, nc = c + dc;
           if (!inBounds(nr, nc) || this.isRift(nr, nc)) continue;
           const target = this.board[nr][nc];
-          if (!target || target.color !== p.color) {
+          if (!target || (target.color !== p.color && target.type !== 'U' && !this.isProtectedByBarrier(nr, nc))) {
             moves.push({ fr: r, fc: c, tr: nr, tc: nc, isAnomaly: true, anomalyLabel: 'Salto corrupto extendido' });
           }
         }
@@ -228,7 +277,7 @@ export class GlitchEngine {
           const nr = r + dr, nc = c + dc;
           if (!inBounds(nr, nc) || this.isRift(nr, nc)) continue;
           const target = this.board[nr][nc];
-          if (!target || target.color !== p.color) moves.push({ fr: r, fc: c, tr: nr, tc: nc });
+          if (!target || (target.color !== p.color && target.type !== 'U')) moves.push({ fr: r, fc: c, tr: nr, tc: nc });
         }
       }
       if (includeCastling && !p.hasMoved && c === 4 && (r === 7 || r === 0)) {
@@ -262,7 +311,7 @@ export class GlitchEngine {
           if (!target) {
             moves.push({ fr: r, fc: c, tr: nr, tc: nc });
           } else {
-            if (target.color !== p.color) moves.push({ fr: r, fc: c, tr: nr, tc: nc });
+            if (target.color !== p.color && target.type !== 'U') moves.push({ fr: r, fc: c, tr: nr, tc: nc });
             break;
           }
           nr += dr; nc += dc;
@@ -297,13 +346,13 @@ export class GlitchEngine {
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 8; c++) {
         const p = this.board[r][c];
-        if (!p || p.color !== color) continue;
+        if (!p || p.color !== color || p.type === 'U') continue;
         if (p.type === 'P') {
           const nr = r + (color === 'w' ? -1 : 1);
           for (const dc of [-1, 1]) {
             if (inBounds(nr, c + dc) && !this.isRift(nr, c + dc)) set.add(`${nr},${c + dc}`);
           }
-          if (color === 'b' && this.anomalyLevel >= 1 && inBounds(nr, c) && !this.isRift(nr, c)) {
+          if (color === 'b' && this.anomalyLevel >= 1 && inBounds(nr, c) && !this.isRift(nr, c) && !this.isProtectedByBarrier(nr, c)) {
             set.add(`${nr},${c}`);
           }
         } else {
@@ -378,6 +427,7 @@ export class GlitchEngine {
       captured: null,
       isAnomaly: Boolean(move.isAnomaly),
       isFurySwap: Boolean(move.isFurySwap),
+      riftSealed: false,
       riftsCreated: [],
       to: [move.tr, move.tc]
     };
@@ -387,7 +437,7 @@ export class GlitchEngine {
       const b = this.board[move.tr][move.tc];
       this.board[move.fr][move.fc] = b;
       this.board[move.tr][move.tc] = a;
-      this.swapCooldown = 4;
+      this.swapCooldown = 5;
       this.enPassantTarget = null;
       this.lastMoveSquares = [[move.fr, move.fc], [move.tr, move.tc]];
       if (recordHistory) {
@@ -403,6 +453,11 @@ export class GlitchEngine {
       this.board[move.tr][move.tc] = piece;
       this.board[move.fr][move.fc] = null;
       piece.hasMoved = true;
+
+      if (piece.type === 'U' && this.isRift(move.tr, move.tc)) {
+        this.rifts = this.rifts.filter((rf) => !(rf.r === move.tr && rf.c === move.tc));
+        events.riftSealed = true;
+      }
 
       if (move.isEnPassant) this.board[move.fr][move.tc] = null;
       if (move.isCastle === 'K') {
@@ -429,8 +484,9 @@ export class GlitchEngine {
       this.lastMoveSquares = [[move.fr, move.fc], [move.tr, move.tc]];
       const side = actingColor === 'w' ? 'Blancas' : 'Boss Glitch';
       const anomNote = move.isAnomaly ? ` [${move.anomalyLabel || 'ANOMALÍA'}]` : '';
-      const text = `${side}: ${PIECE_NAMES[piece.type]} ${toAlg(move.fr, move.fc)} → ${toAlg(move.tr, move.tc)}${anomNote}.${target ? ` Captura ${PIECE_NAMES[target.type]}.` : ''}`;
-      if (recordHistory) this.logs.unshift({ turn: this.turnNumber, type: move.isAnomaly ? 'special' : (actingColor === 'w' ? 'white' : 'black'), text });
+      const sealNote = events.riftSealed ? ' — ¡Grieta de Vacío sellada por el Cortafuegos! 🛡️' : '';
+      const text = `${side}: ${PIECE_NAMES[piece.type]} ${toAlg(move.fr, move.fc)} → ${toAlg(move.tr, move.tc)}${anomNote}.${target ? ` Captura ${PIECE_NAMES[target.type]}.` : ''}${sealNote}`;
+      if (recordHistory) this.logs.unshift({ turn: this.turnNumber, type: (move.isAnomaly || events.riftSealed) ? 'special' : (actingColor === 'w' ? 'white' : 'black'), text });
     }
 
     // Ciclo de Grietas de Vacío (solo en turnos del Boss Glitch)

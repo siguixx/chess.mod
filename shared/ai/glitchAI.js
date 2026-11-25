@@ -1,7 +1,7 @@
 import { GlitchEngine } from '../rules/glitchEngine.js';
 
 export class GlitchAI {
-  static VAL = { K: 20000, Q: 980, R: 540, B: 360, N: 370, P: 115 };
+  static VAL = { K: 20000, Q: 980, R: 540, B: 360, N: 370, P: 115, U: 0 };
 
   static evaluate(engine, perspective = 'b') {
     if (engine.winner === perspective) return 100000;
@@ -33,18 +33,19 @@ export class GlitchAI {
     return s;
   }
 
-  static chooseBestMove(engine, difficulty = 5, color = 'b') {
+  static chooseBestMove(engine, difficulty = 3, color = 'b') {
     const moves = engine.getAllLegalMoves(color);
     if (moves.length === 0) return null;
     moves.sort((a, b) => this.scoreMove(engine, b) - this.scoreMove(engine, a));
 
-    const limit = Math.min(28, moves.length);
-    const replyLimit = Math.min(20, 24);
-    const noiseRange = difficulty >= 5 ? 4 : 12;
+    const diff = Math.max(1, Math.min(5, difficulty || 3));
+    const limit = Math.min([12, 15, 18, 22, 28][diff - 1], moves.length);
+    const replyLimit = [0, 6, 10, 13, 18][diff - 1];
+    const noiseRange = [190, 130, 85, 52, 4][diff - 1];
+    const blunderChance = [0.26, 0.18, 0.10, 0.05, 0][diff - 1];
     const opp = color === 'b' ? 'w' : 'b';
 
-    let bestMove = moves[0];
-    let bestScore = -Infinity;
+    const scored = [];
 
     for (let i = 0; i < limit; i++) {
       const m = moves[i];
@@ -55,6 +56,7 @@ export class GlitchAI {
       let val;
       if (sim.winner === color) return m;
       if (sim.winner === opp) val = -100000;
+      else if (replyLimit === 0) val = this.evaluate(sim, color);
       else {
         const replies = sim.getAllLegalMoves(opp);
         if (replies.length === 0) val = 95000;
@@ -68,16 +70,19 @@ export class GlitchAI {
             sim2.executeMove(replies[j], 'Q', false);
             const ev = this.evaluate(sim2, color);
             if (ev < val) val = ev;
-            if (val <= bestScore - noiseRange) break;
           }
         }
       }
       val += (Math.random() * noiseRange * 2 - noiseRange);
-      if (val > bestScore) {
-        bestScore = val;
-        bestMove = m;
-      }
+      scored.push({ move: m, val });
     }
-    return bestMove;
+
+    scored.sort((a, b) => b.val - a.val);
+    if (blunderChance > 0 && scored.length > 1 && Math.random() < blunderChance) {
+      const poolSize = Math.min(3, scored.length);
+      const pick = scored[1 + Math.floor(Math.random() * (poolSize - 1))];
+      if (pick && pick.val > -50000) return pick.move;
+    }
+    return scored[0].move;
   }
 }

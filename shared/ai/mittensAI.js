@@ -40,19 +40,19 @@ export class FreeMittensAI {
     return s;
   }
 
-  static chooseBestMove(engine, difficulty = 5, color = 'b') {
+  static chooseBestMove(engine, difficulty = 3, color = 'b') {
     const moves = engine.getAllLegalMoves(color);
     if (moves.length === 0) return null;
 
     moves.sort((a, b) => this.scoreMove(engine, b, color) - this.scoreMove(engine, a, color));
-    const diff = Math.max(1, Math.min(5, difficulty || 5));
+    const diff = Math.max(1, Math.min(5, difficulty || 3));
     const opp = color === 'b' ? 'w' : 'b';
-    const limit = Math.min(diff >= 4 ? 22 : 14, moves.length);
-    const replyLimit = Math.min(diff >= 4 ? 14 : 9, 18);
-    const noiseRange = [115, 70, 36, 16, 6][diff - 1];
+    const limit = Math.min([12, 14, 17, 20, 22][diff - 1], moves.length);
+    const replyLimit = [0, 6, 9, 13, 16][diff - 1];
+    const noiseRange = [210, 145, 95, 48, 5][diff - 1];
+    const blunderChance = [0.32, 0.20, 0.12, 0.05, 0][diff - 1];
 
-    let bestMove = moves[0];
-    let bestScore = -Infinity;
+    const scored = [];
 
     for (let i = 0; i < limit; i++) {
       const m = moves[i];
@@ -64,6 +64,8 @@ export class FreeMittensAI {
       if (sim.winner === color) return m;
       if (sim.winner === opp) {
         val = -100000;
+      } else if (replyLimit === 0) {
+        val = this.evaluate(sim, color);
       } else {
         const replies = sim.getAllLegalMoves(opp);
         if (replies.length === 0) {
@@ -78,17 +80,20 @@ export class FreeMittensAI {
             sim2.executeMove(replies[j], 'Q', false);
             const ev = this.evaluate(sim2, color);
             if (ev < val) val = ev;
-            if (val <= bestScore - noiseRange) break;
           }
         }
       }
       if (m.isWaterShot && m.canDisplace) val += 55;
       val += (Math.random() * noiseRange * 2 - noiseRange);
-      if (val > bestScore) {
-        bestScore = val;
-        bestMove = m;
-      }
+      scored.push({ move: m, val });
     }
-    return bestMove;
+
+    scored.sort((a, b) => b.val - a.val);
+    if (blunderChance > 0 && scored.length > 1 && Math.random() < blunderChance) {
+      const poolSize = Math.min(diff === 1 ? 4 : 3, scored.length);
+      const pick = scored[1 + Math.floor(Math.random() * (poolSize - 1))];
+      if (pick && pick.val > -50000) return pick.move;
+    }
+    return scored[0].move;
   }
 }

@@ -492,8 +492,8 @@ export class MayaBossEngine {
           this.winReason = '¡Has destruido las 4 Bases Sagradas! La Pirámide del Rey Maya colapsa permanentemente.';
           text += ` ¡Base ${target.baseLabel} destruida! Todas las Bases han caído.`;
         } else {
-          this.pyramid.disabledTurns = 2;
-          text += ` ¡Base ${target.baseLabel} destruida! La Pirámide queda deshabilitada durante 2 turnos.`;
+          this.pyramid.disabledTurns = 3;
+          text += ` ¡Base ${target.baseLabel} destruida! La Pirámide queda deshabilitada durante 3 turnos.`;
         }
       } else {
         text += ` Captura ${PIECE_NAMES[target.type]} negro.`;
@@ -560,7 +560,7 @@ export class MayaBossEngine {
         this.winner = 'w';
         this.winReason = 'La última Base cayó fuera del tablero. ¡La Pirámide se destruye permanentemente!';
       } else if (piece.isBase) {
-        this.pyramid.disabledTurns = 2;
+        this.pyramid.disabledTurns = 3;
       }
       return;
     }
