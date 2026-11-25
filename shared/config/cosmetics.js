@@ -21,6 +21,31 @@ export const VIP_EXCLUSIVE_IDS = [
   'power_vip_golden_freeze'
 ];
 
+export const BATTLE_PASS_S1 = {
+  id: 'battle_pass_s1',
+  season: 1,
+  name: 'Pase de Batalla — Temporada 1',
+  subtitle: 'El Despertar del Chess · Poderes, Skins y Tableros Exclusivos (usable en todos los modos menos Modo Historia)',
+  priceUsd: 10,
+  priceMods: 5000,
+  currency: 'USD',
+  priceLabel: '$10 USD o 5,000 Mods',
+  tiers: [
+    { tier: 1, xpRequired: 0, rewardType: 'cosmetic', rewardId: 'frame_bp_s1_vanguard', bonusMods: 250, title: 'Marco Vanguardia T1 + 250 Mods', icon: '🎖️' },
+    { tier: 2, xpRequired: 150, rewardType: 'cosmetic', rewardId: 'pieces_bp_diamond', bonusMods: 0, title: 'Fichas Diamante Astral (T1)', icon: '💎' },
+    { tier: 3, xpRequired: 320, rewardType: 'cosmetic', rewardId: 'board_bp_white_gold', bonusMods: 0, title: 'Tablero Templo de Oro Blanco (T1)', icon: '🏛️' },
+    { tier: 4, xpRequired: 520, rewardType: 'cosmetic', rewardId: 'power_bp_thunder', bonusMods: 0, title: 'Poder T1: Relámpago en Cadena', icon: '🌩️' },
+    { tier: 5, xpRequired: 780, rewardType: 'cosmetic', rewardId: 'preset:bp_s1_emperor', bonusMods: 400, title: 'Avatar Emperador T1 + 400 Mods', icon: '👑' },
+    { tier: 6, xpRequired: 1050, rewardType: 'cosmetic', rewardId: 'pieces_bp_crimson_plasma', bonusMods: 0, title: 'Fichas Plasma Carmesí (T1)', icon: '🔥' },
+    { tier: 7, xpRequired: 1350, rewardType: 'cosmetic', rewardId: 'board_bp_royal_nebula', bonusMods: 0, title: 'Tablero Nebulosa Real (T1)', icon: '🌌' },
+    { tier: 8, xpRequired: 1700, rewardType: 'cosmetic', rewardId: 'frame_bp_s1_crown', bonusMods: 750, title: 'Marco Corona Suprema T1 + 750 Mods', icon: '✨' },
+    { tier: 9, xpRequired: 2050, rewardType: 'cosmetic', rewardId: 'board_bp_singularity', bonusMods: 0, title: 'Tablero Trono de la Singularidad (T1)', icon: '🕳️' },
+    { tier: 10, xpRequired: 2400, rewardType: 'cosmetic', rewardId: 'power_bp_void_judgment', bonusMods: 1000, title: 'Poder Mítico T1: Juicio del Vacío + 1,000 Mods', icon: '☄️' }
+  ]
+};
+
+export const BATTLE_PASS_S1_IDS = BATTLE_PASS_S1.tiers.map((t) => t.rewardId);
+
 export const COSMETIC_AVATARS = [
   { id: 'preset:obsidian_king', name: 'Rey de Obsidiana', minLevel: 1, category: 'avatar' },
   { id: 'preset:jade_guardian', name: 'Guardián de Jade', minLevel: 1, category: 'avatar' },
@@ -32,6 +57,7 @@ export const COSMETIC_AVATARS = [
   { id: 'preset:maya_mask', name: 'Máscara del Dios Maya', minLevel: 7, category: 'avatar' },
   { id: 'preset:galaxy_entity', name: 'Núcleo Galáctico', minLevel: 8, category: 'avatar' },
   { id: 'preset:chess_origin', name: 'Corona de CHESS', minLevel: 99, exclusiveReason: 'Derrota a CHESS (Cap. 5)', category: 'avatar' },
+  { id: 'preset:bp_s1_emperor', name: 'Emperador Temporada 1', minLevel: 99, battlePassSeason: 1, exclusiveReason: 'Pase de Batalla T1 (Nivel 5)', category: 'avatar' },
   { id: 'preset:blacky_tamer', name: 'Domador de Blacky', minLevel: 99, hiddenUntilUnlocked: true, exclusiveReason: 'Secreto', category: 'avatar' }
 ];
 
@@ -44,6 +70,8 @@ export const COSMETIC_FRAMES = [
   { id: 'frame_galaxy', name: 'Halo de Nebulosa', minLevel: 7, border: '#8b7ae6', glow: 'rgba(139,122,230,0.52)', category: 'frame' },
   { id: 'frame_eclipse', name: 'Corona del Eclipse', minLevel: 8, border: '#c94b3c', glow: 'rgba(201,75,60,0.52)', category: 'frame' },
   { id: 'frame_chess_victor', name: 'Vencedor de Chess', minLevel: 99, exclusiveReason: 'Derrota a CHESS (Cap. 5)', border: '#fff2c4', glow: 'rgba(239,208,131,0.85)', category: 'frame' },
+  { id: 'frame_bp_s1_vanguard', name: 'Vanguardia Temporada 1', minLevel: 99, battlePassSeason: 1, exclusiveReason: 'Pase de Batalla T1 (Nivel 1)', border: '#38bdf8', glow: 'rgba(56,189,248,0.85)', category: 'frame' },
+  { id: 'frame_bp_s1_crown', name: 'Corona Suprema T1', minLevel: 99, battlePassSeason: 1, exclusiveReason: 'Pase de Batalla T1 (Nivel 8)', border: '#f472b6', glow: 'rgba(244,114,182,0.9)', category: 'frame' },
   { id: 'frame_blacky_imposible', name: 'Domador de Blacky (Imposible)', minLevel: 99, hiddenUntilUnlocked: true, exclusiveReason: 'Secreto', border: '#e4ecfa', glow: 'rgba(228,236,250,0.85)', category: 'frame' },
   { id: 'frame_vip_gold', name: 'Aurora Dorada Mod VIP', minLevel: 99, vipOnly: true, exclusiveReason: 'Suscripción Mod VIP ($5/mes)', border: '#ffe066', glow: 'rgba(255,215,64,0.95)', category: 'frame' }
 ];
@@ -193,6 +221,45 @@ export const COSMETIC_BOARDS = [
     pedestal: 'linear-gradient(145deg, #ffd75e 0%, #19150d 48%, #9e741f 100%)',
     textureClass: 'texture-vip-gold',
     category: 'board'
+  },
+  {
+    id: 'board_bp_white_gold',
+    name: 'Templo de Oro Blanco (Pase T1)',
+    description: 'Mármol celeste y oro blanco tallado. Exclusivo del Pase de Batalla Temporada 1.',
+    minLevel: 99,
+    battlePassSeason: 1,
+    exclusiveReason: 'Pase de Batalla T1 (Nivel 3)',
+    light: '#f4f8ff',
+    dark: '#3b4f74',
+    pedestal: 'linear-gradient(145deg, #7dd3fc 0%, #10192b 52%, #e2c574 100%)',
+    textureClass: 'texture-marble-gold',
+    category: 'board'
+  },
+  {
+    id: 'board_bp_royal_nebula',
+    name: 'Nebulosa Real (Pase T1)',
+    description: 'Constelaciones doradas sobre índigo profundo. Exclusivo del Pase de Batalla Temporada 1.',
+    minLevel: 99,
+    battlePassSeason: 1,
+    exclusiveReason: 'Pase de Batalla T1 (Nivel 7)',
+    light: '#e4dcf8',
+    dark: '#2c1e52',
+    pedestal: 'linear-gradient(145deg, #c084fc 0%, #0d071d 50%, #f59e0b 100%)',
+    textureClass: 'texture-nebula',
+    category: 'board'
+  },
+  {
+    id: 'board_bp_singularity',
+    name: 'Trono de la Singularidad (Pase T1)',
+    description: 'Horizonte de sucesos carmesí y plata. Recompensa élite del Pase de Batalla Temporada 1.',
+    minLevel: 99,
+    battlePassSeason: 1,
+    exclusiveReason: 'Pase de Batalla T1 (Nivel 9)',
+    light: '#e8d9dc',
+    dark: '#1d101b',
+    pedestal: 'linear-gradient(145deg, #fb7185 0%, #0a060d 50%, #38bdf8 100%)',
+    textureClass: 'texture-void',
+    category: 'board'
   }
 ];
 
@@ -285,6 +352,30 @@ export const COSMETIC_PIECE_SKINS = [
     cssClass: 'piece-skin-vip-gold',
     accent: '#ffd859',
     category: 'piece_skin'
+  },
+  {
+    id: 'pieces_bp_diamond',
+    name: 'Diamante Astral (Pase T1)',
+    description: 'Cristal diamantado con reflejos celestes del Pase de Batalla Temporada 1.',
+    minLevel: 99,
+    battlePassSeason: 1,
+    exclusiveReason: 'Pase de Batalla T1 (Nivel 2)',
+    sfxProfile: 'ice',
+    cssClass: 'piece-skin-ice',
+    accent: '#7dd3fc',
+    category: 'piece_skin'
+  },
+  {
+    id: 'pieces_bp_crimson_plasma',
+    name: 'Plasma Carmesí (Pase T1)',
+    description: 'Energía incandescente carmesí y oro. Exclusiva del Pase de Batalla Temporada 1.',
+    minLevel: 99,
+    battlePassSeason: 1,
+    exclusiveReason: 'Pase de Batalla T1 (Nivel 6)',
+    sfxProfile: 'magma',
+    cssClass: 'piece-skin-magma',
+    accent: '#fb7185',
+    category: 'piece_skin'
   }
 ];
 
@@ -357,6 +448,121 @@ export const COSMETIC_POWERS = [
     category: 'power'
   },
   {
+    id: 'power_meteor_shower',
+    name: 'Lluvia de Meteoros',
+    description: 'Poder Élite (CD 3t): Impacta un enemigo (no Rey) y destruye también hasta 2 enemigos adyacentes en cruz en una tormenta ígnea.',
+    minLevel: 99,
+    priceMods: 550,
+    cooldown: 3,
+    effect: 'power_meteor_shower',
+    sfxType: 'crush',
+    color: '#ff7043',
+    icon: '☄️',
+    category: 'power'
+  },
+  {
+    id: 'power_time_stop',
+    name: 'Parada del Tiempo',
+    description: 'Poder Maestro (CD 3t): Detiene el reloj en una zona 3×3 y CONGELA a todos los enemigos (no Rey) dentro del área por 2 turnos.',
+    minLevel: 99,
+    priceMods: 900,
+    cooldown: 3,
+    duration: 2,
+    effect: 'power_time_stop',
+    sfxType: 'power_golden_freeze',
+    color: '#60a5fa',
+    icon: '⏳',
+    category: 'power'
+  },
+  {
+    id: 'power_black_hole',
+    name: 'Agujero Negro',
+    description: 'Poder Legendario (CD 4t): Engulle una pieza rival (no Rey) y sella su casilla más 2 adyacentes con Grietas de Vacío por 3 turnos.',
+    minLevel: 99,
+    priceMods: 1400,
+    cooldown: 4,
+    duration: 3,
+    effect: 'power_black_hole',
+    sfxType: 'blackyAbsorb',
+    color: '#a855f7',
+    icon: '🕳️',
+    category: 'power'
+  },
+  {
+    id: 'power_imperial_decree',
+    name: 'Decreto Imperial',
+    description: 'Poder Imperial (CD 4t): Asciende instantáneamente a cualquiera de tus Peones en una DAMA e invoca un Caballo aliado junto a ella.',
+    minLevel: 99,
+    priceMods: 2200,
+    cooldown: 4,
+    effect: 'power_imperial_decree',
+    sfxType: 'vip_activate',
+    color: '#fbbf24',
+    icon: '👑',
+    category: 'power'
+  },
+  {
+    id: 'power_cosmic_supernova',
+    name: 'Supernova Cósmica',
+    description: 'Poder Cataclísmico (CD 5t): Explosión estelar 3×3 que DESTRUYE a todas las piezas enemigas (no Rey) en la zona y deja una grieta ardiente.',
+    minLevel: 99,
+    priceMods: 3500,
+    cooldown: 5,
+    duration: 3,
+    effect: 'power_cosmic_supernova',
+    sfxType: 'crush',
+    color: '#f43f5e',
+    icon: '💥',
+    category: 'power'
+  },
+  {
+    id: 'power_chaos_omnipotence',
+    name: 'Omnipotencia del Caos',
+    description: 'Poder Supremo (CD 5t): Convierte 1 pieza enemiga (no Rey) a tu bando, congela a los rivales adyacentes 2 turnos e invoca una Torre aliada.',
+    minLevel: 99,
+    priceMods: 5000,
+    cooldown: 5,
+    duration: 2,
+    effect: 'power_chaos_omnipotence',
+    sfxType: 'blackyBetray',
+    color: '#f472b6',
+    icon: '♾️',
+    category: 'power'
+  },
+  {
+    id: 'power_bp_thunder',
+    name: 'Relámpago en Cadena (Pase T1)',
+    description: 'Poder Exclusivo Temporada 1 (CD 3t): Dispara un rayo a distancia (5 casillas) que destruye al objetivo y congela hasta 2 enemigos cercanos por 2 turnos.',
+    minLevel: 99,
+    priceMods: 0,
+    battlePassSeason: 1,
+    exclusiveReason: 'Pase de Batalla T1 (Nivel 4)',
+    cooldown: 3,
+    range: 5,
+    duration: 2,
+    effect: 'power_bp_thunder',
+    sfxType: 'glitchTear',
+    color: '#38bdf8',
+    icon: '🌩️',
+    category: 'power'
+  },
+  {
+    id: 'power_bp_void_judgment',
+    name: 'Juicio del Vacío (Pase T1)',
+    description: 'Poder Mítico Temporada 1 (CD 4t): Explosión 3×3 que borra enemigos menores y medios (no Rey), congela Damas/Torres y sella el centro 3 turnos.',
+    minLevel: 99,
+    priceMods: 0,
+    battlePassSeason: 1,
+    exclusiveReason: 'Pase de Batalla T1 (Nivel 10)',
+    cooldown: 4,
+    duration: 3,
+    effect: 'power_bp_void_judgment',
+    sfxType: 'blackySeal',
+    color: '#fb7185',
+    icon: '☄️',
+    category: 'power'
+  },
+  {
     id: 'power_blacky_claw',
     name: 'Dominio Abismal de Blacky (SÚPER OP)',
     description: 'Desbloqueo Secreto ULTRA OP (CD 2t): Corrompe y ROBA CUALQUIER pieza rival (¡incluso la DAMA!, excepto Rey), invoca automáticamente un Caballo aliado cercano Y sella 2 casillas enemigas por 3 turnos.',
@@ -413,7 +619,8 @@ export function getAllCosmetics() {
     boards: COSMETIC_BOARDS,
     pieceSkins: COSMETIC_PIECE_SKINS,
     powers: COSMETIC_POWERS,
-    vipPlan: MOD_VIP_PLAN
+    vipPlan: MOD_VIP_PLAN,
+    battlePassS1: BATTLE_PASS_S1
   };
 }
 
@@ -432,6 +639,6 @@ export function isCosmeticUnlocked(cosmeticId, userLevel = 1, explicitUnlocks = 
   if (!item) return false;
   if (item.vipOnly) return Boolean(isVip);
   if (explicitUnlocks.includes(cosmeticId)) return true;
-  if (item.bossUnlock) return false;
+  if (item.bossUnlock || item.battlePassSeason) return false;
   return userLevel >= (item.minLevel || 1);
 }

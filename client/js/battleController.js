@@ -21,6 +21,7 @@ import { GlitchEngine } from '/shared/rules/glitchEngine.js';
 import { ChessFinalEngine } from '/shared/rules/chessFinalEngine.js';
 import { BlackySecretEngine } from '/shared/rules/blackyEngine.js';
 import { ClassicChessEngine } from '/shared/rules/classicEngine.js';
+import { LargeBoardChessEngine, chooseLargeBoardAIMove } from '/shared/rules/largeBoardEngine.js';
 import { MayaBossAI } from '/shared/ai/mayaAI.js';
 import { MayaCampaignAI } from '/shared/ai/mayaCampaignAI.js';
 import { FreeMittensAI } from '/shared/ai/mittensAI.js';
@@ -505,8 +506,8 @@ export class BattleController {
     if (this.mode === 'coach_lesson' && this.trainerMeta?.taughtPowerId) {
       return resolvePowerDef(this.trainerMeta.taughtPowerId, null);
     }
-    // En Ruleta de Poderes Random: cada turno tienes un poder OP aleatorio con CD 1
-    if (this.mode === 'special' && this.specialMeta?.id === 'special_random_powers' && this.randomRolledPower) {
+    // En Ruleta de Poderes Random o Hiper-Caos: cada turno tienes un poder OP aleatorio con CD 1
+    if (this.mode === 'special' && (this.specialMeta?.id === 'special_random_powers' || this.specialMeta?.id === 'special_hyper_chaos') && this.randomRolledPower) {
       return this.randomRolledPower;
     }
     // En Guerra de Titanes 2×2: otorga Pirámide 2×2 con CD 2t
@@ -1216,7 +1217,16 @@ export class BattleController {
     this.aiDifficulty = 3;
     this.campaignMeta = null;
     this.onlineMeta = null;
-    this.engine = new ClassicChessEngine(minutes);
+
+    if (specialCfg.id === 'special_colossal_12x12') {
+      this.engine = new LargeBoardChessEngine(12, minutes);
+    } else if (specialCfg.id === 'special_mega_10x10_chaos') {
+      this.engine = new LargeBoardChessEngine(10, minutes);
+    } else if (specialCfg.id === 'special_atomic_boom') {
+      this.engine = new LargeBoardChessEngine(8, minutes, { atomicMode: true });
+    } else {
+      this.engine = new ClassicChessEngine(minutes);
+    }
 
     // Configurar tablero según el Modo Especial Absurdo
     if (specialCfg.id === 'special_6x6') {
@@ -1238,6 +1248,13 @@ export class BattleController {
         this.engine.board[1][c].type = 'Q';
         this.engine.board[6][c].type = 'Q';
       }
+    } else if (specialCfg.id === 'special_cavalry_swarm') {
+      for (let c = 0; c < 8; c++) {
+        if (this.engine.board[0][c]?.type !== 'K') this.engine.board[0][c].type = 'N';
+        if (this.engine.board[7][c]?.type !== 'K') this.engine.board[7][c].type = 'N';
+        this.engine.board[1][c].type = 'N';
+        this.engine.board[6][c].type = 'N';
+      }
     }
 
     this.engine.logs = [{
@@ -1248,7 +1265,7 @@ export class BattleController {
     this.sound.stopBossMusic();
 
     this.showBattleScreen();
-    if (specialCfg.id === 'special_random_powers') {
+    if (specialCfg.id === 'special_random_powers' || specialCfg.id === 'special_hyper_chaos') {
       const rolled = this.rollRandomSpecialPower();
       if (rolled) {
         this.engine.logs.unshift({ turn: 1, type: 'special', text: `🎰 Poder de este turno: ${rolled.icon} ${rolled.name}!` });
@@ -1659,9 +1676,19 @@ export class BattleController {
     this.render();
   }
 
+  getBoardSize() {
+    return this.engine?.boardSize || this.engine?.board?.length || 8;
+  }
+
   isFlipped() { return this.mode === 'online' && this.onlineMeta?.yourColor === 'b'; }
-  toVisualCoords(r, c) { return this.isFlipped() ? [7 - r, 7 - c] : [r, c]; }
-  fromVisualCoords(vr, vc) { return this.isFlipped() ? [7 - vr, 7 - vc] : [vr, vc]; }
+  toVisualCoords(r, c) {
+    const maxIdx = this.getBoardSize() - 1;
+    return this.isFlipped() ? [maxIdx - r, maxIdx - c] : [r, c];
+  }
+  fromVisualCoords(vr, vc) {
+    const maxIdx = this.getBoardSize() - 1;
+    return this.isFlipped() ? [maxIdx - vr, maxIdx - vc] : [vr, vc];
+  }
 
   /* ================= INTERACCIÓN DE CASILLAS ================= */
   handleSquareClick(r, c) {
@@ -1677,8 +1704,9 @@ export class BattleController {
     const chosen = this.legalMoves.find((m) => m.tr === r && m.tc === c);
     if (chosen) {
       const piece = this.engine.board[chosen.fr][chosen.fc];
+      const N = this.getBoardSize();
       const is6x6 = this.mode === 'special' && this.specialMeta?.id === 'special_6x6';
-      const promoRank = is6x6 ? (myColor === 'w' ? 1 : 6) : (myColor === 'w' ? 0 : 7);
+      const promoRank = is6x6 ? (myColor === 'w' ? 1 : 6) : (myColor === 'w' ? 0 : N - 1);
       if (!chosen.isWaterShot && !chosen.isPlayerTeleport && piece?.type === 'P' && chosen.tr === promoRank) {
         if (this.prefs?.autoQueen) {
           this.commitPlayerMove(chosen, 'Q');
@@ -1939,6 +1967,8 @@ export class BattleController {
           color: 'b'
         });
         bestMove = aiRes?.move || this.engine.getAllLegalMoves('b')[0] || null;
+      } else if (this.mode === 'special' && (this.getBoardSize() > 8 || this.specialMeta?.id === 'special_atomic_boom')) {
+        bestMove = chooseLargeBoardAIMove(this.engine, 'b');
       } else if (this.mode === 'special' && this.specialMeta?.id === 'special_6x6') {
         const legal6 = this.engine.getAllLegalMoves('b').filter((m) => !this.isVoid6x6Square(m.tr, m.tc));
         legal6.sort((a, b) => (this.engine.board[b.tr]?.[b.tc] ? 10 : 0) - (this.engine.board[a.tr]?.[a.tc] ? 10 : 0) + (Math.random() - 0.5));
@@ -2134,14 +2164,27 @@ export class BattleController {
     this.tickBattlePowerStatesAfterEnemyTurn();
     // Eventos especiales tras el turno rival
     if (!this.engine.winner && this.mode === 'special') {
-      if (this.specialMeta?.id === 'special_random_powers') {
+      if (this.specialMeta?.id === 'special_random_powers' || this.specialMeta?.id === 'special_hyper_chaos') {
         const rolled = this.rollRandomSpecialPower();
         if (rolled) {
           this.toast(`🎰 Nuevo poder aleatorio: ${rolled.icon} ${rolled.name}`, 'info');
           this.engine.logs.unshift({ turn: this.engine.turnNumber, type: 'special', text: `🎰 Ruleta: ahora tienes ${rolled.icon} ${rolled.name}!` });
         }
-      } else if (this.specialMeta?.id === 'special_earthquake' && this.engine.turnNumber % 2 === 0) {
+      }
+      if ((this.specialMeta?.id === 'special_earthquake' || this.specialMeta?.id === 'special_hyper_chaos') && this.engine.turnNumber % 2 === 0) {
         this.triggerEarthquakeChaos();
+      } else if (this.specialMeta?.id === 'special_mega_10x10_chaos' && this.engine.turnNumber % 2 === 0) {
+        // Mutar 1 peón aleatorio en el Mega-Tablero 10×10
+        const N = this.getBoardSize();
+        const pawns = [];
+        for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (this.engine.board[r][c]?.type === 'P') pawns.push({ r, c, p: this.engine.board[r][c] });
+        if (pawns.length > 0) {
+          const pick = pawns[Math.floor(Math.random() * pawns.length)];
+          const opts = ['N', 'B', 'R', 'Q'];
+          pick.p.type = opts[Math.floor(Math.random() * opts.length)];
+          this.vfx.spawnConversionBurst(pick.r, pick.c);
+          this.toast(`🌠 ¡Mutación 10×10! Un peón evolucionó en ${PIECE_NAMES[pick.p.type]}!`, 'info');
+        }
       } else if (this.specialMeta?.id === 'special_6x6') {
         // Coronación automática en fila 6 para negras / fila 1 para blancas en 6x6
         for (let c = 1; c <= 6; c++) {
@@ -2257,19 +2300,23 @@ export class BattleController {
       onDone();
       return;
     }
+    const N = this.getBoardSize();
+    const cellPct = 100 / N;
     const layer = document.getElementById('anim-piece-layer');
     const [vfr, vfc] = this.toVisualCoords(fr, fc);
     const [vtr, vtc] = this.toVisualCoords(tr, tc);
     const el = document.createElement('div');
     el.className = 'flying-piece';
+    el.style.width = `${cellPct}%`;
+    el.style.height = `${cellPct}%`;
     el.style.transitionDuration = `${dur}ms`;
-    el.style.left = `${vfc * 12.5}%`;
-    el.style.top = `${vfr * 12.5}%`;
+    el.style.left = `${vfc * cellPct}%`;
+    el.style.top = `${vfr * cellPct}%`;
     el.innerHTML = SVGS[svgKey] || MITTENS_SVGS[svgKey] || GALAXY_SVGS[svgKey] || GLITCH_SVGS[svgKey] || CHESS_ORIGIN_SVGS[svgKey] || '';
     layer.appendChild(el);
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      el.style.left = `${vtc * 12.5}%`;
-      el.style.top = `${vtr * 12.5}%`;
+      el.style.left = `${vtc * cellPct}%`;
+      el.style.top = `${vtr * cellPct}%`;
     }));
     setTimeout(() => { el.remove(); onDone(); }, dur);
   }
@@ -2410,6 +2457,11 @@ export class BattleController {
     const grid = document.getElementById('board-grid');
     const inner = document.getElementById('board-inner');
     if (!grid || !inner) return;
+    const N = this.getBoardSize();
+    this.vfx.setBoardSize(N);
+    grid.className = `board-grid board-size-${N}`;
+    grid.style.gridTemplateColumns = `repeat(${N}, 1fr)`;
+    grid.style.gridTemplateRows = `repeat(${N}, 1fr)`;
     inner.classList.toggle('locked', this.phase !== 'PLAYER_TURN' || this.paused);
     grid.innerHTML = '';
 
@@ -2434,8 +2486,8 @@ export class BattleController {
     const wInCheck = wKing && this.engine.isKingInCheck('w');
     const bInCheck = bKing && this.engine.isKingInCheck('b');
 
-    for (let vr = 0; vr < 8; vr++) {
-      for (let vc = 0; vc < 8; vc++) {
+    for (let vr = 0; vr < N; vr++) {
+      for (let vc = 0; vc < N; vc++) {
         const [r, c] = this.fromVisualCoords(vr, vc);
         const sq = document.createElement('div');
         sq.className = `square ${(r + c) % 2 === 0 ? 'light' : 'dark'}`;
@@ -2470,8 +2522,8 @@ export class BattleController {
           }
         }
 
-        if (vc === 0) sq.insertAdjacentHTML('beforeend', `<span class="coord-rank">${8 - r}</span>`);
-        if (vr === 7) sq.insertAdjacentHTML('beforeend', `<span class="coord-file">${FILES[c]}</span>`);
+        if (vc === 0) sq.insertAdjacentHTML('beforeend', `<span class="coord-rank">${N - r}</span>`);
+        if (vr === N - 1) sq.insertAdjacentHTML('beforeend', `<span class="coord-file">${FILES[c] || ''}</span>`);
 
         if (this.mode === 'mittens' && this.engine.isSprinkler(r, c)) {
           sq.insertAdjacentHTML('beforeend', `<div class="piece-wrap" title="Aspersor inmóvil">${MITTENS_SVGS.sprinkler}</div>`);
@@ -2577,10 +2629,14 @@ export class BattleController {
       const rem = this.engine.countAliveAnchors();
       layer.innerHTML = SVGS.galaxyMan2x2 + `<span class="pyramid-badge">${destroyed ? 'Quebrado' : `2×2 · ${rem} Anclas`}</span>`;
     } else if (this.powerState?.giantUnits?.length > 0) {
+      const N = this.getBoardSize();
+      const cellPct = 100 / N;
       const g = this.powerState.giantUnits[this.powerState.giantUnits.length - 1];
-      const [vr, vc] = this.isFlipped() ? [6 - g.r, 6 - g.c] : [g.r, g.c];
-      layer.style.left = `${vc * 12.5}%`;
-      layer.style.top = `${vr * 12.5}%`;
+      const [vr, vc] = this.isFlipped() ? [N - 2 - g.r, N - 2 - g.c] : [g.r, g.c];
+      layer.style.width = `${cellPct * 2}%`;
+      layer.style.height = `${cellPct * 2}%`;
+      layer.style.left = `${vc * cellPct}%`;
+      layer.style.top = `${vr * cellPct}%`;
       layer.className = `pyramid-layer${g.kind === 'galaxy' ? ' galaxy-man-mode' : ''}`;
       layer.innerHTML = (g.kind === 'galaxy' ? SVGS.galaxyMan2x2 : SVGS.pyramid)
         + `<span class="pyramid-badge">${g.name.slice(0, 14)} · ${g.turnsLeft}t</span>`;

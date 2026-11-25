@@ -4,6 +4,7 @@ export class VFXEngine {
     this.reduced = Boolean(sound?.reducedVfx);
     this.shakeEnabled = true;
     this.bgParticlesEnabled = true;
+    this.boardSize = 8;
     this.introMode = false;
 
     this.bgCanvas = document.getElementById('bg-vfx-canvas');
@@ -36,6 +37,10 @@ export class VFXEngine {
 
   setBgParticlesEnabled(val) {
     this.bgParticlesEnabled = Boolean(val);
+  }
+
+  setBoardSize(n) {
+    this.boardSize = Math.max(8, Math.min(12, Number(n) || 8));
   }
 
   setIntroMode(active) {
@@ -82,7 +87,7 @@ export class VFXEngine {
   squareCenter(r, c) {
     if (!this.boardCanvas || !this.boardCanvas.parentElement) return { x: 0, y: 0 };
     const rect = this.boardCanvas.parentElement.getBoundingClientRect();
-    const cell = rect.width / 8;
+    const cell = rect.width / (this.boardSize || 8);
     return { x: (c + 0.5) * cell, y: (r + 0.5) * cell };
   }
 

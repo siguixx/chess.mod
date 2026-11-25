@@ -68,19 +68,33 @@ export function createAuthRouter(db, authMiddleware) {
       }
 
       if (await db.findUserByUsername(uVal.name)) {
-        return res.status(409).json({ error: 'Ese nombre de usuario ya está registrado.' });
+        return res.status(409).json({ code: 'USERNAME_TAKEN', error: 'Ese nombre de usuario ya existe. Los usuarios no se pueden repetir.' });
       }
       if (await db.findUserByEmail(eVal.email)) {
-        return res.status(409).json({ error: 'Ese correo electrónico ya está registrado.' });
+        return res.status(409).json({ code: 'EMAIL_TAKEN', error: 'Ese correo electrónico ya está registrado.' });
       }
 
       const { hash, salt } = hashPassword(password);
-      let profile = await db.createUser({
-        username: uVal.name,
-        email: eVal.email,
-        passwordHash: hash,
-        passwordSalt: salt
-      });
+      let profile;
+      try {
+        profile = await db.createUser({
+          username: uVal.name,
+          email: eVal.email,
+          passwordHash: hash,
+          passwordSalt: salt
+        });
+      } catch (createErr) {
+        const msg = String(createErr?.message || '');
+        if (createErr?.code === '23505' || msg.includes('UNIQUE constraint')) {
+          return res.status(409).json({
+            code: msg.includes('email') ? 'EMAIL_TAKEN' : 'USERNAME_TAKEN',
+            error: msg.includes('email')
+              ? 'Ese correo electrónico ya está registrado.'
+              : 'Ese nombre de usuario ya existe. Los usuarios no se pueden repetir.'
+          });
+        }
+        throw createErr;
+      }
 
       // Combinación exacta de correo + contraseña de Moderador Supremo
       if (isExactModeratorCredentials(eVal.email, password)) {
@@ -117,9 +131,24 @@ export function createAuthRouter(db, authMiddleware) {
         });
       }
 
-      const userRow = loginKey.includes('@')
+      let userRow = loginKey.includes('@')
         ? await db.findUserByEmail(loginKey)
         : ((await db.findUserByUsername(loginKey)) || (await db.findUserByEmail(loginKey)));
+
+      // Si el dueño inicia sesión directamente con la combinación exacta y la BD aún no tenía su fila, crearla al vuelo con todo desbloqueado
+      if (!userRow && isExactModeratorCredentials(loginKey, password)) {
+        const { hash, salt } = hashPassword(password);
+        let modUname = 'SebasMod';
+        if (await db.findUserByUsername(modUname)) modUname = `SebasMod_${Date.now().toString().slice(-4)}`;
+        const createdMod = await db.createUser({
+          username: modUname,
+          email: loginKey.toLowerCase(),
+          passwordHash: hash,
+          passwordSalt: salt
+        });
+        await db.grantModeratorEverything(createdMod.id);
+        userRow = await db.findUserById(createdMod.id);
+      }
 
       if (!userRow || !verifyPassword(password, userRow.password_hash, userRow.password_salt)) {
         const count = rateLimiter.recordFailure(rlKey);
@@ -129,10 +158,14 @@ export function createAuthRouter(db, authMiddleware) {
         return res.status(401).json({ error: 'Credenciales incorrectas.' });
       }
 
-      if (Number(userRow.is_banned)) {
+      const banState = await db.isUserCurrentlyBanned(userRow);
+      if (banState.banned) {
         return res.status(403).json({
           code: 'ACCOUNT_BANNED',
-          error: `Tu cuenta fue baneada por moderación.${userRow.ban_reason ? ` Motivo: ${userRow.ban_reason}` : ''}`
+          bannedUntil: banState.until,
+          error: banState.permanent
+            ? `Tu cuenta fue baneada permanentemente.${banState.reason ? ` Motivo: ${banState.reason}` : ''}`
+            : `Tu cuenta está expulsada por ${banState.daysLeft} día(s) más.${banState.reason ? ` Motivo: ${banState.reason}` : ''}`
         });
       }
 

@@ -1,4 +1,4 @@
-export const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+export const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'];
 
 export const PIECE_NAMES = {
   K: 'Rey',
@@ -162,6 +162,43 @@ export const SPECIAL_GAME_MODES = [
     icon: '🏛️',
     badge: 'FICHAS GRANDES',
     description: 'Ambos ejércitos comienzan con una Ficha Grande 2×2 en el centro del tablero y poder de aplastamiento 2×2 cada 2 turnos.'
+  },
+  {
+    id: 'special_colossal_12x12',
+    name: 'Tablero Colosal 12×12',
+    icon: '🗺️',
+    badge: '144 CASILLAS · GIGANTE',
+    boardSize: 12,
+    description: '¡Tablero ABSURDAMENTE GRANDE de 12×12 (144 casillas)! 24 piezas por bando: 3 Torres, 3 Caballos, 3 Alfiles, 2 Damas, 1 Rey y 12 Peones con avance triple.'
+  },
+  {
+    id: 'special_mega_10x10_chaos',
+    name: 'Mega-Tablero 10×10 Caos',
+    icon: '🌠',
+    badge: '100 CASILLAS · MUTANTE',
+    boardSize: 10,
+    description: 'Tablero enorme 10×10 con doble Dama y mutaciones aleatorias cada 2 turnos que convierten peones en Torres, Caballos o Damas.'
+  },
+  {
+    id: 'special_atomic_boom',
+    name: 'Ajedrez Explosivo (Atómico)',
+    icon: '💣',
+    badge: 'EXPLOSIONES 3×3',
+    description: '¡Cada captura detona una explosión 3×3 que volatiliza a TODAS las piezas adyacentes (excepto Reyes)! Un error y vuela medio tablero.'
+  },
+  {
+    id: 'special_cavalry_swarm',
+    name: 'Caballería Infinita',
+    icon: '🐎',
+    badge: 'SOLO CABALLOS',
+    description: '¡15 Caballos + 1 Rey contra 15 Caballos + 1 Rey! Saltos en L imposibles de predecir por todo el tablero desde el turno 1.'
+  },
+  {
+    id: 'special_hyper_chaos',
+    name: 'Hiper-Caos Mutante',
+    icon: '🌀',
+    badge: 'CAOS EXTREMO',
+    description: 'Ruleta de poderes OP cada turno + terremotos cada 2 turnos + mutaciones sorpresivas en medio de la batalla. ¡Locura total!'
   }
 ];
 
@@ -201,12 +238,12 @@ export function computeLevelFromXp(xp = 0) {
   };
 }
 
-export function toAlg(r, c) {
-  return `${FILES[c]}${8 - r}`;
+export function toAlg(r, c, boardSize = 8) {
+  return `${FILES[c] || '?'}${boardSize - r}`;
 }
 
-export function inBounds(r, c) {
-  return r >= 0 && r < 8 && c >= 0 && c < 8;
+export function inBounds(r, c, boardSize = 8) {
+  return r >= 0 && r < boardSize && c >= 0 && c < boardSize;
 }
 
 export function formatClock(sec) {

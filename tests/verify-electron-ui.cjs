@@ -308,7 +308,7 @@ app.whenReady().then(async () => {
       await wait(300);
       results.blackyNoIntroOnRestart = !document.getElementById('boss-intro-overlay').classList.contains('active');
 
-      // 11. Ranking Global muestra 0 Elo inicial
+      // 11. Ranking Global muestra 0 Elo inicial + Pase de Batalla T1 + Tablero Colosal 12×12 + Vista Móvil
       window.location.hash = '';
       document.getElementById('btn-battle-back').click();
       await wait(150);
@@ -316,6 +316,21 @@ app.whenReady().then(async () => {
       await wait(400);
       results.rankingRows = document.querySelectorAll('#ranking-tbody tr').length;
       results.rankingFirstText = document.querySelector('#ranking-tbody tr')?.textContent.replace(/\\s+/g, ' ').trim() || '';
+
+      // 12. Verificar Pase de Batalla Temporada 1 (10 niveles, $10 USD / 5,000 Mods)
+      document.querySelector('[data-screen="battlepass"]').click();
+      await wait(200);
+      results.battlePassTiersRendered = document.querySelectorAll('#bp-tiers-grid .bp-tier-card').length;
+      results.battlePassHasBuyBtns = Boolean(document.getElementById('btn-bp-buy-mods') && document.getElementById('btn-bp-buy-usd'));
+
+      // 13. Verificar Tablero Colosal 12×12 (144 casillas jugables!)
+      document.querySelector('[data-screen="play"]').click();
+      await wait(150);
+      document.querySelector('[data-start-special="special_colossal_12x12"]')?.click();
+      await wait(400);
+      results.colossal12x12Squares = document.querySelectorAll('#board-grid .square').length;
+      document.getElementById('btn-battle-back').click();
+      await wait(150);
 
       return results;
     })()`);

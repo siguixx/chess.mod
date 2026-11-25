@@ -42,6 +42,7 @@
             <button class="nav-btn" data-screen="multiplayer"><span class="nav-ico">🌐</span><span data-i18n="nav_multiplayer">Multijugador</span></button>
             <button class="nav-btn" data-screen="story"><span class="nav-ico">📜</span><span data-i18n="nav_story">Modo Historia</span></button>
             <button class="nav-btn" data-screen="shop"><span class="nav-ico">🛒</span><span data-i18n="nav_shop">Tienda</span></button>
+            <button class="nav-btn" data-screen="battlepass"><span class="nav-ico">🎖️</span><span data-i18n="nav_battlepass">Pase T1</span></button>
             <button class="nav-btn" data-screen="mods"><span class="nav-ico">🧩</span><span data-i18n="nav_mods">Taller de Mods</span></button>
             <button class="nav-btn" data-screen="social"><span class="nav-ico">👥</span><span data-i18n="nav_social">Social</span></button>
             <button class="nav-btn" data-screen="profile"><span class="nav-ico">👤</span><span data-i18n="nav_profile">Perfil</span></button>
@@ -332,6 +333,39 @@
         </div>
 
         <div id="shop-items-grid" class="shop-grid"></div>
+      </section>
+
+      <!-- 3B-2. PASE DE BATALLA TEMPORADA 1 ($10 USD o 5,000 MODS) -->
+      <section id="screen-battlepass" class="screen-section">
+        <div class="screen-header">
+          <div>
+            <div class="screen-kicker">TEMPORADA 1 · RECOMPENSAS EXCLUSIVAS</div>
+            <h1 class="screen-title">🎖️ PASE DE BATALLA — TEMPORADA 1</h1>
+            <p class="screen-subtitle">Desbloquea poderes míticos, skins de fichas, tableros exclusivos, marcos, avatar Emperador y +2,400 Mods extra. Usable en todos los modos menos en Modo Historia.</p>
+          </div>
+          <span id="bp-owned-badge" class="pill muted">Bloqueado</span>
+        </div>
+
+        <div class="panel-card bp-hero-card" style="margin-bottom:18px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:240px;">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+                <span class="pill" style="border-color:#38bdf8;color:#7dd3fc;">TEMPORADA 1</span>
+                <span class="pill">💵 $10 USD o 🪙 5,000 Mods</span>
+              </div>
+              <h2 style="font-family:var(--font-display);color:#fff4c2;font-size:1.3rem;margin-bottom:4px;">El Despertar del Chess</h2>
+              <p id="bp-progress-desc" style="font-size:0.82rem;color:#d6e4f0;line-height:1.45;">Gana XP jugando partidas para subir los 10 niveles del Pase de Batalla Temporada 1. Todas las recompensas aplican en Partida Rápida, Vs IA, Modos Caóticos, Online y Salas Privadas (nunca en Modo Historia).</p>
+              <div class="xp-mini-track" style="height:9px;margin-top:10px;"><div id="bp-xp-bar" class="xp-mini-fill" style="background:linear-gradient(90deg,#38bdf8,#f472b6,#ffd859);"></div></div>
+              <div id="bp-xp-label" style="font-size:0.75rem;color:#7dd3fc;margin-top:4px;font-weight:700;">0 / 2,400 XP Temporada 1</div>
+            </div>
+            <div id="bp-buy-actions" style="display:flex;flex-direction:column;gap:8px;min-width:220px;">
+              <button id="btn-bp-buy-mods" class="btn btn-gold">🪙 Desbloquear por 5,000 Mods</button>
+              <button id="btn-bp-buy-usd" class="btn btn-primary">💳 Comprar por $10.00 USD</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="bp-tiers-grid" class="bp-tiers-grid"></div>
       </section>
 
       <!-- 3C. TALLER DE MODS (CÓDIGO ABIERTO · SOLO SALAS PRIVADAS) -->

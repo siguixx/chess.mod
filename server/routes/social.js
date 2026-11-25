@@ -111,9 +111,19 @@ export function createSocialRouter(db, authMiddleware, multiplayer) {
 
   router.post('/mod/ban', authMiddleware.requireModerator, async (req, res) => {
     try {
-      const { userId, reason } = req.body || {};
-      const result = await db.banUser(req.userId, userId, reason);
+      const { userId, reason, durationDays } = req.body || {};
+      const result = await db.banUser(req.userId, userId, reason, durationDays);
       if (multiplayer?.disconnectUserById) multiplayer.disconnectUserById(userId);
+      return res.json(result);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  });
+
+  router.post('/mod/adjust-mods', authMiddleware.requireModerator, async (req, res) => {
+    try {
+      const { userId, deltaMods, reason } = req.body || {};
+      const result = await db.adjustUserMods(req.userId, userId, deltaMods, reason);
       return res.json(result);
     } catch (err) {
       return res.status(400).json({ error: err.message });

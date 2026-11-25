@@ -51,6 +51,7 @@ import {
   COSMETIC_PIECE_SKINS,
   COSMETIC_POWERS,
   MOD_VIP_PLAN,
+  BATTLE_PASS_S1,
   VIP_EXCLUSIVE_IDS,
   findShopItem
 } from '../../shared/config/cosmetics.js';
@@ -122,6 +123,7 @@ function hydrateUser(u, matches = []) {
     campaigns,
     trainerId: u.trainerId || null,
     language: u.language || 'es',
+    battlePassS1: { owned: Boolean(u.battlePassS1), season: 1, xp: u.xp || 0, claimedTiers: u.bpClaimed || [] },
     unlockedCosmetics: [...unlockedCosmetics],
     recentMatches: matches.slice(0, 20)
   };
@@ -272,6 +274,29 @@ class StandaloneApiClient {
   async modUnbanUser() { throw new Error('Requiere servidor online.'); }
   async modResolveReport() { throw new Error('Requiere servidor online.'); }
   async modGrantAll() { throw new Error('Requiere servidor online.'); }
+  async modAdjustMods() { throw new Error('Requiere servidor online.'); }
+  async buyBattlePassMods() {
+    const s = loadStore();
+    if (!s.user) await this.me();
+    const st = loadStore();
+    if ((st.user.mods || 0) < BATTLE_PASS_S1.priceMods) throw new Error('Necesitas 5,000 Mods para desbloquear el Pase de Batalla T1.');
+    st.user.mods -= BATTLE_PASS_S1.priceMods;
+    st.user.battlePassS1 = true;
+    saveStore(st);
+    return { ok: true, user: hydrateUser(st.user, st.matches) };
+  }
+  async startBattlePassCheckout() { throw new Error('El cobro con $10 USD requiere la versión web online.'); }
+  async verifyBattlePassPayment() { throw new Error('Requiere versión web online.'); }
+  async claimBattlePassTier(tier) {
+    const st = loadStore();
+    const tDef = BATTLE_PASS_S1.tiers.find((t) => t.tier === Number(tier));
+    if (!st.user?.battlePassS1 || !tDef) throw new Error('Pase de Batalla T1 requerido.');
+    st.user.bpClaimed = [...new Set([...(st.user.bpClaimed || []), tDef.tier])];
+    st.user.unlockedCosmetics = [...new Set([...(st.user.unlockedCosmetics || []), tDef.rewardId])];
+    if (tDef.bonusMods) st.user.mods = (st.user.mods || 0) + tDef.bonusMods;
+    saveStore(st);
+    return { ok: true, user: hydrateUser(st.user, st.matches) };
+  }
 
   async cancelModVip() {
     const store = loadStore();

@@ -250,16 +250,18 @@ export function isPieceFrozen(powerState, piece) {
  */
 export function computePowerTargets(engine, powerState, side, powerDef, sourcePos = null) {
   if (!engine || !powerDef) return [];
+  const N = engine.boardSize || engine.board?.length || 8;
   const enemy = side === 'w' ? 'b' : 'w';
   const eff = powerDef.effect || powerDef.id;
-  const maxRange = powerDef.range || (eff === 'power_vip_golden_freeze' || eff === 'golden_freeze_area' ? 5 : 4);
+  const maxRange = powerDef.range || (eff === 'power_vip_golden_freeze' || eff === 'golden_freeze_area' || eff === 'power_bp_thunder' ? 5 : 4);
   const targets = [];
 
-  // 1. Poderes de disparo a distancia desde una pieza origen (Flechas Maya, Tormenta Dorada VIP, Rayo Cuántico, Chorro Free Mittens)
+  // 1. Poderes de disparo a distancia desde una pieza origen
   if (
     eff === 'power_vip_golden_freeze' || eff === 'golden_freeze_area'
     || eff === 'power_maya_arrows' || eff === 'ranged_destroy'
     || eff === 'power_free_mittens' || eff === 'water_cannon'
+    || eff === 'power_bp_thunder'
   ) {
     if (!sourcePos) return [];
     const { r: pr, c: pc } = sourcePos;
@@ -269,7 +271,7 @@ export function computePowerTargets(engine, powerState, side, powerDef, sourcePo
       for (let step = 1; step <= maxRange; step++) {
         const nr = pr + dr * step;
         const nc = pc + dc * step;
-        if (!inBounds(nr, nc)) break;
+        if (!inBounds(nr, nc, N)) break;
         const occ = engine.board[nr]?.[nc];
         if (!occ) continue;
         if (occ.color === enemy && occ.type !== 'K') {
@@ -283,8 +285,8 @@ export function computePowerTargets(engine, powerState, side, powerDef, sourcePo
 
   // 2. Fichas Grandes 2×2 (Pirámide Maya 2×2, Coloso Galáctico 2×2, Custom area_crush_2x2)
   if (eff === 'power_maya_pyramid' || eff === 'power_galaxy_titan' || eff === 'area_crush_2x2') {
-    for (let r = 0; r <= 6; r++) {
-      for (let c = 0; c <= 6; c++) {
+    for (let r = 0; r <= N - 2; r++) {
+      for (let c = 0; c <= N - 2; c++) {
         const cells = getGiantUnitCells(r, c);
         let touchesKing = false;
         let hasEnemy = false;
@@ -297,8 +299,7 @@ export function computePowerTargets(engine, powerState, side, powerDef, sourcePo
           if (p.color === side) touchesOwnNonKing = true;
         }
         if (touchesKing || touchesOwnNonKing) continue;
-        // Permitir caer donde haya enemigos o en las filas centrales (2..5)
-        if (hasEnemy || (r >= 2 && r <= 4)) {
+        if (hasEnemy || (r >= 2 && r <= N - 4)) {
           targets.push({ tr: r, tc: c, isGiant2x2: true, effect: eff });
         }
       }
@@ -306,10 +307,16 @@ export function computePowerTargets(engine, powerState, side, powerDef, sourcePo
     return targets;
   }
 
-  // 3. Grieta Glitch Destructora (power_glitch_rift / rift_destroy): apunta directo a cualquier enemigo no Rey
-  if (eff === 'power_glitch_rift' || eff === 'rift_destroy') {
-    for (let r = 0; r < 8; r++) {
-      for (let c = 0; c < 8; c++) {
+  // 3. Poderes que apuntan directo a cualquier pieza enemiga (no Rey)
+  if (
+    eff === 'power_glitch_rift' || eff === 'rift_destroy'
+    || eff === 'power_blacky_claw' || eff === 'corrupt_steal'
+    || eff === 'power_meteor_shower' || eff === 'power_time_stop'
+    || eff === 'power_black_hole' || eff === 'power_cosmic_supernova'
+    || eff === 'power_chaos_omnipotence' || eff === 'power_bp_void_judgment'
+  ) {
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
         const p = engine.board[r]?.[c];
         if (p && p.color === enemy && p.type !== 'K') {
           targets.push({ tr: r, tc: c, effect: eff });
@@ -319,24 +326,25 @@ export function computePowerTargets(engine, powerState, side, powerDef, sourcePo
     return targets;
   }
 
-  // 4. Dominio Abismal de Blacky (ULTRA OP: roba incluso Damas) / Control Mental
-  if (eff === 'power_blacky_claw' || eff === 'corrupt_steal') {
-    for (let r = 0; r < 8; r++) {
-      for (let c = 0; c < 8; c++) {
+  // 4. Decreto Imperial: elige cualquiera de tus Peones propios para coronarlo al instante en Dama
+  if (eff === 'power_imperial_decree') {
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
         const p = engine.board[r]?.[c];
-        if (!p || p.color !== enemy || p.type === 'K') continue;
-        targets.push({ tr: r, tc: c, effect: eff });
+        if (p && p.color === side && p.type === 'P') {
+          targets.push({ tr: r, tc: c, effect: eff });
+        }
       }
     }
     return targets;
   }
 
-  // 5. Invocación de pieza personalizada (summon_piece): cualquier casilla vacía en la mitad aliada o centro
+  // 5. Invocación de pieza personalizada (summon_piece)
   if (eff === 'summon_piece') {
-    const minR = side === 'w' ? 3 : 0;
-    const maxR = side === 'w' ? 7 : 4;
+    const minR = side === 'w' ? Math.floor(N / 2) - 1 : 0;
+    const maxR = side === 'w' ? N - 1 : Math.floor(N / 2);
     for (let r = minR; r <= maxR; r++) {
-      for (let c = 0; c < 8; c++) {
+      for (let c = 0; c < N; c++) {
         if (!engine.board[r]?.[c] && !isSquareBlockedByModState(powerState, r, c)) {
           targets.push({ tr: r, tc: c, effect: eff });
         }
@@ -357,7 +365,8 @@ export function powerNeedsSourceSelection(powerDef) {
     'power_maya_arrows',
     'ranged_destroy',
     'power_free_mittens',
-    'water_cannon'
+    'water_cannon',
+    'power_bp_thunder'
   ].includes(eff);
 }
 
@@ -603,7 +612,209 @@ export function executeBattlePowerAction(engine, powerState, side, powerDef, act
     };
     sfx = 'blackySummon';
     engine.lastMoveSquares = [[chosen.tr, chosen.tc]];
-    logText = `${powerDef.icon || '🌀'} ${powerDef.name.toUpperCase()}: ¡Invocas un ${PIECE_NAMES[stype]} aliado en ${toAlg(chosen.tr, chosen.tc)}!`;
+    logText = `${powerDef.icon || '🌀'} ${powerDef.name.toUpperCase()}: ¡Invocas un ${PIECE_NAMES[stype]} aliado en ${toAlg(chosen.tr, chosen.tc, engine.boardSize || 8)}!`;
+  }
+
+  // === 8. LLUVIA DE METEOROS (550 Mods) ===
+  else if (eff === 'power_meteor_shower') {
+    const N = engine.boardSize || engine.board?.length || 8;
+    const victim = engine.board[chosen.tr][chosen.tc];
+    engine.board[chosen.tr][chosen.tc] = null;
+    capturedBag.push(victim);
+    events.destroyed.push([chosen.tr, chosen.tc]);
+    let extra = 0;
+    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      if (extra >= 2) break;
+      const nr = chosen.tr + dr, nc = chosen.tc + dc;
+      if (!inBounds(nr, nc, N)) continue;
+      const adj = engine.board[nr][nc];
+      if (adj && adj.color === enemy && adj.type !== 'K') {
+        engine.board[nr][nc] = null;
+        capturedBag.push(adj);
+        events.destroyed.push([nr, nc]);
+        extra++;
+      }
+    }
+    sfx = 'crush';
+    engine.lastMoveSquares = [[chosen.tr, chosen.tc]];
+    logText = `☄️ LLUVIA DE METEOROS: Destruye a ${PIECE_NAMES[victim.type]} en ${toAlg(chosen.tr, chosen.tc, N)}${extra > 0 ? ` y arrasa ${extra} rival(es) adyacente(s)` : ''}!`;
+  }
+
+  // === 9. PARADA DEL TIEMPO (900 Mods) ===
+  else if (eff === 'power_time_stop') {
+    const N = engine.boardSize || engine.board?.length || 8;
+    const dur = powerDef.duration || 2;
+    let count = 0;
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        const nr = chosen.tr + dr, nc = chosen.tc + dc;
+        if (!inBounds(nr, nc, N)) continue;
+        const p = engine.board[nr][nc];
+        if (p && p.color === enemy && p.type !== 'K') {
+          powerState.frozenPieces[p.id] = dur;
+          count++;
+        }
+      }
+    }
+    sfx = 'power_golden_freeze';
+    engine.lastMoveSquares = [[chosen.tr, chosen.tc]];
+    logText = `⏳ PARADA DEL TIEMPO: ¡${count} pieza(s) enemigas congeladas en zona 3×3 por ${dur} turnos!`;
+  }
+
+  // === 10. AGUJERO NEGRO (1,400 Mods) ===
+  else if (eff === 'power_black_hole') {
+    const N = engine.boardSize || engine.board?.length || 8;
+    const dur = powerDef.duration || 3;
+    const victim = engine.board[chosen.tr][chosen.tc];
+    engine.board[chosen.tr][chosen.tc] = null;
+    capturedBag.push(victim);
+    events.destroyed.push([chosen.tr, chosen.tc]);
+    powerState.modRifts.push({ r: chosen.tr, c: chosen.tc, turnsLeft: dur, owner: side });
+    let sealed = 0;
+    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      if (sealed >= 2) break;
+      const nr = chosen.tr + dr, nc = chosen.tc + dc;
+      if (inBounds(nr, nc, N) && !engine.board[nr][nc] && !isSquareBlockedByModState(powerState, nr, nc)) {
+        powerState.modRifts.push({ r: nr, c: nc, turnsLeft: dur, owner: side });
+        sealed++;
+      }
+    }
+    sfx = 'blackyAbsorb';
+    engine.lastMoveSquares = [[chosen.tr, chosen.tc]];
+    logText = `🕳️ AGUJERO NEGRO: Engulle a ${PIECE_NAMES[victim.type]} en ${toAlg(chosen.tr, chosen.tc, N)} y sella ${1 + sealed} casillas (${dur}t)!`;
+  }
+
+  // === 11. DECRETO IMPERIAL (2,200 Mods) ===
+  else if (eff === 'power_imperial_decree') {
+    const N = engine.boardSize || engine.board?.length || 8;
+    const pawn = engine.board[chosen.tr][chosen.tc];
+    pawn.type = 'Q';
+    pawn.hasMoved = true;
+    let knightSq = null;
+    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]]) {
+      const nr = chosen.tr + dr, nc = chosen.tc + dc;
+      if (inBounds(nr, nc, N) && !engine.board[nr][nc] && !isSquareBlockedByModState(powerState, nr, nc)) {
+        engine.board[nr][nc] = { id: `impN_${side}_${Date.now()}`, color: side, type: 'N', hasMoved: true };
+        knightSq = toAlg(nr, nc, N);
+        break;
+      }
+    }
+    sfx = 'vip_activate';
+    engine.lastMoveSquares = [[chosen.tr, chosen.tc]];
+    logText = `👑 DECRETO IMPERIAL: ¡Tu Peón en ${toAlg(chosen.tr, chosen.tc, N)} asciende a DAMA${knightSq ? ` y convoca Caballo en ${knightSq}` : ''}!`;
+  }
+
+  // === 12. SUPERNOVA CÓSMICA (3,500 Mods) ===
+  else if (eff === 'power_cosmic_supernova') {
+    const N = engine.boardSize || engine.board?.length || 8;
+    const dur = powerDef.duration || 3;
+    const names = [];
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        const nr = chosen.tr + dr, nc = chosen.tc + dc;
+        if (!inBounds(nr, nc, N)) continue;
+        const p = engine.board[nr][nc];
+        if (p && p.color === enemy && p.type !== 'K') {
+          engine.board[nr][nc] = null;
+          capturedBag.push(p);
+          events.destroyed.push([nr, nc]);
+          names.push(PIECE_NAMES[p.type]);
+        }
+      }
+    }
+    if (!engine.board[chosen.tr][chosen.tc]) {
+      powerState.modRifts.push({ r: chosen.tr, c: chosen.tc, turnsLeft: dur, owner: side });
+    }
+    sfx = 'crush';
+    engine.lastMoveSquares = [[chosen.tr, chosen.tc]];
+    logText = `💥 SUPERNOVA CÓSMICA: ¡Explosión 3×3 en ${toAlg(chosen.tr, chosen.tc, N)} arrasa ${names.length} enemigo(s): ${names.join(', ')}!`;
+  }
+
+  // === 13. OMNIPOTENCIA DEL CAOS (5,000 Mods) ===
+  else if (eff === 'power_chaos_omnipotence') {
+    const N = engine.boardSize || engine.board?.length || 8;
+    const dur = powerDef.duration || 2;
+    const victim = engine.board[chosen.tr][chosen.tc];
+    victim.color = side;
+    victim.betrayed = true;
+    victim.hasMoved = true;
+    delete powerState.frozenPieces[victim.id];
+    let frozenCnt = 0;
+    let rookSq = null;
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        const nr = chosen.tr + dr, nc = chosen.tc + dc;
+        if (!inBounds(nr, nc, N)) continue;
+        const p = engine.board[nr][nc];
+        if (p && p.color === enemy && p.type !== 'K') {
+          powerState.frozenPieces[p.id] = dur;
+          frozenCnt++;
+        } else if (!p && !rookSq && !isSquareBlockedByModState(powerState, nr, nc)) {
+          engine.board[nr][nc] = { id: `chaosR_${side}_${Date.now()}`, color: side, type: 'R', hasMoved: true };
+          rookSq = toAlg(nr, nc, N);
+        }
+      }
+    }
+    sfx = 'blackyBetray';
+    engine.lastMoveSquares = [[chosen.tr, chosen.tc]];
+    logText = `♾️ OMNIPOTENCIA DEL CAOS: ¡Roba ${PIECE_NAMES[victim.type]} en ${toAlg(chosen.tr, chosen.tc, N)}${rookSq ? `, invoca Torre en ${rookSq}` : ''}${frozenCnt ? ` y congela ${frozenCnt} rival(es)` : ''}!`;
+  }
+
+  // === 14. PASE DE BATALLA T1: RELÁMPAGO EN CADENA ===
+  else if (eff === 'power_bp_thunder') {
+    const N = engine.boardSize || engine.board?.length || 8;
+    const dur = powerDef.duration || 2;
+    const victim = engine.board[chosen.tr][chosen.tc];
+    engine.board[chosen.tr][chosen.tc] = null;
+    capturedBag.push(victim);
+    events.destroyed.push([chosen.tr, chosen.tc]);
+    let chained = 0;
+    for (let dr = -1; dr <= 1 && chained < 2; dr++) {
+      for (let dc = -1; dc <= 1 && chained < 2; dc++) {
+        const nr = chosen.tr + dr, nc = chosen.tc + dc;
+        if (!inBounds(nr, nc, N)) continue;
+        const adj = engine.board[nr][nc];
+        if (adj && adj.color === enemy && adj.type !== 'K') {
+          powerState.frozenPieces[adj.id] = dur;
+          chained++;
+        }
+      }
+    }
+    sfx = 'glitchTear';
+    engine.lastMoveSquares = [[chosen.fr, chosen.fc], [chosen.tr, chosen.tc]];
+    logText = `🌩️ RELÁMPAGO EN CADENA (T1): Destruye ${PIECE_NAMES[victim.type]} en ${toAlg(chosen.tr, chosen.tc, N)}${chained ? ` y electrifica ${chained} enemigo(s) (${dur}t)` : ''}!`;
+  }
+
+  // === 15. PASE DE BATALLA T1: JUICIO DEL VACÍO ===
+  else if (eff === 'power_bp_void_judgment') {
+    const N = engine.boardSize || engine.board?.length || 8;
+    const dur = powerDef.duration || 3;
+    let destroyedCnt = 0;
+    let frozenCnt = 0;
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        const nr = chosen.tr + dr, nc = chosen.tc + dc;
+        if (!inBounds(nr, nc, N)) continue;
+        const p = engine.board[nr][nc];
+        if (!p || p.color !== enemy || p.type === 'K') continue;
+        if (['Q', 'R'].includes(p.type) && !(dr === 0 && dc === 0)) {
+          powerState.frozenPieces[p.id] = dur;
+          frozenCnt++;
+        } else {
+          engine.board[nr][nc] = null;
+          capturedBag.push(p);
+          events.destroyed.push([nr, nc]);
+          destroyedCnt++;
+        }
+      }
+    }
+    if (!engine.board[chosen.tr][chosen.tc]) {
+      powerState.modRifts.push({ r: chosen.tr, c: chosen.tc, turnsLeft: dur, owner: side });
+    }
+    sfx = 'blackySeal';
+    engine.lastMoveSquares = [[chosen.tr, chosen.tc]];
+    logText = `☄️ JUICIO DEL VACÍO (T1): Destruye ${destroyedCnt} enemigo(s), congela ${frozenCnt} piezas pesadas y sella ${toAlg(chosen.tr, chosen.tc, N)} (${dur}t)!`;
   }
 
   powerState.cooldowns[side] = powerDef.cooldown || 3;

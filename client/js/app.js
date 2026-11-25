@@ -12,7 +12,8 @@ import {
   COSMETIC_BOARDS,
   COSMETIC_PIECE_SKINS,
   COSMETIC_POWERS,
-  MOD_VIP_PLAN
+  MOD_VIP_PLAN,
+  BATTLE_PASS_S1
 } from '/shared/config/cosmetics.js';
 import { MOD_TEMPLATES, validateAndNormalizeMod } from '/shared/mods/modRuntime.js';
 import { SoundEngine } from './sound.js';
@@ -236,6 +237,7 @@ class ChessModApp {
   async checkVipPaymentReturn() {
     const params = new URLSearchParams(window.location.search || '');
     const sessionId = params.get('vip_session_id');
+    const bpSessionId = params.get('bp_session_id');
     if (sessionId && api.getToken()) {
       try {
         const res = await api.verifyModVipPayment(sessionId);
@@ -246,6 +248,19 @@ class ChessModApp {
         }
       } catch (err) {
         showToast(err.message || 'No se pudo verificar el pago de Mod VIP.', 'error');
+      }
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    if (bpSessionId && api.getToken()) {
+      try {
+        const res = await api.verifyBattlePassPayment(bpSessionId);
+        if (res.user) {
+          this.sound.play('vip_activate');
+          this.setUser(res.user);
+          showToast('🎖️ ¡Pago de $10 USD verificado! Pase de Batalla Temporada 1 desbloqueado.', 'success');
+        }
+      } catch (err) {
+        showToast(err.message || 'No se pudo verificar el pago del Pase de Batalla.', 'error');
       }
       window.history.replaceState({}, '', window.location.pathname);
     }
@@ -334,6 +349,7 @@ class ChessModApp {
     if (screenName === 'ranking') this.loadLeaderboard();
     if (screenName === 'story') this.renderCampaignScreen();
     if (screenName === 'shop') this.renderShopScreen();
+    if (screenName === 'battlepass') this.renderBattlePassScreen();
     if (screenName === 'mods') this.renderModsWorkshop();
     if (screenName === 'social') this.loadSocialScreen();
     if (screenName === 'moderation') this.loadModerationScreen();
@@ -498,6 +514,39 @@ class ChessModApp {
         const res = await api.cancelModVip();
         this.setUser(res.user);
         showToast(res.message || 'Suscripción Mod VIP cancelada. Todo el inventario VIP fue retirado.', 'info');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
+    // === 3B-2. PASE DE BATALLA TEMPORADA 1 ($10 USD o 5,000 MODS) ===
+    on('btn-bp-buy-mods', 'click', async () => {
+      if (!this.user) {
+        this.openAuthModal('register');
+        showToast('Crea tu cuenta o inicia sesión para comprar el Pase de Batalla Temporada 1.', 'info');
+        return;
+      }
+      try {
+        const res = await api.buyBattlePassMods();
+        this.sound.play('vip_activate');
+        this.setUser(res.user);
+        showToast('🎖️ ¡Pase de Batalla Temporada 1 desbloqueado por 5,000 Mods!', 'success');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+    on('btn-bp-buy-usd', 'click', async () => {
+      if (!this.user) {
+        this.openAuthModal('register');
+        showToast('Inicia sesión para adquirir el Pase de Batalla Temporada 1 ($10 USD).', 'info');
+        return;
+      }
+      try {
+        const res = await api.startBattlePassCheckout();
+        if (res.checkoutUrl) {
+          showToast('Redirigiendo a pago seguro ($10.00 USD)...', 'info');
+          window.location.href = res.checkoutUrl;
+        }
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -1323,6 +1372,7 @@ class ChessModApp {
     this.renderMultiplayerScreen();
     this.renderCampaignScreen();
     this.renderShopScreen();
+    this.renderBattlePassScreen();
     this.renderProfileScreen();
     this.renderCosmeticsScreen();
     this.renderStatsScreen();
@@ -1432,7 +1482,7 @@ class ChessModApp {
     grid.innerHTML = items.map((item) => {
       const isOwned = item.vipOnly
         ? isVip
-        : (item.bossUnlock ? unlocked.has(item.id) : (unlocked.has(item.id) || (item.minLevel && level >= item.minLevel) || item.priceMods === 0));
+        : ((item.bossUnlock || item.battlePassSeason) ? unlocked.has(item.id) : (unlocked.has(item.id) || (item.minLevel && level >= item.minLevel) || item.priceMods === 0));
       const isEquipped = (tab === 'powers' && (u?.equippedPowerId || 'power_none') === item.id)
         || (tab === 'pieceSkins' && (u?.pieceSkinId || 'pieces_classic') === item.id)
         || (tab === 'boards' && (u?.boardThemeId || 'board_classic_maya') === item.id);
@@ -1452,11 +1502,13 @@ class ChessModApp {
 
       const pricePill = item.vipOnly
         ? `<span class="vip-tag">👑 Mod VIP ($5/m)</span>`
-        : (item.bossUnlock && !isOwned
-          ? `<span class="pill crimson">⛓️ Recompensa Jefe</span>`
-          : (isOwned
-            ? `<span class="pill jade">✓ En inventario</span>`
-            : `<span class="pill">🪙 ${item.priceMods} Mods</span>`));
+        : (item.battlePassSeason && !isOwned
+          ? `<span class="pill" style="border-color:#38bdf8;color:#7dd3fc;">🎖️ Pase T1</span>`
+          : (item.bossUnlock && !isOwned
+            ? `<span class="pill crimson">⛓️ Recompensa Jefe</span>`
+            : (isOwned
+              ? `<span class="pill jade">✓ En inventario</span>`
+              : `<span class="pill">🪙 ${(item.priceMods || 0).toLocaleString('es-PE')} Mods</span>`)));
 
       let actionBtn = '';
       if (isEquipped) {
@@ -1465,11 +1517,13 @@ class ChessModApp {
         actionBtn = `<button class="btn btn-sm btn-primary" data-shop-equip="${item.id}" data-shop-cat="${tab}">Equipar</button>`;
       } else if (item.vipOnly) {
         actionBtn = `<button class="btn btn-sm btn-gold" data-open-vip="1">👑 Obtener Mod VIP ($5)</button>`;
+      } else if (item.battlePassSeason) {
+        actionBtn = `<button class="btn btn-sm btn-primary" data-goto-bp="1">🎖️ Ver en Pase T1</button>`;
       } else if (item.bossUnlock) {
         actionBtn = `<button class="btn btn-sm" data-goto-story="1">📜 Derrota a Free Mittens</button>`;
       } else {
         const canAfford = !u || mods >= (item.priceMods || 0);
-        actionBtn = `<button class="btn btn-sm btn-gold" data-shop-buy="${item.id}" ${!canAfford ? 'title="Gana más Mods jugando partidas"' : ''}>🪙 Comprar (${item.priceMods})</button>`;
+        actionBtn = `<button class="btn btn-sm btn-gold" data-shop-buy="${item.id}" ${!canAfford ? 'title="Gana más Mods jugando partidas"' : ''}>🪙 Comprar (${(item.priceMods || 0).toLocaleString('es-PE')})</button>`;
       }
 
       const sfxBtn = (tab === 'powers' || tab === 'pieceSkins')
@@ -1508,6 +1562,9 @@ class ChessModApp {
     grid.querySelectorAll('[data-open-vip]').forEach((b) => {
       b.addEventListener('click', () => document.getElementById('btn-vip-open-modal')?.click());
     });
+    grid.querySelectorAll('[data-goto-bp]').forEach((b) => {
+      b.addEventListener('click', () => this.switchScreen('battlepass'));
+    });
     grid.querySelectorAll('[data-goto-story]').forEach((b) => {
       b.addEventListener('click', () => {
         this.activeCampaignTab = 'mittens';
@@ -1527,6 +1584,81 @@ class ChessModApp {
           setTimeout(() => this.sound.playPieceAction(id, true), 260);
         }
       });
+    });
+  }
+
+  renderBattlePassScreen() {
+    const u = this.user;
+    const bp = u?.battlePassS1 || { owned: false, xp: 0, claimedTiers: [] };
+    const owned = Boolean(bp.owned || u?.isModerator);
+    const xp = Number(u?.xp || 0);
+    const maxXp = BATTLE_PASS_S1.tiers[BATTLE_PASS_S1.tiers.length - 1]?.xpRequired || 2400;
+    const pct = Math.min(100, Math.round((xp / maxXp) * 100));
+    const claimedSet = new Set(bp.claimedTiers || []);
+
+    const badge = document.getElementById('bp-owned-badge');
+    if (badge) {
+      badge.textContent = owned ? '✓ TEMPORADA 1 DESBLOQUEADA' : '🔒 $10 USD o 5,000 Mods';
+      badge.className = `pill ${owned ? 'jade' : 'muted'}`;
+    }
+    const bar = document.getElementById('bp-xp-bar');
+    if (bar) bar.style.width = `${owned && u?.isModerator ? 100 : pct}%`;
+    const lbl = document.getElementById('bp-xp-label');
+    if (lbl) lbl.textContent = u?.isModerator
+      ? `👑 Moderador: TODOS los 10 niveles de la Temporada 1 desbloqueados`
+      : `${xp.toLocaleString('es-PE')} / ${maxXp.toLocaleString('es-PE')} XP Temporada 1 (${claimedSet.size}/10 reclamados)`;
+
+    const buyBox = document.getElementById('bp-buy-actions');
+    if (buyBox) buyBox.classList.toggle('hidden', owned);
+
+    const grid = document.getElementById('bp-tiers-grid');
+    if (!grid) return;
+
+    grid.innerHTML = BATTLE_PASS_S1.tiers.map((tier) => {
+      const isClaimed = claimedSet.has(tier.tier) || Boolean(u?.isModerator);
+      const canClaim = owned && !isClaimed && xp >= tier.xpRequired;
+      const cls = isClaimed ? 'claimed' : (canClaim ? 'unlocked' : 'locked');
+
+      let btnHtml = '';
+      if (isClaimed) {
+        btnHtml = `<button class="btn btn-sm btn-primary" data-bp-equip-screen="1">✓ Desbloqueado · Equipar</button>`;
+      } else if (canClaim) {
+        btnHtml = `<button class="btn btn-sm btn-gold" data-bp-claim="${tier.tier}">🎁 Reclamar Recompensa</button>`;
+      } else if (!owned) {
+        btnHtml = `<button class="btn btn-sm" disabled>🔒 Requiere Pase T1</button>`;
+      } else {
+        btnHtml = `<button class="btn btn-sm" disabled>Requiere ${tier.xpRequired} XP</button>`;
+      }
+
+      return `
+        <div class="bp-tier-card ${cls}">
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
+              <span class="pill" style="border-color:#38bdf8;color:#7dd3fc;">Nivel ${tier.tier}</span>
+              <span style="font-size:0.72rem;color:var(--text-muted);">${tier.xpRequired} XP</span>
+            </div>
+            <div style="font-size:2rem;margin-bottom:6px;">${tier.icon}</div>
+            <h4 style="font-family:var(--font-display);color:var(--gold-bright);font-size:0.94rem;margin-bottom:4px;">${tier.title}</h4>
+            <p style="font-size:0.74rem;color:var(--text-muted);line-height:1.4;">Usable en Partida Rápida, Vs IA, Modos Caóticos, Online y Salas Privadas (excepto Modo Historia).</p>
+          </div>
+          ${btnHtml}
+        </div>`;
+    }).join('');
+
+    grid.querySelectorAll('[data-bp-claim]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        try {
+          const res = await api.claimBattlePassTier(Number(b.dataset.bpClaim));
+          this.sound.play('shop_buy');
+          this.setUser(res.user);
+          showToast(`🎖️ ¡Nivel ${b.dataset.bpClaim} del Pase T1 reclamado!`, 'success');
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      });
+    });
+    grid.querySelectorAll('[data-bp-equip-screen]').forEach((b) => {
+      b.addEventListener('click', () => this.switchScreen('customize'));
     });
   }
 
@@ -2158,20 +2290,28 @@ class ChessModApp {
 
       const tbody = document.getElementById('mod-users-tbody');
       if (tbody) {
-        tbody.innerHTML = ov.users.map((u) => `
+        tbody.innerHTML = ov.users.map((u) => {
+          const untilTxt = u.bannedUntil ? ` hasta ${new Date(u.bannedUntil).toLocaleDateString('es-PE')}` : ' (Permanente)';
+          return `
           <tr>
-            <td><strong>${u.clanTag ? `[${u.clanTag}] ` : ''}${u.username}</strong> ${u.isModerator ? '<span class="mod-badge-pill">MOD</span>' : ''} ${u.isVip ? '<span class="vip-tag">VIP</span>' : ''}</td>
+            <td><strong>${u.clanTag ? `[${u.clanTag}] ` : ''}${u.username}</strong> ${u.isModerator ? '<span class="mod-badge-pill">MOD</span>' : ''} ${u.isVip ? '<span class="vip-tag">VIP</span>' : ''} ${u.hasBattlePassS1 ? '<span class="pill" style="font-size:0.62rem;border-color:#38bdf8;color:#7dd3fc;">🎖️ T1</span>' : ''}</td>
             <td style="font-size:0.75rem;color:var(--text-muted);">${u.email}</td>
             <td>${u.elo} Elo · 🪙 ${u.mods}</td>
-            <td>${u.isBanned ? `<span class="pill crimson">BANEADO</span><div style="font-size:0.68rem;color:#ffaca3;">${u.banReason}</div>` : '<span class="pill jade">Activo</span>'}</td>
+            <td>${u.isBanned ? `<span class="pill crimson">${u.bannedUntil ? 'EXPULSADO' : 'BANEADO'}</span><div style="font-size:0.68rem;color:#ffaca3;">${u.banReason}${untilTxt}</div>` : '<span class="pill jade">Activo</span>'}</td>
             <td>
               ${!u.isModerator
-                ? (u.isBanned
-                  ? `<button class="btn btn-sm btn-primary" data-mod-unban-uid="${u.id}">🔓 Desbanear</button>`
-                  : `<button class="btn btn-sm btn-danger" data-mod-ban-uid="${u.id}" data-mod-ban-reason="Baneado por moderación">🔨 Banear</button>`)
+                ? `<div class="mod-action-group">
+                    ${u.isBanned
+                      ? `<button class="btn btn-sm btn-primary" data-mod-unban-uid="${u.id}">🔓 Desbanear</button>`
+                      : `<button class="btn btn-sm btn-gold" data-mod-tempban-uid="${u.id}" data-mod-uname="${u.username}">⏳ Expulsar días</button>
+                         <button class="btn btn-sm btn-danger" data-mod-ban-uid="${u.id}" data-mod-ban-reason="Baneado permanentemente por moderación">🔨 Ban</button>`}
+                    <button class="btn btn-sm" data-mod-deduct-mods="${u.id}" data-mod-uname="${u.username}">🪙 -Mods</button>
+                    <button class="btn btn-sm" data-mod-add-mods="${u.id}" data-mod-uname="${u.username}">➕ +Mods</button>
+                  </div>`
                 : '<span style="font-size:0.72rem;color:var(--text-muted);">Protegido</span>'}
             </td>
-          </tr>`).join('');
+          </tr>`;
+        }).join('');
       }
 
       const cBox = document.getElementById('mod-clans-list');
@@ -2190,8 +2330,50 @@ class ChessModApp {
       document.querySelectorAll('[data-mod-ban-uid]').forEach((b) => {
         b.addEventListener('click', async () => {
           try {
-            const res = await api.modBanUser(b.dataset.modBanUid, b.dataset.modBanReason);
-            showToast(`🔨 Usuario ${res.username} baneado.`, 'success');
+            const res = await api.modBanUser(b.dataset.modBanUid, b.dataset.modBanReason, null);
+            showToast(`🔨 Usuario ${res.username} baneado permanentemente.`, 'success');
+            this.loadModerationScreen();
+          } catch (err) { showToast(err.message, 'error'); }
+        });
+      });
+      document.querySelectorAll('[data-mod-tempban-uid]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          const daysRaw = window.prompt(`¿Por cuántos DÍAS deseas expulsar a ${b.dataset.modUname}? (Ej: 1, 3, 7, 30)`, '3');
+          if (!daysRaw) return;
+          const days = Number(daysRaw);
+          if (!Number.isFinite(days) || days <= 0) return showToast('Ingresa un número válido de días.', 'error');
+          const reason = window.prompt(`Motivo de expulsión (${days} día(s)):`, `Expulsión temporal de ${days} día(s)`) || `Expulsión de ${days} día(s)`;
+          try {
+            const res = await api.modBanUser(b.dataset.modTempbanUid, reason, days);
+            showToast(`⏳ ${res.username} expulsado por ${days} día(s).`, 'success');
+            this.loadModerationScreen();
+          } catch (err) { showToast(err.message, 'error'); }
+        });
+      });
+      document.querySelectorAll('[data-mod-deduct-mods]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          const amtRaw = window.prompt(`¿Cuántos Mods deseas DESCONTAR a ${b.dataset.modUname}?`, '100');
+          if (!amtRaw) return;
+          const amt = Math.abs(Math.round(Number(amtRaw)));
+          if (!amt) return showToast('Ingresa una cantidad válida de Mods.', 'error');
+          const reason = window.prompt('Motivo del descuento:', 'Sanción de moderación') || 'Sanción de moderación';
+          try {
+            const res = await api.modAdjustMods(b.dataset.modDeductMods, -amt, reason);
+            showToast(`🪙 Descontados ${amt} Mods a ${res.username} (Saldo: ${res.mods} Mods).`, 'success');
+            this.loadModerationScreen();
+          } catch (err) { showToast(err.message, 'error'); }
+        });
+      });
+      document.querySelectorAll('[data-mod-add-mods]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          const amtRaw = window.prompt(`¿Cuántos Mods deseas SUMAR a ${b.dataset.modUname}?`, '200');
+          if (!amtRaw) return;
+          const amt = Math.abs(Math.round(Number(amtRaw)));
+          if (!amt) return showToast('Ingresa una cantidad válida de Mods.', 'error');
+          const reason = window.prompt('Motivo:', 'Bonificación de moderación') || 'Bonificación de moderación';
+          try {
+            const res = await api.modAdjustMods(b.dataset.modAddMods, amt, reason);
+            showToast(`🪙 Sumados +${amt} Mods a ${res.username} (Saldo: ${res.mods} Mods).`, 'success');
             this.loadModerationScreen();
           } catch (err) { showToast(err.message, 'error'); }
         });

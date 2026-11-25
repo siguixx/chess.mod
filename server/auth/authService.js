@@ -161,10 +161,14 @@ export function createAuthMiddleware(db) {
         if (!isTokenVersionValid(decoded, user)) {
           return res.status(401).json({ code: 'SESSION_REVOKED', error: 'Esta sesión fue cerrada desde Seguridad de Cuenta. Vuelve a iniciar sesión.' });
         }
-        if (Number(user.is_banned)) {
+        const banState = await db.isUserCurrentlyBanned(user);
+        if (banState.banned) {
           return res.status(403).json({
             code: 'ACCOUNT_BANNED',
-            error: `Cuenta baneada por moderación.${user.ban_reason ? ` Motivo: ${user.ban_reason}` : ''}`
+            bannedUntil: banState.until,
+            error: banState.permanent
+              ? `Cuenta baneada permanentemente.${banState.reason ? ` Motivo: ${banState.reason}` : ''}`
+              : `Cuenta expulsada temporalmente (${banState.daysLeft} día(s) restantes).${banState.reason ? ` Motivo: ${banState.reason}` : ''}`
           });
         }
         req.userId = user.id;
@@ -198,7 +202,8 @@ export function createAuthMiddleware(db) {
         const decoded = verifyToken(token);
         if (decoded?.uid) {
           const user = await db.findUserById(decoded.uid);
-          if (user && isTokenVersionValid(decoded, user) && !Number(user.is_banned)) {
+          const banState = user ? await db.isUserCurrentlyBanned(user) : { banned: false };
+          if (user && isTokenVersionValid(decoded, user) && !banState.banned) {
             req.userId = user.id;
             req.user = user;
           } else if (!user) {

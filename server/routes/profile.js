@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import express from 'express';
 import { validateUsername } from '../auth/authService.js';
-import { getAllCosmetics, MOD_VIP_PLAN } from '../../shared/config/cosmetics.js';
+import { getAllCosmetics, MOD_VIP_PLAN, BATTLE_PASS_S1 } from '../../shared/config/cosmetics.js';
 import { TRAINERS } from '../../shared/config/constants.js';
 
 function getVipBillingConfig() {
@@ -225,6 +225,93 @@ export function createProfileRouter(db, authMiddleware) {
       return res.json(result);
     } catch (err) {
       return res.status(400).json({ error: err.message || 'No se pudo cancelar Mod VIP.' });
+    }
+  });
+
+  /* ================= PASE DE BATALLA TEMPORADA 1 ($10 USD o 5,000 MODS) ================= */
+  router.get('/battlepass', (_req, res) => {
+    const cfg = getVipBillingConfig();
+    return res.json({ season: BATTLE_PASS_S1, billingConfigured: cfg.billingConfigured });
+  });
+
+  router.post('/battlepass/buy-mods', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const result = await db.buyBattlePassS1WithMods(req.userId);
+      return res.json(result);
+    } catch (err) {
+      return res.status(err.status || 400).json({ code: err.code, error: err.message });
+    }
+  });
+
+  router.post('/battlepass/checkout', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const cfg = getVipBillingConfig();
+      const user = await db.getFullUserProfile(req.userId);
+      if (!user) return res.status(404).json({ error: 'Usuario no encontrado.' });
+      if (user.battlePassS1?.owned) {
+        return res.status(400).json({ error: 'Ya tienes desbloqueado el Pase de Batalla Temporada 1.' });
+      }
+      if (!cfg.stripeConfigured) {
+        return res.status(402).json({
+          ok: false,
+          code: 'PAYMENT_REQUIRED',
+          error: 'El cobro con tarjeta ($10 USD) requiere STRIPE_SECRET_KEY en Render. También puedes desbloquearlo ahora mismo con 5,000 Mods.'
+        });
+      }
+      const origin = `${req.protocol}://${req.get('host')}`;
+      const params = new URLSearchParams();
+      params.set('mode', 'payment');
+      params.set('success_url', `${origin}/?bp_session_id={CHECKOUT_SESSION_ID}`);
+      params.set('cancel_url', `${origin}/?bp_canceled=1`);
+      params.set('client_reference_id', user.id);
+      params.set('customer_email', user.email);
+      params.set('metadata[userId]', user.id);
+      params.set('metadata[product]', 'battle_pass_s1');
+      params.set('line_items[0][quantity]', '1');
+      params.set('line_items[0][price_data][currency]', 'usd');
+      params.set('line_items[0][price_data][unit_amount]', String(BATTLE_PASS_S1.priceUsd * 100));
+      params.set('line_items[0][price_data][product_data][name]', BATTLE_PASS_S1.name);
+      params.set('line_items[0][price_data][product_data][description]', BATTLE_PASS_S1.subtitle);
+
+      const resp = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${cfg.stripeSecretKey}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString()
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.url) throw new Error(data.error?.message || 'Stripe no pudo crear la sesión de $10 USD.');
+      return res.json({ ok: true, sessionId: data.id, checkoutUrl: data.url });
+    } catch (err) {
+      return res.status(502).json({ error: err.message });
+    }
+  });
+
+  router.post('/battlepass/verify-payment', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const cfg = getVipBillingConfig();
+      const sessionId = String(req.body?.sessionId || '').trim();
+      if (!cfg.stripeConfigured || !sessionId) {
+        return res.status(402).json({ code: 'PAYMENT_REQUIRED', error: 'Se requiere un pago verificado de $10 USD.' });
+      }
+      const session = await verifyStripePaidSession(sessionId, cfg.stripeSecretKey);
+      const refUid = session?.client_reference_id || session?.metadata?.userId;
+      if (!session || refUid !== req.userId) {
+        return res.status(402).json({ code: 'PAYMENT_NOT_VERIFIED', error: 'Pago de $10 USD no confirmado aún por Stripe.' });
+      }
+      const result = await db.activateBattlePassS1(req.userId);
+      return res.json(result);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  });
+
+  router.post('/battlepass/claim', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const tier = Number(req.body?.tier);
+      const result = await db.claimBattlePassTier(req.userId, tier);
+      return res.json(result);
+    } catch (err) {
+      return res.status(err.status || 400).json({ code: err.code, error: err.message });
     }
   });
 

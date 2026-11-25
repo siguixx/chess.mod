@@ -12,6 +12,7 @@ import { GalaxyEngine } from '../shared/rules/galaxyEngine.js';
 import { GlitchEngine } from '../shared/rules/glitchEngine.js';
 import { ChessFinalEngine } from '../shared/rules/chessFinalEngine.js';
 import { BlackySecretEngine } from '../shared/rules/blackyEngine.js';
+import { LargeBoardChessEngine, chooseLargeBoardAIMove } from '../shared/rules/largeBoardEngine.js';
 import { SuperChessAI } from '../shared/ai/superChessAI.js';
 import {
   MAYA_CAMPAIGN,
@@ -23,7 +24,7 @@ import {
 } from '../shared/config/campaigns.js';
 import { calculateEloUpdate } from '../shared/config/elo.js';
 import { INITIAL_ELO, TRAINERS, SPECIAL_GAME_MODES, CLAN_CREATE_COST_MODS } from '../shared/config/constants.js';
-import { MOD_VIP_PLAN } from '../shared/config/cosmetics.js';
+import { MOD_VIP_PLAN, BATTLE_PASS_S1, COSMETIC_POWERS } from '../shared/config/cosmetics.js';
 import {
   MOD_TEMPLATES,
   validateAndNormalizeMod,
@@ -1350,6 +1351,114 @@ try {
     const restData = await restRes.json();
     assert.equal(restData.user.trainerId, 'trainer_yam');
     assert.equal(restData.user.language, 'en');
+  });
+
+  await test('Usuarios únicos (no repetibles), Moderador (expulsar por días + descontar Mods + Pase T1), Pase T1 ($10 / 5000 Mods), Poderes caros y Tablero Colosal 12×12', async () => {
+    // 1. Usuarios NO se deben repetir (ni cambiando mayúsculas/minúsculas)
+    const dupUser = await fetch(`${url}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'bobmittens', email: 'otro_correo@chessmod.test', password: 'Password123' })
+    });
+    assert.equal(dupUser.status, 409);
+    assert.equal((await dupUser.json()).code, 'USERNAME_TAKEN');
+
+    // 2. Moderador exacto (sebasstianrf27@gmail.com / Escorpio01) tiene 25/25 Historia + Pase T1 desbloqueado
+    const modLogin = await (await fetch(`${url}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: 'sebasstianrf27@gmail.com', password: 'Escorpio01' })
+    })).json();
+    assert.equal(modLogin.user.isModerator, true);
+    assert.equal(modLogin.user.battlePassS1.owned, true, 'El Moderador debe tener el Pase de Batalla T1 ya desbloqueado');
+    assert.equal(modLogin.user.battlePassS1.claimedTiers.length, 10);
+    const modHdrs = { Authorization: `Bearer ${modLogin.token}`, 'Content-Type': 'application/json' };
+
+    // 3. Moderador puede expulsar por días (temp ban) y descontar Mods a otro jugador
+    const targetReg = await (await fetch(`${url}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'Sancionado1', email: 'sancion1@chessmod.test', password: 'Password123' })
+    })).json();
+    const targetH = { Authorization: `Bearer ${targetReg.token}`, 'Content-Type': 'application/json' };
+
+    const deductRes = await fetch(`${url}/api/mod/adjust-mods`, {
+      method: 'POST',
+      headers: modHdrs,
+      body: JSON.stringify({ userId: targetReg.user.id, deltaMods: -60, reason: 'Sanción por spam' })
+    });
+    assert.equal(deductRes.status, 200);
+    assert.equal((await deductRes.json()).mods, 40, '100 - 60 = 40 Mods');
+
+    const tempBan = await fetch(`${url}/api/mod/ban`, {
+      method: 'POST',
+      headers: modHdrs,
+      body: JSON.stringify({ userId: targetReg.user.id, reason: 'Expulsado 3 días', durationDays: 3 })
+    });
+    assert.equal(tempBan.status, 200);
+    const tbData = await tempBan.json();
+    assert.ok(tbData.bannedUntil && tbData.durationDays === 3);
+
+    const blockedLogin = await fetch(`${url}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: 'Sancionado1', password: 'Password123' })
+    });
+    assert.equal(blockedLogin.status, 403);
+    assert.equal((await blockedLogin.json()).code, 'ACCOUNT_BANNED');
+
+    await fetch(`${url}/api/mod/unban`, { method: 'POST', headers: modHdrs, body: JSON.stringify({ userId: targetReg.user.id }) });
+    assert.equal((await fetch(`${url}/api/profile`, { headers: targetH })).status, 200);
+
+    // 4. Pase de Batalla Temporada 1 ($10 USD o 5,000 Mods): falla sin 5,000 Mods, funciona al tener 5,000 Mods
+    assert.equal(BATTLE_PASS_S1.priceUsd, 10);
+    assert.equal(BATTLE_PASS_S1.priceMods, 5000);
+    const bpFail = await fetch(`${url}/api/battlepass/buy-mods`, { method: 'POST', headers: targetH, body: '{}' });
+    assert.equal(bpFail.status, 400);
+    assert.equal((await bpFail.json()).code, 'INSUFFICIENT_MODS');
+
+    await fetch(`${url}/api/mod/adjust-mods`, {
+      method: 'POST',
+      headers: modHdrs,
+      body: JSON.stringify({ userId: targetReg.user.id, deltaMods: 5000, reason: 'Prueba Pase T1' })
+    });
+    const bpOk = await fetch(`${url}/api/battlepass/buy-mods`, { method: 'POST', headers: targetH, body: '{}' });
+    assert.equal(bpOk.status, 200);
+    const bpData = await bpOk.json();
+    assert.equal(bpData.user.battlePassS1.owned, true);
+    assert.equal(bpData.user.unlockedCosmetics.includes('frame_bp_s1_vanguard'), true, 'Tier 1 se desbloquea automáticamente al comprar Pase T1');
+
+    // 5. Poderes caros escalados (hasta 5,000 Mods) + ejecución real de Supernova y Omnipotencia
+    const prices = COSMETIC_POWERS.filter((p) => p.priceMods > 0).map((p) => p.priceMods);
+    assert.ok(prices.includes(550) && prices.includes(1400) && prices.includes(3500) && prices.includes(5000), 'Tienda debe incluir poderes cada vez más caros hasta 5,000 Mods');
+
+    const ePow = new LargeBoardChessEngine(12, 10);
+    assert.equal(ePow.board.length, 12);
+    assert.equal(ePow.countPieces('w'), 24, 'Tablero Colosal 12×12 tiene 24 piezas blancas');
+    assert.equal(ePow.countPieces('b'), 24, 'Tablero Colosal 12×12 tiene 24 piezas negras');
+    const ai12 = chooseLargeBoardAIMove(ePow, 'b');
+    assert.ok(ai12 && ai12.fr >= 0 && ai12.tr < 12, 'IA 12×12 elige movimiento legal rápido');
+
+    const ps12 = createInitialPowerState();
+    ePow.board[5][5] = { id: 'bQ_big', color: 'b', type: 'Q' };
+    ePow.board[5][6] = { id: 'bR_big', color: 'b', type: 'R' };
+    const novaDef = resolvePowerDef('power_cosmic_supernova');
+    const novaRes = executeBattlePowerAction(ePow, ps12, 'w', novaDef, { tr: 5, tc: 5 });
+    assert.equal(novaRes.ok, true);
+    assert.equal(ePow.board[5][5], null);
+    assert.equal(ePow.board[5][6], null);
+
+    // 6. Modo Atómico: captura genera explosión 3×3 respetando Reyes
+    const eAt = new LargeBoardChessEngine(8, 10, { atomicMode: true });
+    eAt.board = Array.from({ length: 8 }, () => Array(8).fill(null));
+    eAt.board[0][0] = { id: 'bK', color: 'b', type: 'K' };
+    eAt.board[7][7] = { id: 'wK', color: 'w', type: 'K' };
+    eAt.board[4][4] = { id: 'wR', color: 'w', type: 'R' };
+    eAt.board[2][4] = { id: 'bQ', color: 'b', type: 'Q' };
+    eAt.board[2][5] = { id: 'bN', color: 'b', type: 'N' };
+    const atEv = eAt.executeMove({ fr: 4, fc: 4, tr: 2, tc: 4 }, 'Q', false);
+    assert.ok(atEv.exploded.length >= 2, 'Captura atómica detona explosión 3×3');
+    assert.equal(eAt.board[2][5], null, 'Pieza adyacente volatilizada por explosión');
   });
 } finally {
   await server.stop();

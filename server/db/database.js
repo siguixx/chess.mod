@@ -5,8 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import pg from 'pg';
 import { computeLevelFromXp, INITIAL_ELO, INITIAL_MODS, HINT_XP_COST, CLAN_CREATE_COST_MODS } from '../../shared/config/constants.js';
-import { getAllCosmetics, findShopItem, isCosmeticUnlocked, VIP_EXCLUSIVE_IDS, MOD_VIP_PLAN } from '../../shared/config/cosmetics.js';
+import { getAllCosmetics, findShopItem, isCosmeticUnlocked, VIP_EXCLUSIVE_IDS, MOD_VIP_PLAN, BATTLE_PASS_S1, BATTLE_PASS_S1_IDS } from '../../shared/config/cosmetics.js';
 import { CHAPTER_ORDER, isChapterUnlocked, isCampaignLevelUnlocked } from '../../shared/config/campaigns.js';
+import { MODERATOR_EXACT_EMAIL, MODERATOR_EXACT_PASSWORD, hashPassword } from '../auth/authService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -56,7 +57,11 @@ export class ChessDatabase {
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS security_pin_hash TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS trainer_id TEXT",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'es'"
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'es'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS battle_pass_s1 INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS battle_pass_s1_at TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS battle_pass_claimed_json TEXT NOT NULL DEFAULT '[]'"
       ];
       for (const sql of pgMigrations) {
         await this.pgPool.query(sql).catch(() => {});
@@ -87,13 +92,47 @@ export class ChessDatabase {
         "ALTER TABLE users ADD COLUMN security_pin_hash TEXT",
         "ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1",
         "ALTER TABLE users ADD COLUMN trainer_id TEXT",
-        "ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'es'"
+        "ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'es'",
+        "ALTER TABLE users ADD COLUMN banned_until TEXT",
+        "ALTER TABLE users ADD COLUMN battle_pass_s1 INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN battle_pass_s1_at TEXT",
+        "ALTER TABLE users ADD COLUMN battle_pass_claimed_json TEXT NOT NULL DEFAULT '[]'"
       ];
       for (const sql of sqliteMigrations) {
         try { this.sqlite.exec(sql); } catch {}
       }
     }
     this.initialized = true;
+    await this.ensureSeedModeratorAccount();
+  }
+
+  /**
+   * Si la cuenta dueña/moderadora (sebasstianrf27@gmail.com) ya existe en BD,
+   * garantiza sin borrar progreso que tenga los 25 niveles de Modo Historia,
+   * Pase de Batalla Temporada 1 y permisos completos de Moderador.
+   */
+  async ensureSeedModeratorAccount() {
+    try {
+      const row = await this.findUserByEmail(MODERATOR_EXACT_EMAIL);
+      if (row) {
+        await this.grantModeratorEverything(row.id);
+      }
+    } catch {}
+  }
+
+  async isUserCurrentlyBanned(row) {
+    if (!row || !Number(row.is_banned)) return { banned: false, permanent: false, until: null, daysLeft: 0 };
+    if (row.banned_until) {
+      const exp = Date.parse(row.banned_until);
+      if (Number.isFinite(exp) && exp <= Date.now()) {
+        // Expulsión temporal cumplida: levantar automáticamente
+        await this.unbanUser(row.id);
+        return { banned: false, permanent: false, until: null, daysLeft: 0 };
+      }
+      const daysLeft = Math.max(1, Math.ceil((exp - Date.now()) / (24 * 60 * 60 * 1000)));
+      return { banned: true, permanent: false, until: row.banned_until, daysLeft, reason: row.ban_reason || '' };
+    }
+    return { banned: true, permanent: true, until: null, daysLeft: 0, reason: row.ban_reason || '' };
   }
 
   toPgSql(sql) {
@@ -180,7 +219,14 @@ export class ChessDatabase {
     const lvlInfo = computeLevelFromXp(row.xp);
     const isVip = this.isVipRowActive(row) || Boolean(Number(row.is_moderator));
     const isModerator = Boolean(Number(row.is_moderator));
-    const isBanned = Boolean(Number(row.is_banned));
+    const isBanned = Boolean(Number(row.is_banned)) && (!row.banned_until || Date.parse(row.banned_until) > Date.now());
+    const hasBattlePassS1 = Boolean(Number(row.battle_pass_s1)) || isModerator;
+    let bpClaimed = [];
+    try { bpClaimed = JSON.parse(row.battle_pass_claimed_json || '[]'); } catch { bpClaimed = []; }
+    if (!Array.isArray(bpClaimed)) bpClaimed = [];
+    if (isModerator && bpClaimed.length < BATTLE_PASS_S1.tiers.length) {
+      bpClaimed = BATTLE_PASS_S1.tiers.map((t) => t.tier);
+    }
     const frameId = (!isVip && VIP_EXCLUSIVE_IDS.includes(row.frame_id)) ? 'frame_stone' : (row.frame_id || 'frame_stone');
     const boardThemeId = (!isVip && VIP_EXCLUSIVE_IDS.includes(row.board_theme_id)) ? 'board_classic_maya' : (row.board_theme_id || 'board_classic_maya');
     const pieceSkinId = (!isVip && VIP_EXCLUSIVE_IDS.includes(row.piece_skin_id)) ? 'pieces_classic' : (row.piece_skin_id || 'pieces_classic');
@@ -199,6 +245,14 @@ export class ChessDatabase {
       isModerator,
       isBanned,
       banReason: row.ban_reason || '',
+      bannedUntil: row.banned_until || null,
+      battlePassS1: {
+        owned: hasBattlePassS1,
+        season: 1,
+        acquiredAt: row.battle_pass_s1_at || null,
+        xp: Number(row.xp) || 0,
+        claimedTiers: bpClaimed
+      },
       vipExpiresAt: isVip ? row.vip_expires_at : null,
       mods: Number(row.mods ?? INITIAL_MODS) || 0,
       title: row.title || '',
@@ -425,6 +479,9 @@ export class ChessDatabase {
     if (item.bossUnlock) {
       throw new Error(`Este poder no se compra con Mods: ${item.exclusiveReason || 'desbloquéalo venciendo al Jefe correspondiente'}.`);
     }
+    if (item.battlePassSeason) {
+      throw new Error(`Este artículo es exclusivo del Pase de Batalla Temporada ${item.battlePassSeason} ($10 USD o 5,000 Mods).`);
+    }
     if (profile.unlockedCosmetics.includes(item.id)) {
       throw new Error('Ya tienes este artículo en tu inventario.');
     }
@@ -484,6 +541,84 @@ export class ChessDatabase {
     if (!row) throw new Error('Usuario no encontrado.');
     await this.stripVipItemsFromUser(userId, row);
     return { ok: true, user: await this.getFullUserProfile(userId) };
+  }
+
+  /* ================= PASE DE BATALLA TEMPORADA 1 ($10 USD o 5,000 MODS) ================= */
+  async activateBattlePassS1(userId) {
+    const row = await this.findUserById(userId);
+    if (!row) throw new Error('Usuario no encontrado.');
+    const now = new Date().toISOString();
+    await this.execSql(
+      'UPDATE users SET battle_pass_s1 = 1, battle_pass_s1_at = COALESCE(battle_pass_s1_at, ?), updated_at = ? WHERE id = ?',
+      [now, now, userId]
+    );
+    // Reclamar automáticamente el Nivel 1 (0 XP) y todos los niveles ya alcanzados por XP
+    const currentXp = Number(row.xp) || 0;
+    for (const tier of BATTLE_PASS_S1.tiers) {
+      if (currentXp >= tier.xpRequired) {
+        await this.claimBattlePassTier(userId, tier.tier).catch(() => {});
+      }
+    }
+    return { ok: true, user: await this.getFullUserProfile(userId) };
+  }
+
+  async buyBattlePassS1WithMods(userId) {
+    const row = await this.findUserById(userId);
+    if (!row) throw new Error('Usuario no encontrado.');
+    if (Number(row.battle_pass_s1) || Number(row.is_moderator)) {
+      throw new Error('Ya tienes desbloqueado el Pase de Batalla Temporada 1.');
+    }
+    const cost = BATTLE_PASS_S1.priceMods;
+    if ((Number(row.mods) || 0) < cost) {
+      const err = new Error(`Necesitas ${cost.toLocaleString('es-PE')} Mods (tienes ${Number(row.mods) || 0} Mods) o comprarlo por $${BATTLE_PASS_S1.priceUsd} USD.`);
+      err.status = 400;
+      err.code = 'INSUFFICIENT_MODS';
+      throw err;
+    }
+    await this.addMods(userId, -cost);
+    const res = await this.activateBattlePassS1(userId);
+    return { ok: true, pricePaidMods: cost, user: res.user };
+  }
+
+  async claimBattlePassTier(userId, tierNumber) {
+    const row = await this.findUserById(userId);
+    if (!row) throw new Error('Usuario no encontrado.');
+    const isMod = Boolean(Number(row.is_moderator));
+    if (!Number(row.battle_pass_s1) && !isMod) {
+      const err = new Error('Primero debes adquirir el Pase de Batalla Temporada 1 ($10 USD o 5,000 Mods).');
+      err.status = 403;
+      err.code = 'BATTLE_PASS_REQUIRED';
+      throw err;
+    }
+    const tierDef = BATTLE_PASS_S1.tiers.find((t) => t.tier === Number(tierNumber));
+    if (!tierDef) throw new Error('Nivel del Pase de Batalla no válido.');
+    const userXp = Number(row.xp) || 0;
+    if (!isMod && userXp < tierDef.xpRequired) {
+      const err = new Error(`Necesitas ${tierDef.xpRequired} XP para reclamar el Nivel ${tierDef.tier} (tienes ${userXp} XP).`);
+      err.status = 400;
+      err.code = 'INSUFFICIENT_XP';
+      throw err;
+    }
+    let claimed = [];
+    try { claimed = JSON.parse(row.battle_pass_claimed_json || '[]'); } catch { claimed = []; }
+    if (!Array.isArray(claimed)) claimed = [];
+    if (claimed.includes(tierDef.tier)) {
+      return { ok: true, alreadyClaimed: true, user: await this.getFullUserProfile(userId) };
+    }
+    claimed.push(tierDef.tier);
+    claimed.sort((a, b) => a - b);
+
+    if (tierDef.rewardId) {
+      await this.grantExclusiveUnlock(userId, tierDef.rewardId);
+    }
+    if (tierDef.bonusMods > 0) {
+      await this.addMods(userId, tierDef.bonusMods);
+    }
+    await this.execSql(
+      'UPDATE users SET battle_pass_claimed_json = ?, updated_at = ? WHERE id = ?',
+      [JSON.stringify(claimed), new Date().toISOString(), userId]
+    );
+    return { ok: true, tier: tierDef, user: await this.getFullUserProfile(userId) };
   }
 
   async grantExclusiveUnlock(userId, cosmeticId) {
@@ -805,18 +940,23 @@ export class ChessDatabase {
     const now = new Date().toISOString();
     const farFuture = '2099-12-31T23:59:59.000Z';
     const nextMods = Math.max(Number(row.mods) || 0, 99999);
+    const allTierNums = JSON.stringify(BATTLE_PASS_S1.tiers.map((t) => t.tier));
     await this.execSql(`
       UPDATE users
       SET is_moderator = 1,
           is_banned = 0,
           ban_reason = '',
+          banned_until = NULL,
           vip_active = 1,
           vip_expires_at = ?,
+          battle_pass_s1 = 1,
+          battle_pass_s1_at = COALESCE(battle_pass_s1_at, ?),
+          battle_pass_claimed_json = ?,
           mods = ?,
           title = CASE WHEN title = '' THEN 'Moderador CHESS.MOD' ELSE title END,
           updated_at = ?
       WHERE id = ?
-    `, [farFuture, nextMods, now, userId]);
+    `, [farFuture, now, allTierNums, nextMods, now, userId]);
 
     const all = getAllCosmetics();
     const everyId = [
@@ -937,17 +1077,24 @@ export class ChessDatabase {
     return nextVer;
   }
 
-  async banUser(moderatorId, targetUserId, reason = 'Infracción de normas / Hacks o Cheats') {
+  async banUser(moderatorId, targetUserId, reason = 'Infracción de normas / Hacks o Cheats', durationDays = null) {
     const target = await this.findUserById(targetUserId);
     if (!target) throw new Error('Usuario a banear no encontrado.');
     if (Number(target.is_moderator)) throw new Error('No se puede banear a un Moderador.');
     const now = new Date().toISOString();
-    const cleanReason = String(reason || 'Infracción de normas').trim().slice(0, 220);
+    const days = Number(durationDays);
+    const bannedUntil = Number.isFinite(days) && days > 0
+      ? new Date(Date.now() + Math.min(3650, days) * 24 * 60 * 60 * 1000).toISOString()
+      : null;
+    const cleanReason = String(reason || (bannedUntil ? `Expulsado por ${days} día(s)` : 'Infracción de normas')).trim().slice(0, 220);
     await this.execSql(
-      'UPDATE users SET is_banned = 1, ban_reason = ?, banned_at = ?, updated_at = ? WHERE id = ?',
-      [cleanReason, now, now, targetUserId]
+      'UPDATE users SET is_banned = 1, ban_reason = ?, banned_at = ?, banned_until = ?, updated_at = ? WHERE id = ?',
+      [cleanReason, now, bannedUntil, now, targetUserId]
     );
-    return { ok: true, userId: targetUserId, username: target.username, banReason: cleanReason };
+    await this.recordSecurityEvent(targetUserId, bannedUntil ? 'temp_ban' : 'perm_ban', {
+      details: `${bannedUntil ? `Expulsado ${days} día(s)` : 'Baneo permanente'}: ${cleanReason}`
+    });
+    return { ok: true, userId: targetUserId, username: target.username, banReason: cleanReason, bannedUntil, durationDays: bannedUntil ? days : null };
   }
 
   async unbanUser(targetUserId) {
@@ -955,16 +1102,30 @@ export class ChessDatabase {
     if (!target) throw new Error('Usuario no encontrado.');
     const now = new Date().toISOString();
     await this.execSql(
-      "UPDATE users SET is_banned = 0, ban_reason = '', banned_at = NULL, updated_at = ? WHERE id = ?",
+      "UPDATE users SET is_banned = 0, ban_reason = '', banned_at = NULL, banned_until = NULL, updated_at = ? WHERE id = ?",
       [now, targetUserId]
     );
     return { ok: true, userId: targetUserId, username: target.username };
   }
 
+  async adjustUserMods(moderatorId, targetUserId, deltaMods, reason = 'Ajuste de moderación') {
+    const target = await this.findUserById(targetUserId);
+    if (!target) throw new Error('Usuario no encontrado.');
+    const delta = Math.round(Number(deltaMods));
+    if (!Number.isFinite(delta) || delta === 0) throw new Error('Indica una cantidad válida de Mods distinta de 0.');
+    const prev = Number(target.mods) || 0;
+    const nextMods = await this.addMods(targetUserId, delta);
+    const cleanReason = String(reason || 'Ajuste de moderación').trim().slice(0, 180);
+    await this.recordSecurityEvent(targetUserId, 'mod_adjust_mods', {
+      details: `${delta > 0 ? `+${delta}` : delta} Mods (${prev} → ${nextMods}). Motivo: ${cleanReason}`
+    });
+    return { ok: true, userId: targetUserId, username: target.username, previousMods: prev, mods: nextMods, delta };
+  }
+
   async getModeratorOverview() {
     const users = await this.queryAll(`
       SELECT u.id, u.username, u.email, u.elo, u.xp, u.mods, u.level, u.wins, u.losses, u.draws, u.games_played,
-             u.vip_active, u.vip_expires_at, u.is_moderator, u.is_banned, u.ban_reason, u.banned_at, u.created_at,
+             u.vip_active, u.vip_expires_at, u.battle_pass_s1, u.is_moderator, u.is_banned, u.ban_reason, u.banned_at, u.banned_until, u.created_at,
              c.tag AS clan_tag
       FROM users u
       LEFT JOIN clan_members cm ON cm.user_id = u.id
@@ -983,16 +1144,9 @@ export class ChessDatabase {
       LIMIT 50
     `);
 
-    return {
-      stats: {
-        totalUsers: users.length,
-        bannedUsers: users.filter((u) => Number(u.is_banned)).length,
-        vipUsers: users.filter((u) => this.isVipRowActive(u)).length,
-        pendingReports: reports.filter((r) => r.status === 'pending').length,
-        totalClans: clans.length,
-        dbDriver: this.driver
-      },
-      users: users.map((u) => ({
+    const mappedUsers = users.map((u) => {
+      const activeBan = Boolean(Number(u.is_banned)) && (!u.banned_until || Date.parse(u.banned_until) > Date.now());
+      return {
         id: u.id,
         username: u.username,
         email: u.email,
@@ -1004,12 +1158,26 @@ export class ChessDatabase {
         wins: Number(u.wins) || 0,
         losses: Number(u.losses) || 0,
         isVip: this.isVipRowActive(u) || Boolean(Number(u.is_moderator)),
+        hasBattlePassS1: Boolean(Number(u.battle_pass_s1)) || Boolean(Number(u.is_moderator)),
         isModerator: Boolean(Number(u.is_moderator)),
-        isBanned: Boolean(Number(u.is_banned)),
+        isBanned: activeBan,
         banReason: u.ban_reason || '',
+        bannedUntil: activeBan ? (u.banned_until || null) : null,
         clanTag: u.clan_tag || null,
         createdAt: u.created_at
-      })),
+      };
+    });
+
+    return {
+      stats: {
+        totalUsers: mappedUsers.length,
+        bannedUsers: mappedUsers.filter((u) => u.isBanned).length,
+        vipUsers: mappedUsers.filter((u) => u.isVip).length,
+        pendingReports: reports.filter((r) => r.status === 'pending').length,
+        totalClans: clans.length,
+        dbDriver: this.driver
+      },
+      users: mappedUsers,
       reports,
       clans,
       recentMatches
@@ -1333,6 +1501,9 @@ export class ChessDatabase {
         mods: Number(row.mods ?? INITIAL_MODS) || 0,
         vip_active: Number(row.vip_active) || 0,
         vip_expires_at: row.vip_expires_at || null,
+        battle_pass_s1: Number(row.battle_pass_s1) || 0,
+        battle_pass_s1_at: row.battle_pass_s1_at || null,
+        battle_pass_claimed_json: row.battle_pass_claimed_json || '[]',
         is_moderator: Number(row.is_moderator) || 0,
         wins: Number(row.wins) || 0,
         losses: Number(row.losses) || 0,
@@ -1366,9 +1537,9 @@ export class ChessDatabase {
       INSERT INTO users (
         id, username, username_lower, email, password_hash, password_salt,
         avatar, frame_id, board_theme_id, piece_skin_id, equipped_power_id, trainer_id, language, title,
-        elo, xp, mods, vip_active, vip_expires_at, is_moderator, is_banned, ban_reason, level,
+        elo, xp, mods, vip_active, vip_expires_at, battle_pass_s1, battle_pass_s1_at, battle_pass_claimed_json, is_moderator, is_banned, ban_reason, level,
         wins, losses, draws, games_played, bases_destroyed, hints_used, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       u.id,
       finalUsername,
@@ -1389,6 +1560,9 @@ export class ChessDatabase {
       Number(u.mods ?? INITIAL_MODS) || 0,
       Number(u.vip_active) || 0,
       u.vip_expires_at || null,
+      Number(u.battle_pass_s1) || 0,
+      u.battle_pass_s1_at || null,
+      u.battle_pass_claimed_json || '[]',
       Number(u.is_moderator) || 0,
       lvl,
       Number(u.wins) || 0,

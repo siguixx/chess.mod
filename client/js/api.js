@@ -142,6 +142,22 @@ class ApiClient {
     this.syncSnapshot();
     return res;
   }
+  async buyBattlePassMods() {
+    const res = await this.request('/api/battlepass/buy-mods', { method: 'POST', body: '{}' });
+    this.syncSnapshot();
+    return res;
+  }
+  startBattlePassCheckout() { return this.request('/api/battlepass/checkout', { method: 'POST', body: '{}' }); }
+  async verifyBattlePassPayment(sessionId) {
+    const res = await this.request('/api/battlepass/verify-payment', { method: 'POST', body: JSON.stringify({ sessionId }) });
+    this.syncSnapshot();
+    return res;
+  }
+  async claimBattlePassTier(tier) {
+    const res = await this.request('/api/battlepass/claim', { method: 'POST', body: JSON.stringify({ tier }) });
+    this.syncSnapshot();
+    return res;
+  }
   async updateUsername(username) {
     const res = await this.request('/api/profile/username', { method: 'PATCH', body: JSON.stringify({ username }) });
     this.syncSnapshot();
@@ -204,8 +220,13 @@ class ApiClient {
 
   // Moderación
   getModOverview() { return this.request('/api/mod/overview'); }
-  modBanUser(userId, reason) { return this.request('/api/mod/ban', { method: 'POST', body: JSON.stringify({ userId, reason }) }); }
+  modBanUser(userId, reason, durationDays = null) {
+    return this.request('/api/mod/ban', { method: 'POST', body: JSON.stringify({ userId, reason, durationDays }) });
+  }
   modUnbanUser(userId) { return this.request('/api/mod/unban', { method: 'POST', body: JSON.stringify({ userId }) }); }
+  modAdjustMods(userId, deltaMods, reason) {
+    return this.request('/api/mod/adjust-mods', { method: 'POST', body: JSON.stringify({ userId, deltaMods, reason }) });
+  }
   modResolveReport(reportId, status, resolutionNote) {
     return this.request(`/api/mod/reports/${encodeURIComponent(reportId)}/resolve`, { method: 'POST', body: JSON.stringify({ status, resolutionNote }) });
   }

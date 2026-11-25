@@ -277,6 +277,8 @@ html, body {
 .avatar-badge.frame_galaxy { border-color: #8b7ae6; box-shadow: 0 0 16px rgba(139, 122, 230, 0.56); }
 .avatar-badge.frame_eclipse { border-color: #c94b3c; box-shadow: 0 0 16px rgba(201, 75, 60, 0.56); }
 .avatar-badge.frame_chess_victor { border-color: #fff2c4; box-shadow: 0 0 22px rgba(239, 208, 131, 0.9), inset 0 0 10px rgba(255, 245, 204, 0.5); }
+.avatar-badge.frame_bp_s1_vanguard { border-color: #38bdf8; box-shadow: 0 0 18px rgba(56, 189, 248, 0.82), inset 0 0 8px rgba(125, 211, 252, 0.45); }
+.avatar-badge.frame_bp_s1_crown { border-color: #f472b6; box-shadow: 0 0 22px rgba(244, 114, 182, 0.88), 0 0 12px rgba(56, 189, 248, 0.55); }
 .avatar-badge.frame_blacky_imposible { border-color: #e4ecfa; box-shadow: 0 0 20px rgba(228, 236, 250, 0.82); }
 .avatar-badge.frame_vip_gold,
 .vip-aura {
@@ -694,4 +696,40 @@ body.board-scale-large .board-pedestal {
   body.board-scale-large .board-pedestal {
     transform: none;
   }
+}
+
+/* ================= PASE DE BATALLA TEMPORADA 1 & MODERACIÓN MÓVIL ================= */
+.bp-hero-card {
+  background: linear-gradient(135deg, rgba(16, 24, 46, 0.96) 0%, rgba(36, 18, 52, 0.95) 55%, rgba(28, 22, 14, 0.96) 100%);
+  border: 1.5px solid rgba(56, 189, 248, 0.65);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55), 0 0 28px rgba(56, 189, 248, 0.16);
+}
+.bp-tiers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(235px, 1fr));
+  gap: 12px;
+}
+.bp-tier-card {
+  background: rgba(18, 17, 24, 0.92);
+  border: 1.5px solid var(--border-stone);
+  border-radius: 12px;
+  padding: 13px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  transition: transform 0.16s ease, border-color 0.16s ease;
+}
+.bp-tier-card.unlocked { border-color: rgba(56, 189, 248, 0.72); }
+.bp-tier-card.claimed { border-color: rgba(81, 150, 116, 0.8); background: rgba(16, 30, 24, 0.92); }
+.bp-tier-card.locked { opacity: 0.72; }
+.mod-action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+@media (max-width: 640px) {
+  .bp-tiers-grid { grid-template-columns: 1fr; }
+  .mod-action-group .btn { flex: 1 1 auto; font-size: 0.7rem; padding: 5px 7px; }
 }

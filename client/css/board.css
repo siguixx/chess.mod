@@ -1068,3 +1068,25 @@
     padding: 7px 10px;
   }
 }
+
+/* ================= TABLEROS ABSURDAMENTE GRANDES (10×10 Y 12×12) PC + MÓVIL ================= */
+.board-grid.board-size-10 .coord-rank,
+.board-grid.board-size-10 .coord-file,
+.board-grid.board-size-12 .coord-rank,
+.board-grid.board-size-12 .coord-file {
+  font-size: 0.46rem;
+  opacity: 0.75;
+}
+.board-grid.board-size-12 .piece-wrap {
+  padding: 2%;
+}
+.board-grid.board-size-12 .move-dot {
+  width: 28%;
+  height: 28%;
+}
+@media (max-width: 600px) {
+  .board-grid.board-size-12 .coord-rank,
+  .board-grid.board-size-12 .coord-file {
+    font-size: 0.38rem;
+  }
+}
