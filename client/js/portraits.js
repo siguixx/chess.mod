@@ -385,160 +385,239 @@ function buildBossPortraitSVG(bossId) {
       </svg>`;
   }
 
-  // === CAP. 2 NIVEL 1: HOMBRE PEÓN (100% PIEZAS DE PEÓN ESCULPIDAS EN OBSIDIANA Y ORO — CERO GATO) ===
+  // === CAP. 2 NIVEL 1: HOMBRE PEÓN (GUERRERO PEÓN EN BRONCE, MARFIL Y OBSIDIANA — ALTA VISIBILIDAD, CERO GATO) ===
   if (bossId === 'hombre_peon') {
     return `
       <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Hombre Peón">
         <defs>
-          <radialGradient id="hpBg" cx="50%" cy="32%" r="72%"><stop offset="0%" stop-color="#4e4132"/><stop offset="62%" stop-color="#221c15"/><stop offset="100%" stop-color="#110e0b"/></radialGradient>
-          <radialGradient id="hpSphere" cx="35%" cy="28%" r="68%"><stop offset="0%" stop-color="#a6957c"/><stop offset="42%" stop-color="#584d3f"/><stop offset="78%" stop-color="#2a241d"/><stop offset="100%" stop-color="#14110e"/></radialGradient>
-          <linearGradient id="hpGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fff4be"/><stop offset="50%" stop-color="#d8ae52"/><stop offset="100%" stop-color="#7a5818"/></linearGradient>
+          <radialGradient id="hpBg" cx="50%" cy="32%" r="72%">
+            <stop offset="0%" stop-color="#6b5438"/>
+            <stop offset="55%" stop-color="#2e2318"/>
+            <stop offset="100%" stop-color="#120d09"/>
+          </radialGradient>
+          <radialGradient id="hpSphere" cx="34%" cy="26%" r="70%">
+            <stop offset="0%" stop-color="#f3e6cc"/>
+            <stop offset="32%" stop-color="#a8906e"/>
+            <stop offset="70%" stop-color="#4e4031"/>
+            <stop offset="100%" stop-color="#1f1812"/>
+          </radialGradient>
+          <linearGradient id="hpArmor" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#c6ae88"/>
+            <stop offset="48%" stop-color="#65533f"/>
+            <stop offset="100%" stop-color="#241c15"/>
+          </linearGradient>
+          <linearGradient id="hpGold" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#fff7cb"/>
+            <stop offset="48%" stop-color="#dfb24f"/>
+            <stop offset="100%" stop-color="#7c5613"/>
+          </linearGradient>
         </defs>
         <rect width="240" height="240" fill="url(#hpBg)"/>
-        <circle class="portrait-aura-ring" cx="120" cy="120" r="94" fill="none" stroke="rgba(239,208,131,0.34)" stroke-width="2" stroke-dasharray="10 6"/>
-        <!-- Hombreras y torso de peones esculpidos con luz especular clara -->
-        <g stroke="url(#hpGold)" stroke-width="2.2">
-          <circle cx="44" cy="150" r="20" fill="url(#hpSphere)"/>
-          <ellipse cx="38" cy="142" rx="7" ry="4" fill="#ffffff" opacity="0.22" stroke="none"/>
-          <path d="M20 240 C24 194 34 170 44 170 C54 170 64 194 68 240 Z" fill="url(#hpSphere)"/>
-          <circle cx="196" cy="150" r="20" fill="url(#hpSphere)"/>
-          <ellipse cx="190" cy="142" rx="7" ry="4" fill="#ffffff" opacity="0.22" stroke="none"/>
-          <path d="M172 240 C176 194 186 170 196 170 C206 170 216 194 220 240 Z" fill="url(#hpSphere)"/>
-          <path d="M62 240 C68 180 88 158 120 158 C152 158 172 180 178 240 Z" fill="url(#hpSphere)"/>
-          <rect x="76" y="152" width="88" height="15" rx="6" fill="url(#hpGold)" stroke="#2b1e0a" stroke-width="1.8"/>
-          <path d="M94 182 L120 208 L146 182" fill="none" stroke="url(#hpGold)" stroke-width="2.6"/>
-          <circle cx="120" cy="196" r="6" fill="url(#hpGold)" stroke="#261a08" stroke-width="1.4"/>
+        <polygon points="120,16 140,224 100,224" fill="#efd083" opacity="0.06"/>
+        <circle class="portrait-aura-ring" cx="120" cy="118" r="98" fill="none" stroke="url(#hpGold)" stroke-width="2.2" stroke-dasharray="12 6" opacity="0.58"/>
+        <!-- Silueta heroica de armadura de Peón con hombreras esféricas luminosas y capa -->
+        <path d="M10 240 L40 162 H200 L230 240 Z" fill="#2c1d15" opacity="0.9"/>
+        <g stroke="url(#hpGold)" stroke-width="2.4">
+          <circle cx="42" cy="154" r="23" fill="url(#hpSphere)"/>
+          <ellipse cx="34" cy="144" rx="8" ry="4.5" fill="#ffffff" opacity="0.45" stroke="none"/>
+          <path d="M18 240 C22 192 32 174 42 174 C52 174 62 192 66 240 Z" fill="url(#hpArmor)"/>
+          <circle cx="198" cy="154" r="23" fill="url(#hpSphere)"/>
+          <ellipse cx="190" cy="144" rx="8" ry="4.5" fill="#ffffff" opacity="0.45" stroke="none"/>
+          <path d="M174 240 C178 192 188 174 198 174 C208 174 218 192 222 240 Z" fill="url(#hpArmor)"/>
+          <!-- Peto cincelado de infantería -->
+          <path d="M60 240 C66 178 86 156 120 156 C154 156 174 178 180 240 Z" fill="url(#hpArmor)"/>
+          <path d="M74 152 H166 L158 172 H82 Z" fill="url(#hpGold)" stroke="#2b1e0a" stroke-width="2"/>
+          <path d="M90 180 L120 220 L150 180" fill="#2b2117" stroke="url(#hpGold)" stroke-width="2.8"/>
+          <circle cx="120" cy="196" r="9" fill="url(#hpGold)" stroke="#241807" stroke-width="1.8"/>
+          <text x="120" y="201" text-anchor="middle" font-size="11" fill="#1c1205" stroke="none">♟</text>
         </g>
-        <!-- Yelmo esférico de Peón puro con reflejo metálico y ranura visor -->
+        <!-- Yelmo esférico icónico del Peón con cimera dorada y placas faciales brillantes -->
         <g class="portrait-float-part">
-          <circle cx="120" cy="108" r="50" fill="url(#hpSphere)" stroke="url(#hpGold)" stroke-width="3"/>
-          <ellipse cx="102" cy="80" rx="22" ry="10" fill="#ffffff" opacity="0.24" transform="rotate(-18 102 80)"/>
-          <path d="M78 96 Q120 72 162 96" fill="none" stroke="url(#hpGold)" stroke-width="2.6"/>
-          <rect x="84" y="135" width="72" height="9" rx="4.5" fill="#171410" stroke="#e4bc63" stroke-width="1.6"/>
-          <path d="M96 139.5 H144" stroke="#fff0b5" stroke-width="2" stroke-dasharray="6 4"/>
+          <path d="M112 36 L120 22 L128 36 L124 62 H116 Z" fill="url(#hpGold)" stroke="#2a1c08" stroke-width="1.6"/>
+          <circle cx="120" cy="108" r="52" fill="url(#hpSphere)" stroke="url(#hpGold)" stroke-width="3.2"/>
+          <ellipse cx="100" cy="78" rx="22" ry="11" fill="#ffffff" opacity="0.38" transform="rotate(-18 100 78)"/>
+          <!-- Banda frontal dorada y mentonera táctica -->
+          <path d="M72 95 Q120 68 168 95" fill="none" stroke="url(#hpGold)" stroke-width="3.4"/>
+          <rect x="76" y="102" width="88" height="30" rx="8" fill="#17120d" stroke="url(#hpGold)" stroke-width="2"/>
+          <path d="M84 142 H156 L146 154 H94 Z" fill="url(#hpGold)" stroke="#2a1d0a" stroke-width="1.6"/>
+          <path d="M98 148 H142" stroke="#1b140b" stroke-width="2.4" stroke-dasharray="6 4"/>
         </g>
-        ${chessVisorEyes('#ffe399', '#ff5b49', 'hpeon')}
+        ${chessVisorEyes('#fff0a8', '#ff5b49', 'hpeon')}
       </svg>`;
   }
 
-  // === CAP. 2 NIVEL 2: HOMBRE CABALLO (100% PIEZAS DE CABALLO TALLADAS — CERO GATO) ===
+  // === CAP. 2 NIVEL 2: HOMBRE CABALLO (PALADÍN ECUESTRE DE BRONCE Y ORO — SILUETA DE CABALLO CLARA, CERO GATO) ===
   if (bossId === 'hombre_caballo') {
     return `
       <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Hombre Caballo">
         <defs>
-          <radialGradient id="hcBg" cx="50%" cy="32%" r="72%"><stop offset="0%" stop-color="#392b1e"/><stop offset="100%" stop-color="#120f0c"/></radialGradient>
-          <linearGradient id="hcArmor" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#5d5041"/><stop offset="50%" stop-color="#2c241d"/><stop offset="100%" stop-color="#120f0c"/></linearGradient>
-          <linearGradient id="hcGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fff0a8"/><stop offset="50%" stop-color="#d99436"/><stop offset="100%" stop-color="#6b4410"/></linearGradient>
+          <radialGradient id="hcBg" cx="50%" cy="30%" r="72%">
+            <stop offset="0%" stop-color="#6e4a22"/>
+            <stop offset="56%" stop-color="#2c1d10"/>
+            <stop offset="100%" stop-color="#110b06"/>
+          </radialGradient>
+          <linearGradient id="hcArmor" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#d6ba91"/>
+            <stop offset="45%" stop-color="#755a3e"/>
+            <stop offset="100%" stop-color="#271d14"/>
+          </linearGradient>
+          <linearGradient id="hcGold" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#fff6be"/>
+            <stop offset="50%" stop-color="#e59e38"/>
+            <stop offset="100%" stop-color="#76470c"/>
+          </linearGradient>
         </defs>
         <rect width="240" height="240" fill="url(#hcBg)"/>
-        <circle class="portrait-aura-ring" cx="120" cy="120" r="95" fill="none" stroke="rgba(217,148,54,0.34)" stroke-width="2" stroke-dasharray="12 6"/>
-        <g stroke="url(#hcGold)" stroke-width="2.2">
-          <path d="M18 240 L32 156 C46 138 70 146 76 172 L70 240 Z" fill="url(#hcArmor)"/>
-          <path d="M222 240 L208 156 C194 138 170 146 164 172 L170 240 Z" fill="url(#hcArmor)"/>
-          <path d="M66 240 L78 166 H162 L174 240 Z" fill="#1e1915"/>
-          <path d="M90 170 L120 212 L150 170" fill="none" stroke="url(#hcGold)" stroke-width="2.8"/>
+        <circle class="portrait-aura-ring" cx="120" cy="118" r="98" fill="none" stroke="url(#hcGold)" stroke-width="2.4" stroke-dasharray="14 6" opacity="0.62"/>
+        <g stroke="url(#hcGold)" stroke-width="2.4">
+          <!-- Hombreras con perfil de cabezas de caballo blindadas -->
+          <path d="M12 240 L26 150 C44 128 74 138 80 172 L72 240 Z" fill="url(#hcArmor)"/>
+          <path d="M228 240 L214 150 C196 128 166 138 160 172 L168 240 Z" fill="url(#hcArmor)"/>
+          <path d="M64 240 L76 164 H164 L176 240 Z" fill="url(#hcArmor)"/>
+          <path d="M88 168 L120 218 L152 168" fill="#2c1d10" stroke="url(#hcGold)" stroke-width="3"/>
+          <polygon points="120,178 130,196 120,210 110,196" fill="url(#hcGold)" stroke="#241608" stroke-width="1.4"/>
         </g>
         <g class="portrait-float-part">
-          <!-- Cresta ecuestre de bronce dorado esculpida -->
-          <path d="M84 66 L100 24 L120 44 L140 24 L156 66 Z" fill="url(#hcGold)" stroke="#231708" stroke-width="2"/>
-          <path d="M120 26 V64" stroke="#fff6d0" stroke-width="1.8" opacity="0.7"/>
-          <path d="M70 114 C70 64 94 54 120 54 C146 54 170 64 170 114 L158 166 L120 180 L82 166 Z" fill="url(#hcArmor)" stroke="url(#hcGold)" stroke-width="2.8"/>
-          <path d="M120 56 V178" stroke="#0d0b09" stroke-width="2" opacity="0.45"/>
-          <path d="M94 146 L120 156 L146 146" fill="none" stroke="url(#hcGold)" stroke-width="2.6" stroke-linecap="round"/>
+          <!-- Crin blindada de Caballo de Ajedrez + yelmo angular con luz especular -->
+          <path d="M80 74 L92 18 L114 42 L120 12 L126 42 L148 18 L160 74 Z" fill="url(#hcGold)" stroke="#261707" stroke-width="2.2" stroke-linejoin="round"/>
+          <path d="M120 16 V68" stroke="#fff9d6" stroke-width="2.2" opacity="0.8"/>
+          <path d="M66 114 C66 62 92 50 120 50 C148 50 174 62 174 114 L162 168 L120 184 L78 168 Z" fill="url(#hcArmor)" stroke="url(#hcGold)" stroke-width="3"/>
+          <path d="M74 102 H166 L160 132 H80 Z" fill="#17110c" stroke="url(#hcGold)" stroke-width="2"/>
+          <path d="M120 52 V102 M120 132 V182" stroke="url(#hcGold)" stroke-width="2.2" opacity="0.75"/>
+          <path d="M90 150 L120 162 L150 150" fill="none" stroke="#fff2b5" stroke-width="2.8" stroke-linecap="round"/>
         </g>
-        ${chessVisorEyes('#f2be6b', '#ff5b49', 'hcab')}
+        ${chessVisorEyes('#ffd478', '#ff5b49', 'hcab')}
       </svg>`;
   }
 
-  // === CAP. 2 NIVEL 3: HOMBRE ALFIL (100% MITRA DE ALFIL TALLADA — CERO GATO) ===
+  // === CAP. 2 NIVEL 3: HOMBRE ALFIL (ARCONTE ALFIL EN ESMERALDA, MARFIL Y ORO — CERO GATO) ===
   if (bossId === 'hombre_alfil') {
     return `
       <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Hombre Alfil">
         <defs>
-          <radialGradient id="haBg" cx="50%" cy="32%" r="72%"><stop offset="0%" stop-color="#1e352b"/><stop offset="100%" stop-color="#0e1311"/></radialGradient>
-          <linearGradient id="haMitra" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#565249"/><stop offset="50%" stop-color="#29251f"/><stop offset="100%" stop-color="#11100d"/></linearGradient>
-          <linearGradient id="haGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fff0ae"/><stop offset="50%" stop-color="#cfa64c"/><stop offset="100%" stop-color="#694d14"/></linearGradient>
+          <radialGradient id="haBg" cx="50%" cy="30%" r="72%">
+            <stop offset="0%" stop-color="#2c634a"/>
+            <stop offset="56%" stop-color="#142b21"/>
+            <stop offset="100%" stop-color="#09120e"/>
+          </radialGradient>
+          <linearGradient id="haMitra" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#c9d9cc"/>
+            <stop offset="44%" stop-color="#587061"/>
+            <stop offset="100%" stop-color="#19241e"/>
+          </linearGradient>
+          <linearGradient id="haGold" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#fff6c2"/>
+            <stop offset="50%" stop-color="#d8ae4e"/>
+            <stop offset="100%" stop-color="#6b4d12"/>
+          </linearGradient>
         </defs>
         <rect width="240" height="240" fill="url(#haBg)"/>
-        <circle class="portrait-aura-ring" cx="120" cy="120" r="95" fill="none" stroke="rgba(122,224,173,0.28)" stroke-width="2" stroke-dasharray="10 6"/>
-        <path d="M22 240 L68 160 H172 L218 240 Z" fill="url(#haMitra)" stroke="url(#haGold)" stroke-width="2.2"/>
-        <path d="M62 240 L120 162 L178 240" fill="#183828" opacity="0.6" stroke="#3c825f" stroke-width="3.2"/>
+        <!-- Rayos diagonales emblemáticos del Alfil -->
+        <path d="M0 0 L240 240 M240 0 L0 240" stroke="#7ae0ad" stroke-width="2" opacity="0.16"/>
+        <circle class="portrait-aura-ring" cx="120" cy="118" r="98" fill="none" stroke="#7ae0ad" stroke-width="2.2" stroke-dasharray="12 6" opacity="0.5"/>
+        <path d="M18 240 L64 158 H176 L222 240 Z" fill="url(#haMitra)" stroke="url(#haGold)" stroke-width="2.4"/>
+        <path d="M58 240 L120 160 L182 240" fill="#184a34" stroke="url(#haGold)" stroke-width="3"/>
+        <polygon points="120,176 132,196 120,214 108,196" fill="#7ae0ad" stroke="url(#haGold)" stroke-width="2"/>
         <g class="portrait-float-part">
-          <circle cx="120" cy="26" r="11" fill="url(#haGold)" stroke="#1e170a" stroke-width="2"/>
-          <circle cx="117" cy="23" r="3.5" fill="#ffffff" opacity="0.7"/>
-          <path d="M72 126 C70 72 95 40 120 36 C145 40 170 72 168 126 C166 158 148 176 120 176 C92 176 74 158 72 126 Z" fill="url(#haMitra)" stroke="url(#haGold)" stroke-width="2.6"/>
-          <!-- Hendidura diagonal icónica del Alfil con brillo esmeralda -->
-          <path d="M122 48 L148 78" stroke="#0b0d0c" stroke-width="6.5" stroke-linecap="round"/>
-          <path d="M122 48 L148 78" stroke="#7ae0ad" stroke-width="3.2" stroke-linecap="round"/>
-          <path d="M98 148 H142" stroke="url(#haGold)" stroke-width="2.6" stroke-linecap="round"/>
+          <circle cx="120" cy="24" r="12.5" fill="url(#haGold)" stroke="#1a1409" stroke-width="2.2"/>
+          <circle cx="116" cy="20" r="4" fill="#ffffff" opacity="0.85"/>
+          <path d="M70 126 C68 68 94 38 120 34 C146 38 172 68 170 126 C168 160 150 178 120 178 C90 178 72 160 70 126 Z" fill="url(#haMitra)" stroke="url(#haGold)" stroke-width="3"/>
+          <rect x="76" y="102" width="88" height="30" rx="8" fill="#0d1712" stroke="url(#haGold)" stroke-width="2"/>
+          <!-- Hendidura diagonal luminosa icónica del Alfil -->
+          <path d="M122 44 L154 80" stroke="#08110c" stroke-width="8" stroke-linecap="round"/>
+          <path d="M122 44 L154 80" stroke="#8ff5c3" stroke-width="4" stroke-linecap="round"/>
+          <path d="M94 150 H146" stroke="url(#haGold)" stroke-width="3" stroke-linecap="round"/>
         </g>
-        ${chessVisorEyes('#7ae0ad', '#ff5b49', 'half')}
+        ${chessVisorEyes('#8ff5c3', '#ff5b49', 'half')}
       </svg>`;
   }
 
-  // === CAP. 2 NIVEL 4: MUJER REINA (100% REINA DE AJEDREZ ESCULPIDA — CERO GATO) ===
+  // === CAP. 2 NIVEL 4: MUJER REINA (EMPERATRIZ REINA EN CARMESÍ, MARFIL Y ORO — CERO GATO) ===
   if (bossId === 'mujer_reina') {
     return `
       <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Mujer Reina">
         <defs>
-          <radialGradient id="mrBg" cx="50%" cy="30%" r="72%"><stop offset="0%" stop-color="#452432"/><stop offset="100%" stop-color="#140d10"/></radialGradient>
-          <linearGradient id="mrBody" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#59414a"/><stop offset="52%" stop-color="#2d2025"/><stop offset="100%" stop-color="#140d10"/></linearGradient>
-          <linearGradient id="mrGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fff5c4"/><stop offset="50%" stop-color="#cfa64c"/><stop offset="100%" stop-color="#704f14"/></linearGradient>
+          <radialGradient id="mrBg" cx="50%" cy="28%" r="72%">
+            <stop offset="0%" stop-color="#7d2e4c"/>
+            <stop offset="56%" stop-color="#311220"/>
+            <stop offset="100%" stop-color="#12070c"/>
+          </radialGradient>
+          <linearGradient id="mrBody" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#dfb8c6"/>
+            <stop offset="46%" stop-color="#6e3e52"/>
+            <stop offset="100%" stop-color="#220f17"/>
+          </linearGradient>
+          <linearGradient id="mrGold" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#fff8cc"/>
+            <stop offset="48%" stop-color="#e3b652"/>
+            <stop offset="100%" stop-color="#7a5412"/>
+          </linearGradient>
         </defs>
         <rect width="240" height="240" fill="url(#mrBg)"/>
-        <circle class="portrait-aura-ring" cx="120" cy="120" r="95" fill="none" stroke="rgba(239,208,131,0.34)" stroke-width="2" stroke-dasharray="10 5"/>
-        <path d="M30 240 L64 170 L120 188 L176 170 L210 240 Z" fill="url(#mrBody)" stroke="url(#mrGold)" stroke-width="2.4"/>
-        <path d="M78 176 Q120 212 162 176" fill="none" stroke="url(#mrGold)" stroke-width="3"/>
-        <circle cx="120" cy="198" r="7" fill="#c94b3c" stroke="url(#mrGold)" stroke-width="2"/>
+        <circle class="portrait-aura-ring" cx="120" cy="118" r="98" fill="none" stroke="url(#mrGold)" stroke-width="2.4" stroke-dasharray="10 5" opacity="0.62"/>
+        <!-- Cuello alto regio + coraza imperial -->
+        <path d="M46 154 L76 124 H164 L194 154 L182 186 H58 Z" fill="#4f1b31" stroke="url(#mrGold)" stroke-width="2.2"/>
+        <path d="M24 240 L60 168 L120 190 L180 168 L216 240 Z" fill="url(#mrBody)" stroke="url(#mrGold)" stroke-width="2.6"/>
+        <path d="M74 174 Q120 218 166 174" fill="none" stroke="url(#mrGold)" stroke-width="3.4"/>
+        <polygon points="120,186 130,200 120,214 110,200" fill="#ff4d6d" stroke="url(#mrGold)" stroke-width="2"/>
         <g class="portrait-float-part">
-          <!-- Corona real de 5 puntas con joyas especulares -->
-          <path d="M68 86 L56 38 L92 64 L120 22 L148 64 L184 38 L172 86 Z" fill="url(#mrGold)" stroke="#241908" stroke-width="2.2" stroke-linejoin="round"/>
-          <circle cx="56" cy="34" r="5.5" fill="#fff4c4" stroke="#362409" stroke-width="1.3"/>
-          <circle cx="120" cy="18" r="6.8" fill="#ffffff" stroke="#cfa64c" stroke-width="1.6"/>
-          <circle cx="184" cy="34" r="5.5" fill="#fff4c4" stroke="#362409" stroke-width="1.3"/>
-          <path d="M76 86 H164 L154 160 L120 178 L86 160 Z" fill="url(#mrBody)" stroke="url(#mrGold)" stroke-width="2.6"/>
-          <path d="M84 92 H156" stroke="#fff2be" stroke-width="1.5" opacity="0.55"/>
-          <path d="M102 148 Q120 156 138 148" fill="none" stroke="url(#mrGold)" stroke-width="2.4" stroke-linecap="round"/>
+          <!-- Corona de Reina de 5 puntas con joyas resplandecientes -->
+          <path d="M64 88 L50 36 L88 64 L120 18 L152 64 L190 36 L176 88 Z" fill="url(#mrGold)" stroke="#241707" stroke-width="2.4" stroke-linejoin="round"/>
+          <circle cx="50" cy="31" r="6" fill="#fff7cc" stroke="#362409" stroke-width="1.4"/>
+          <circle cx="88" cy="60" r="4.5" fill="#ff4d6d"/>
+          <circle cx="120" cy="15" r="7.5" fill="#ffffff" stroke="#e3b652" stroke-width="2"/>
+          <circle cx="152" cy="60" r="4.5" fill="#ff4d6d"/>
+          <circle cx="190" cy="31" r="6" fill="#fff7cc" stroke="#362409" stroke-width="1.4"/>
+          <path d="M74 86 H166 L156 160 L120 180 L84 160 Z" fill="url(#mrBody)" stroke="url(#mrGold)" stroke-width="3"/>
+          <rect x="78" y="102" width="84" height="30" rx="8" fill="#180a11" stroke="url(#mrGold)" stroke-width="2"/>
+          <path d="M100 150 Q120 160 140 150" fill="none" stroke="#fff4c4" stroke-width="2.6" stroke-linecap="round"/>
         </g>
-        ${chessVisorEyes('#fff0b5', '#ff5b7a', 'mreina')}
+        ${chessVisorEyes('#fff3be', '#ff4d6d', 'mreina')}
       </svg>`;
   }
 
-  // === CAP. 3: ENTIDAD GALÁCTICA Y HERALDOS CÓSMICOS (NEBULOSA CON PROFUNDIDAD Y ARMADURA ESTELAR) ===
+  // === CAP. 3: ENTIDAD GALÁCTICA Y HERALDOS CÓSMICOS (COLOSO ESTELAR CON HALO SOLAR Y ANILLOS ORBITALES) ===
   if (bossId && bossId.startsWith('galaxy_')) {
     const isBoss = bossId === 'galaxy_entity';
     return `
       <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Entidad Galáctica">
         <defs>
-          <radialGradient id="gxPortBg" cx="50%" cy="38%" r="68%">
-            <stop offset="0%" stop-color="#6046cc"/>
-            <stop offset="48%" stop-color="#1e164d"/>
-            <stop offset="100%" stop-color="#070514"/>
+          <radialGradient id="gxPortBg" cx="50%" cy="36%" r="72%">
+            <stop offset="0%" stop-color="#7c5cf2"/>
+            <stop offset="46%" stop-color="#271b66"/>
+            <stop offset="100%" stop-color="#060414"/>
           </radialGradient>
-          <radialGradient id="gxHead" cx="42%" cy="32%" r="65%">
-            <stop offset="0%" stop-color="#6f5be0"/>
-            <stop offset="52%" stop-color="#2c1f6e"/>
-            <stop offset="100%" stop-color="#0e0926"/>
+          <radialGradient id="gxHead" cx="40%" cy="28%" r="68%">
+            <stop offset="0%" stop-color="#b5a6ff"/>
+            <stop offset="44%" stop-color="#4c35ab"/>
+            <stop offset="100%" stop-color="#110a30"/>
           </radialGradient>
-          <linearGradient id="gxGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fff4c4"/><stop offset="50%" stop-color="#efd083"/><stop offset="100%" stop-color="#7c5a18"/></linearGradient>
+          <linearGradient id="gxGold" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#fff8d6"/>
+            <stop offset="50%" stop-color="#f0cd74"/>
+            <stop offset="100%" stop-color="#7c5616"/>
+          </linearGradient>
         </defs>
         <rect width="240" height="240" fill="url(#gxPortBg)"/>
         <g class="portrait-star-pulse" fill="#ffffff">
-          <circle cx="26" cy="34" r="2.2"/><circle cx="208" cy="46" r="2.4"/><circle cx="42" cy="194" r="1.9"/>
-          <circle cx="200" cy="184" r="2.2"/><circle cx="166" cy="28" r="1.7"/><circle cx="70" cy="42" r="1.8"/>
+          <circle cx="24" cy="34" r="2.6"/><circle cx="212" cy="44" r="2.8"/><circle cx="38" cy="196" r="2.2"/>
+          <circle cx="204" cy="186" r="2.4"/><circle cx="174" cy="26" r="2"/><circle cx="66" cy="38" r="2"/>
+          <path d="M196 28 L199 38 L209 41 L199 44 L196 54 L193 44 L183 41 L193 38 Z" fill="#fff4c4"/>
         </g>
-        <ellipse class="portrait-aura-ring" cx="120" cy="118" rx="98" ry="30" fill="none" stroke="url(#gxGold)" stroke-width="2.2" stroke-dasharray="10 5" transform="rotate(-16 120 118)"/>
-        <ellipse class="portrait-aura-ring" cx="120" cy="118" rx="84" ry="22" fill="none" stroke="#c4b5fd" stroke-width="1.3" transform="rotate(12 120 118)" opacity="0.65"/>
-        <path d="M30 240 C44 180 76 162 120 162 C164 162 196 180 210 240 Z" fill="url(#gxHead)" stroke="#9d8df2" stroke-width="2.4"/>
-        <circle cx="120" cy="198" r="14" fill="url(#gxGold)" opacity="0.92"/>
-        <circle cx="120" cy="198" r="6" fill="#ffffff"/>
+        <ellipse class="portrait-aura-ring" cx="120" cy="118" rx="102" ry="32" fill="none" stroke="url(#gxGold)" stroke-width="2.6" stroke-dasharray="12 5" transform="rotate(-16 120 118)"/>
+        <ellipse class="portrait-aura-ring" cx="120" cy="118" rx="88" ry="24" fill="none" stroke="#c4b5fd" stroke-width="1.6" transform="rotate(14 120 118)" opacity="0.78"/>
+        <!-- Armadura astral con núcleo de estrella brillante -->
+        <path d="M22 240 C38 176 74 160 120 160 C166 160 202 176 218 240 Z" fill="url(#gxHead)" stroke="url(#gxGold)" stroke-width="2.6"/>
+        <path d="M60 176 Q120 218 180 176" fill="none" stroke="url(#gxGold)" stroke-width="3.2"/>
+        <circle cx="120" cy="198" r="16" fill="url(#gxGold)"/>
+        <circle cx="120" cy="198" r="8" fill="#ffffff"/>
         <g class="portrait-float-part">
-          ${isBoss ? `<path d="M72 86 L92 32 L120 54 L148 32 L168 86 Z" fill="#4c35ab" stroke="url(#gxGold)" stroke-width="2.4"/>` : ''}
-          <ellipse cx="120" cy="114" rx="48" ry="54" fill="url(#gxHead)" stroke="#c4b5fd" stroke-width="2.8"/>
-          <ellipse cx="106" cy="86" rx="22" ry="10" fill="#ffffff" opacity="0.16" transform="rotate(-14 106 86)"/>
-          <circle cx="102" cy="82" r="2.2" fill="#fff4c4"/><circle cx="144" cy="140" r="2" fill="#ffffff"/>
+          ${isBoss ? `<path d="M64 88 L88 22 L112 54 L120 14 L128 54 L152 22 L176 88 Z" fill="#4c35ab" stroke="url(#gxGold)" stroke-width="2.8"/>` : `<path d="M84 74 L120 28 L156 74 Z" fill="#3a258a" stroke="url(#gxGold)" stroke-width="2.2"/>`}
+          <ellipse cx="120" cy="114" rx="50" ry="56" fill="url(#gxHead)" stroke="#e9d5ff" stroke-width="3"/>
+          <rect x="76" y="102" width="88" height="30" rx="10" fill="#0c0724" stroke="url(#gxGold)" stroke-width="2"/>
+          <ellipse cx="104" cy="82" rx="22" ry="10" fill="#ffffff" opacity="0.24" transform="rotate(-14 104 82)"/>
         </g>
-        ${chessVisorEyes('#fff3c4', '#ff6e9c', 'gal')}
+        ${chessVisorEyes('#fff5c4', '#ff6e9c', 'gal')}
       </svg>`;
   }
 
@@ -617,122 +696,159 @@ function buildBossPortraitSVG(bossId) {
       </svg>`;
   }
 
-  // === CAP. 5: CHESS (TEXTURA DE TABLERO DE AJEDREZ CON VOLUMEN 3D, BISEL DORADO Y CORONA) ===
+  // === CAP. 5: CHESS — MONARCA IMPONENTE DEL ORIGEN DEL AJEDREZ (HALO DIVINO, CORONA IMPERIAL DE 7 PUNTAS Y TORRES MONOLÍTICAS) ===
   if (bossId && bossId.startsWith('chess_')) {
     const isFinal = bossId === 'chess_god';
     return `
-      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="CHESS">
+      <svg class="boss-portrait-svg chess-sovereign-svg" viewBox="0 0 240 240" aria-label="CHESS — Soberano Imponente">
         <defs>
-          <pattern id="chessBoardTexPort" width="24" height="24" patternUnits="userSpaceOnUse">
-            <rect width="24" height="24" fill="#171511"/>
-            <rect x="0" y="0" width="12" height="12" fill="#f4ecdb"/>
-            <rect x="12" y="12" width="12" height="12" fill="#f4ecdb"/>
+          <pattern id="chessBoardTexPort" width="20" height="20" patternUnits="userSpaceOnUse">
+            <rect width="20" height="20" fill="#14110c"/>
+            <rect x="0" y="0" width="10" height="10" fill="#faf1dd"/>
+            <rect x="10" y="10" width="10" height="10" fill="#faf1dd"/>
           </pattern>
+          <radialGradient id="chDivineBg" cx="50%" cy="34%" r="72%">
+            <stop offset="0%" stop-color="#ffe799" stop-opacity="${isFinal ? '0.46' : '0.26'}"/>
+            <stop offset="46%" stop-color="#3a2d18"/>
+            <stop offset="100%" stop-color="#090806"/>
+          </radialGradient>
           <linearGradient id="chVolume" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22"/>
-            <stop offset="50%" stop-color="#000000" stop-opacity="0"/>
-            <stop offset="100%" stop-color="#000000" stop-opacity="0.48"/>
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.28"/>
+            <stop offset="48%" stop-color="#000000" stop-opacity="0.06"/>
+            <stop offset="100%" stop-color="#000000" stop-opacity="0.62"/>
           </linearGradient>
-          <linearGradient id="chGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fff8d6"/><stop offset="50%" stop-color="#efd083"/><stop offset="100%" stop-color="#7c5b18"/></linearGradient>
+          <linearGradient id="chGold" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#fffbe0"/>
+            <stop offset="42%" stop-color="#f2c962"/>
+            <stop offset="100%" stop-color="#7c540e"/>
+          </linearGradient>
         </defs>
-        <rect width="240" height="240" fill="#100f0c"/>
-        <rect width="240" height="240" fill="url(#chessBoardTexPort)" opacity="0.18"/>
-        <circle class="portrait-aura-ring" cx="120" cy="120" r="99" fill="none" stroke="url(#chGold)" stroke-width="${isFinal ? '2.8' : '1.6'}" opacity="0.65"/>
-        <!-- Manto real con textura de tablero de ajedrez + sombra 3D -->
-        <path d="M26 240 L68 168 H172 L214 240 Z" fill="url(#chessBoardTexPort)" stroke="url(#chGold)" stroke-width="2.6"/>
-        <path d="M26 240 L68 168 H172 L214 240 Z" fill="url(#chVolume)"/>
-        <path d="M84 170 L120 216 L156 170" fill="none" stroke="url(#chGold)" stroke-width="3"/>
-        <g class="portrait-float-part">
-          <path d="M120 12 V46 M103 27 H137" stroke="url(#chGold)" stroke-width="5.2" stroke-linecap="round"/>
-          <path d="M70 94 L94 58 L120 76 L146 58 L170 94 L160 172 L120 188 L80 172 Z" fill="url(#chessBoardTexPort)" stroke="url(#chGold)" stroke-width="3"/>
-          <path d="M70 94 L94 58 L120 76 L146 58 L170 94 L160 172 L120 188 L80 172 Z" fill="url(#chVolume)"/>
-          <rect x="76" y="105" width="88" height="34" rx="7" fill="#100e0b" opacity="0.88" stroke="url(#chGold)" stroke-width="1.8"/>
-          <path d="M96 158 H144" stroke="url(#chGold)" stroke-width="2.8" stroke-linecap="round"/>
+        <rect width="240" height="240" fill="url(#chDivineBg)"/>
+        <rect width="240" height="240" fill="url(#chessBoardTexPort)" opacity="0.14"/>
+        <!-- Rayos solares imperiales detrás de CHESS -->
+        <g opacity="${isFinal ? '0.42' : '0.22'}" fill="url(#chGold)">
+          <polygon points="120,108 106,0 134,0"/>
+          <polygon points="120,108 0,32 16,6"/>
+          <polygon points="120,108 240,32 224,6"/>
+          <polygon points="120,108 0,118 0,92"/>
+          <polygon points="120,108 240,118 240,92"/>
         </g>
-        ${chessVisorEyes('#fff6d6', '#cfa64c', 'chess')}
+        <!-- Doble anillo geométrico sagrado -->
+        <circle class="portrait-aura-ring" cx="120" cy="116" r="104" fill="none" stroke="url(#chGold)" stroke-width="${isFinal ? '3.2' : '2'}" stroke-dasharray="16 6" opacity="0.82"/>
+        <circle class="portrait-aura-ring" cx="120" cy="116" r="88" fill="none" stroke="#fff7d4" stroke-width="1.2" opacity="0.5"/>
+        <!-- Hombreras monumentales en forma de Torres de Ajedrez + manto imperial ajedrezado -->
+        <g stroke="url(#chGold)" stroke-width="2.6">
+          <path d="M12 240 L20 134 H32 V146 H42 V134 H54 V146 H64 V134 H74 L78 240 Z" fill="url(#chessBoardTexPort)"/>
+          <path d="M12 240 L20 134 H32 V146 H42 V134 H54 V146 H64 V134 H74 L78 240 Z" fill="url(#chVolume)" stroke="none"/>
+          <path d="M228 240 L220 134 H208 V146 H198 V134 H186 V146 H176 V134 H166 L162 240 Z" fill="url(#chessBoardTexPort)"/>
+          <path d="M228 240 L220 134 H208 V146 H198 V134 H186 V146 H176 V134 H166 L162 240 Z" fill="url(#chVolume)" stroke="none"/>
+          <path d="M56 240 L74 166 H166 L184 240 Z" fill="url(#chessBoardTexPort)"/>
+          <path d="M56 240 L74 166 H166 L184 240 Z" fill="url(#chVolume)" stroke="none"/>
+          <path d="M78 168 L120 226 L162 168" fill="#17130d" stroke="url(#chGold)" stroke-width="3.6"/>
+          <polygon points="120,178 134,200 120,222 106,200" fill="url(#chGold)" stroke="#1b1206" stroke-width="2"/>
+          <circle cx="120" cy="200" r="5" fill="#ffffff" stroke="none"/>
+        </g>
+        <!-- Rostro esculpido en tablero de ajedrez + Corona Imperial de 7 puntas + Cruz Suprema -->
+        <g class="portrait-float-part">
+          <path d="M120 4 V42 M100 20 H140" stroke="url(#chGold)" stroke-width="6" stroke-linecap="round"/>
+          <circle cx="120" cy="20" r="5.5" fill="#ffffff"/>
+          <!-- Corona monumental de 7 agujas -->
+          <path d="M56 88 L44 34 L76 62 L92 22 L110 56 L120 28 L130 56 L148 22 L164 62 L196 34 L184 88 Z" fill="url(#chGold)" stroke="#1f1506" stroke-width="2.4" stroke-linejoin="round"/>
+          <!-- Cabeza colosal de CHESS -->
+          <path d="M64 88 H176 L164 170 L120 192 L76 170 Z" fill="url(#chessBoardTexPort)" stroke="url(#chGold)" stroke-width="3.4"/>
+          <path d="M64 88 H176 L164 170 L120 192 L76 170 Z" fill="url(#chVolume)"/>
+          <!-- Visor imperial negro-oro que resalta su mirada absoluta -->
+          <polygon points="70,100 170,100 162,136 120,144 78,136" fill="#0d0b08" opacity="0.94" stroke="url(#chGold)" stroke-width="2.2"/>
+          <path d="M90 158 L120 168 L150 158" fill="none" stroke="url(#chGold)" stroke-width="3.2" stroke-linecap="round"/>
+        </g>
+        ${chessVisorEyes('#fffbe0', '#ffd24d', 'chess')}
       </svg>`;
   }
 
-  // === CAP. 1 NIVELES 1-4: GUARDIANES MAYA (PIEDRA TALLADA CON RELIEVE, ORO Y ANTORCHA) ===
+  // === CAP. 1 NIVELES 1-4: GUARDIANES MAYA (PIEDRA TALLADA DE ALTA VISIBILIDAD, JADE Y ORO) ===
   if (bossId === 'maya_sentinel' || bossId === 'maya_jade_guard' || bossId === 'maya_jaguar' || bossId === 'maya_eclipse') {
     const palette = {
-      maya_sentinel: { bg1: '#3a3025', bg2: '#14110d', p1: '#5d5244', p2: '#241f19', accent: '#cfa64c', eye: '#f0c259', crown: 'M78 88 Q120 28 162 88 Z' },
-      maya_jade_guard: { bg1: '#234232', bg2: '#0d1712', p1: '#428562', p2: '#183828', accent: '#efd083', eye: '#7ae0ad', crown: 'M72 90 H168 L156 50 H84 Z' },
-      maya_jaguar: { bg1: '#3f2e1f', bg2: '#140f0a', p1: '#594836', p2: '#241d15', accent: '#d99436', eye: '#ffd466', crown: 'M70 96 L84 40 L108 72 L120 44 L132 72 L156 40 L170 96 Z' },
-      maya_eclipse: { bg1: '#3b2421', bg2: '#130c0b', p1: '#523833', p2: '#221614', accent: '#e07a52', eye: '#ffae66', crown: 'M74 88 L98 44 L120 26 L142 44 L166 88 Z' }
+      maya_sentinel: { bg1: '#59452c', bg2: '#14100b', p1: '#9c8668', p2: '#352b20', accent: '#e5b855', eye: '#ffe078', crown: 'M74 88 Q120 20 166 88 Z' },
+      maya_jade_guard: { bg1: '#2d6649', bg2: '#0b1812', p1: '#69c796', p2: '#1b4731', accent: '#f2d079', eye: '#99ffd0', crown: 'M68 90 H172 L158 42 H82 Z' },
+      maya_jaguar: { bg1: '#634121', bg2: '#140d07', p1: '#a67b4d', p2: '#382515', accent: '#f0a83e', eye: '#ffe169', crown: 'M66 96 L82 32 L106 68 L120 34 L134 68 L158 32 L174 96 Z' },
+      maya_eclipse: { bg1: '#612d28', bg2: '#140a09', p1: '#995b50', p2: '#361a16', accent: '#ff9666', eye: '#ffd085', crown: 'M68 88 L96 38 L120 18 L144 38 L172 88 Z' }
     }[bossId];
     const uid = bossId;
 
     return `
       <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Guardián Maya">
         <defs>
-          <radialGradient id="mgBg_${uid}" cx="50%" cy="32%" r="72%"><stop offset="0%" stop-color="${palette.bg1}"/><stop offset="100%" stop-color="${palette.bg2}"/></radialGradient>
+          <radialGradient id="mgBg_${uid}" cx="50%" cy="30%" r="72%"><stop offset="0%" stop-color="${palette.bg1}"/><stop offset="100%" stop-color="${palette.bg2}"/></radialGradient>
           <linearGradient id="mgSt_${uid}" x1="0" y1="0" x2="0.8" y2="1"><stop offset="0%" stop-color="${palette.p1}"/><stop offset="100%" stop-color="${palette.p2}"/></linearGradient>
         </defs>
         <rect width="240" height="240" fill="url(#mgBg_${uid})"/>
-        <circle class="portrait-aura-ring" cx="120" cy="100" r="82" fill="none" stroke="${palette.accent}" stroke-width="1.8" stroke-dasharray="9 6" opacity="0.4"/>
-        <path class="portrait-float-part" d="${palette.crown}" fill="${palette.accent}" stroke="#191510" stroke-width="2.4"/>
-        <path d="M30 240 L58 178 H182 L210 240 Z" fill="url(#mgSt_${uid})" stroke="${palette.accent}" stroke-width="2.2"/>
-        <path d="M84 180 Q120 212 156 180" fill="none" stroke="${palette.accent}" stroke-width="2.6"/>
-        <path d="M72 90 H168 L158 176 L120 194 L82 176 Z" fill="url(#mgSt_${uid})" stroke="${palette.accent}" stroke-width="2.6"/>
-        <path d="M80 96 H160 L154 114 H86 Z" fill="#0d0b09" opacity="0.45"/>
+        <circle class="portrait-aura-ring" cx="120" cy="112" r="94" fill="none" stroke="${palette.accent}" stroke-width="2.2" stroke-dasharray="10 6" opacity="0.55"/>
+        <path class="portrait-float-part" d="${palette.crown}" fill="${palette.accent}" stroke="#191510" stroke-width="2.6"/>
+        <path d="M22 240 L54 174 H186 L218 240 Z" fill="url(#mgSt_${uid})" stroke="${palette.accent}" stroke-width="2.6"/>
+        <path d="M80 176 Q120 218 160 176" fill="none" stroke="${palette.accent}" stroke-width="3.2"/>
+        <circle cx="120" cy="196" r="8" fill="${palette.accent}" stroke="#1b1409" stroke-width="1.8"/>
+        <path d="M68 88 H172 L160 176 L120 196 L80 176 Z" fill="url(#mgSt_${uid})" stroke="${palette.accent}" stroke-width="3"/>
+        <rect x="76" y="102" width="88" height="30" rx="7" fill="#120e0b" opacity="0.86" stroke="${palette.accent}" stroke-width="1.8"/>
         ${chessVisorEyes(palette.eye, '#ff5b49', uid)}
-        <path d="M98 162 H142" stroke="${palette.accent}" stroke-width="2.8" stroke-linecap="round"/>
+        <path d="M94 162 H146" stroke="${palette.accent}" stroke-width="3.2" stroke-linecap="round"/>
       </svg>`;
   }
 
-  // === CAP. 1 NIVEL 5: DIOS MAYA (ORIGINAL ELEVADO CON ORO BRUÑIDO, JADE Y RELIEVES) ===
+  // === CAP. 1 NIVEL 5: DIOS MAYA (ELEVADO CON ORO BRUÑIDO, PLUMAS DE JADE Y AURA SOLAR) ===
   if (bossId === 'rey_maya') {
     return `
       <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Retrato del Dios Maya">
         <defs>
-          <radialGradient id="pmBg" cx="50%" cy="32%" r="68%"><stop offset="0%" stop-color="#4c3f28"/><stop offset="60%" stop-color="#211b13"/><stop offset="100%" stop-color="#100e0b"/></radialGradient>
-          <linearGradient id="pmGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fff0a8"/><stop offset="48%" stop-color="#cfa64c"/><stop offset="100%" stop-color="#6c4d14"/></linearGradient>
-          <linearGradient id="pmStone" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0%" stop-color="#6a5e4f"/><stop offset="52%" stop-color="#342e26"/><stop offset="100%" stop-color="#191612"/></linearGradient>
-          <linearGradient id="pmJade" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4ba176"/><stop offset="100%" stop-color="#1a3e2c"/></linearGradient>
+          <radialGradient id="pmBg" cx="50%" cy="30%" r="72%"><stop offset="0%" stop-color="#70582c"/><stop offset="56%" stop-color="#282014"/><stop offset="100%" stop-color="#0f0c08"/></radialGradient>
+          <linearGradient id="pmGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fff6be"/><stop offset="48%" stop-color="#dfb24f"/><stop offset="100%" stop-color="#745112"/></linearGradient>
+          <linearGradient id="pmStone" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0%" stop-color="#9e8c72"/><stop offset="52%" stop-color="#4e4336"/><stop offset="100%" stop-color="#1d1813"/></linearGradient>
+          <linearGradient id="pmJade" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#6fd9a3"/><stop offset="100%" stop-color="#1b4d34"/></linearGradient>
         </defs>
         <rect width="240" height="240" fill="url(#pmBg)"/>
-        <polygon points="10,240 230,240 192,162 48,162" fill="#1d1914" opacity="0.82"/>
-        <polygon points="48,162 192,162 162,110 78,110" fill="#25201a" opacity="0.82"/>
+        <circle class="portrait-aura-ring" cx="120" cy="116" r="102" fill="none" stroke="url(#pmGold)" stroke-width="2.4" stroke-dasharray="12 6" opacity="0.65"/>
+        <polygon points="10,240 230,240 192,162 48,162" fill="#211c15" opacity="0.88"/>
+        <polygon points="48,162 192,162 162,110 78,110" fill="#2c251c" opacity="0.88"/>
         <g class="portrait-float-part">
-          <path d="M120 92 C66 20, 20 34, 4 76 C44 76, 80 90, 104 114 Z" fill="url(#pmJade)" stroke="#122b1e" stroke-width="1.6"/>
-          <path d="M120 92 C174 20, 220 34, 236 76 C196 76, 160 90, 136 114 Z" fill="url(#pmJade)" stroke="#122b1e" stroke-width="1.6"/>
-          <path d="M66 96 L86 56 L106 74 L120 36 L134 74 L154 56 L174 96 Z" fill="url(#pmGold)" stroke="#261d0f" stroke-width="2.2"/>
-          <circle cx="120" cy="76" r="11" fill="url(#pmJade)" stroke="#fff0b3" stroke-width="2.2"/>
-          <circle cx="120" cy="76" r="4" fill="#fff4c4"/>
+          <path d="M120 92 C66 16, 18 30, 2 76 C44 76, 80 90, 104 114 Z" fill="url(#pmJade)" stroke="#122b1e" stroke-width="1.8"/>
+          <path d="M120 92 C174 16, 222 30, 238 76 C196 76, 160 90, 136 114 Z" fill="url(#pmJade)" stroke="#122b1e" stroke-width="1.8"/>
+          <path d="M62 96 L84 48 L106 72 L120 28 L134 72 L156 48 L178 96 Z" fill="url(#pmGold)" stroke="#261d0f" stroke-width="2.4"/>
+          <circle cx="120" cy="74" r="12" fill="url(#pmJade)" stroke="#fff2b5" stroke-width="2.4"/>
+          <circle cx="120" cy="74" r="4.5" fill="#fff7cc"/>
         </g>
-        <path d="M22 240 L48 182 L192 182 L218 240 Z" fill="url(#pmStone)" stroke="url(#pmGold)" stroke-width="2.2"/>
-        <path d="M72 184 Q120 222 168 184 L180 216 Q120 246 60 216 Z" fill="url(#pmGold)" stroke="#231b0e" stroke-width="2"/>
-        <path d="M70 94 H170 L160 176 L120 196 L80 176 Z" fill="url(#pmStone)" stroke="url(#pmGold)" stroke-width="2.8"/>
-        <path d="M78 100 H162 L156 116 H84 Z" fill="#12100d" opacity="0.48"/>
-        <circle cx="64" cy="136" r="12" fill="url(#pmJade)" stroke="url(#pmGold)" stroke-width="2.6"/>
-        <circle cx="176" cy="136" r="12" fill="url(#pmJade)" stroke="url(#pmGold)" stroke-width="2.6"/>
-        ${chessVisorEyes('#f0c259', '#ff5b49', 'maya')}
-        <path class="expr-layer on-idle" d="M102 164 H138" stroke="url(#pmGold)" stroke-width="2.8" stroke-linecap="round"/>
-        <path class="expr-layer on-thinking" d="M106 166 Q120 158 134 166" fill="none" stroke="#efd083" stroke-width="2.8" stroke-linecap="round"/>
-        <path class="expr-layer on-happy" d="M98 158 Q120 176 142 158" fill="none" stroke="#fff0b5" stroke-width="3.2" stroke-linecap="round"/>
-        <path class="expr-layer on-surprised" d="M104 170 Q120 154 136 170" fill="none" stroke="#ff7c6b" stroke-width="3.2" stroke-linecap="round"/>
-        <path class="expr-layer on-disabled" d="M104 164 H136" stroke="#6c665a" stroke-width="2.4" stroke-linecap="round"/>
+        <path d="M18 240 L46 180 L194 180 L222 240 Z" fill="url(#pmStone)" stroke="url(#pmGold)" stroke-width="2.4"/>
+        <path d="M68 182 Q120 226 172 182 L184 218 Q120 248 56 218 Z" fill="url(#pmGold)" stroke="#231b0e" stroke-width="2.2"/>
+        <path d="M68 92 H172 L160 178 L120 198 L80 178 Z" fill="url(#pmStone)" stroke="url(#pmGold)" stroke-width="3.2"/>
+        <rect x="76" y="102" width="88" height="30" rx="7" fill="#120f0b" opacity="0.88" stroke="url(#pmGold)" stroke-width="1.8"/>
+        <circle cx="62" cy="136" r="13" fill="url(#pmJade)" stroke="url(#pmGold)" stroke-width="2.8"/>
+        <circle cx="178" cy="136" r="13" fill="url(#pmJade)" stroke="url(#pmGold)" stroke-width="2.8"/>
+        ${chessVisorEyes('#ffe070', '#ff5b49', 'maya')}
+        <path class="expr-layer on-idle" d="M100 164 H140" stroke="url(#pmGold)" stroke-width="3.2" stroke-linecap="round"/>
+        <path class="expr-layer on-thinking" d="M104 166 Q120 158 136 166" fill="none" stroke="#ffe085" stroke-width="3" stroke-linecap="round"/>
+        <path class="expr-layer on-happy" d="M96 158 Q120 178 144 158" fill="none" stroke="#fff4c4" stroke-width="3.4" stroke-linecap="round"/>
+        <path class="expr-layer on-surprised" d="M102 172 Q120 154 138 172" fill="none" stroke="#ff7c6b" stroke-width="3.4" stroke-linecap="round"/>
+        <path class="expr-layer on-disabled" d="M102 164 H138" stroke="#6c665a" stroke-width="2.6" stroke-linecap="round"/>
       </svg>`;
   }
 
-  // Autómata Clásico (Vs IA / Partida Rápida / Contra el Tiempo — bronce y obsidiana bruñidos)
+  // Autómata Clásico (Vs Bot / Partida Rápida / Modos Especiales — bronce luminoso y visor táctico)
   return `
     <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Autómata CHESS.MOD">
       <defs>
-        <radialGradient id="autBg" cx="50%" cy="32%" r="70%"><stop offset="0%" stop-color="#2c261f"/><stop offset="100%" stop-color="#110f0c"/></radialGradient>
-        <radialGradient id="autMetal" cx="40%" cy="30%" r="68%"><stop offset="0%" stop-color="#584f42"/><stop offset="55%" stop-color="#28231d"/><stop offset="100%" stop-color="#13110e"/></radialGradient>
-        <linearGradient id="autGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fff0ae"/><stop offset="50%" stop-color="#cfa64c"/><stop offset="100%" stop-color="#6c4e15"/></linearGradient>
+        <radialGradient id="autBg" cx="50%" cy="30%" r="72%"><stop offset="0%" stop-color="#4e4030"/><stop offset="100%" stop-color="#110e0b"/></radialGradient>
+        <radialGradient id="autMetal" cx="38%" cy="28%" r="70%"><stop offset="0%" stop-color="#c4b299"/><stop offset="48%" stop-color="#615241"/><stop offset="100%" stop-color="#1d1813"/></radialGradient>
+        <linearGradient id="autGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fff5c0"/><stop offset="50%" stop-color="#dfb24f"/><stop offset="100%" stop-color="#6c4e15"/></linearGradient>
       </defs>
       <rect width="240" height="240" fill="url(#autBg)"/>
-      <circle class="portrait-aura-ring" cx="120" cy="118" r="82" fill="none" stroke="url(#autGold)" stroke-width="1.8" stroke-dasharray="10 6" opacity="0.45"/>
-      <path d="M44 240 L74 174 H166 L196 240 Z" fill="url(#autMetal)" stroke="url(#autGold)" stroke-width="2.2"/>
+      <circle class="portrait-aura-ring" cx="120" cy="118" r="92" fill="none" stroke="url(#autGold)" stroke-width="2.2" stroke-dasharray="10 6" opacity="0.6"/>
+      <path d="M36 240 L70 170 H170 L204 240 Z" fill="url(#autMetal)" stroke="url(#autGold)" stroke-width="2.6"/>
+      <path d="M90 174 L120 214 L150 174" fill="none" stroke="url(#autGold)" stroke-width="3"/>
       <g class="portrait-float-part">
-        <circle cx="120" cy="116" r="62" fill="url(#autMetal)" stroke="url(#autGold)" stroke-width="2.8"/>
-        <ellipse cx="102" cy="84" rx="24" ry="10" fill="#ffffff" opacity="0.14" transform="rotate(-18 102 84)"/>
-        <path d="M120 34 V58 M108 45 H132" stroke="url(#autGold)" stroke-width="4" stroke-linecap="round"/>
-        <path d="M94 148 H146" stroke="#459c72" stroke-width="3.6" stroke-linecap="round"/>
+        <circle cx="120" cy="114" r="62" fill="url(#autMetal)" stroke="url(#autGold)" stroke-width="3.2"/>
+        <ellipse cx="100" cy="80" rx="24" ry="11" fill="#ffffff" opacity="0.26" transform="rotate(-18 100 80)"/>
+        <rect x="74" y="102" width="92" height="30" rx="9" fill="#13100d" stroke="url(#autGold)" stroke-width="2"/>
+        <path d="M120 28 V54 M106 40 H134" stroke="url(#autGold)" stroke-width="4.6" stroke-linecap="round"/>
+        <path d="M94 150 H146" stroke="#6ce0a6" stroke-width="3.6" stroke-linecap="round"/>
       </g>
-      ${chessVisorEyes('#efd083', '#ff5b49', 'auto')}
+      ${chessVisorEyes('#fff0a8', '#ff5b49', 'auto')}
     </svg>`;
 }

@@ -323,6 +323,25 @@ export class LargeBoardChessEngine {
 
     return { color: actingColor, captured: target || null, exploded, to: [move.tr, move.tc], isCheck: this.isKingInCheck(this.turn) };
   }
+
+  validateAndExecuteMove(fr, fc, tr, tc, promoType = 'Q', recordHistory = true) {
+    if (this.winner) return { ok: false, error: 'La partida ya finalizó.' };
+    if (!this.inBounds(fr, fc) || !this.inBounds(tr, tc)) {
+      return { ok: false, error: 'Coordenadas fuera del tablero.' };
+    }
+    const piece = this.board[fr][fc];
+    if (!piece || piece.color !== this.turn) {
+      return { ok: false, error: 'No hay una pieza tuya en esa casilla.' };
+    }
+    const legal = this.getLegalMovesForPiece(fr, fc);
+    const matched = legal.find((m) => m.tr === tr && m.tc === tc);
+    if (!matched) {
+      return { ok: false, error: 'Movimiento ilegal en este tablero.' };
+    }
+    const safePromo = ['Q', 'R', 'B', 'N'].includes(promoType) ? promoType : 'Q';
+    const events = this.executeMove(matched, safePromo, recordHistory);
+    return { ok: true, move: matched, events };
+  }
 }
 
 const PIECE_VALS = { P: 100, N: 320, B: 335, R: 510, Q: 920, K: 20000 };

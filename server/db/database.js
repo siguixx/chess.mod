@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import pg from 'pg';
 import { computeLevelFromXp, INITIAL_ELO, INITIAL_MODS, HINT_XP_COST, CLAN_CREATE_COST_MODS } from '../../shared/config/constants.js';
+import { calculateEloUpdate, getFideCategory, BOT_ELO_BY_DIFFICULTY } from '../../shared/config/elo.js';
 import { getAllCosmetics, findShopItem, isCosmeticUnlocked, VIP_EXCLUSIVE_IDS, MOD_VIP_PLAN, BATTLE_PASS_S1, BATTLE_PASS_S1_IDS } from '../../shared/config/cosmetics.js';
 import { CHAPTER_ORDER, isChapterUnlocked, isCampaignLevelUnlocked } from '../../shared/config/campaigns.js';
 import { MODERATOR_EXACT_EMAIL, MODERATOR_EXACT_PASSWORD, hashPassword } from '../auth/authService.js';
@@ -257,6 +258,7 @@ export class ChessDatabase {
       mods: Number(row.mods ?? INITIAL_MODS) || 0,
       title: row.title || '',
       elo: Number(row.elo) || 0,
+      fideCategory: getFideCategory(Number(row.elo) || 0),
       xp: Number(row.xp) || 0,
       level: lvlInfo.level,
       levelTitle: row.title || lvlInfo.title,
@@ -708,7 +710,7 @@ export class ChessDatabase {
     };
   }
 
-  async recordSinglePlayerMatch(userId, { mode, opponentName, winner, resultReason, turns = 1, basesDestroyed = 0, campaignId = null, levelId = null, xpReward = 0 }) {
+  async recordSinglePlayerMatch(userId, { mode, opponentName, winner, resultReason, turns = 1, basesDestroyed = 0, campaignId = null, levelId = null, xpReward = 0, rankedVsBot = false, aiDifficulty = 3 }) {
     const row = await this.findUserById(userId);
     if (!row) throw new Error('Usuario no encontrado.');
 
@@ -727,24 +729,41 @@ export class ChessDatabase {
     const isWin = winner === 'w';
     const isDraw = winner === 'draw';
 
+    // Sistema FIDE Elo real en partidas competitivas contra Bot (clásico / especial), JAMÁS en Modo Historia
+    let eloBefore = Number(row.elo) || 0;
+    let eloAfter = eloBefore;
+    let eloDelta = 0;
+    let botElo = null;
+    let expectedWinProb = null;
+    if (!campaignId && rankedVsBot && ['classic', 'special'].includes(mode)) {
+      const diffKey = Math.max(1, Math.min(5, Math.round(Number(aiDifficulty) || 3)));
+      botElo = BOT_ELO_BY_DIFFICULTY[diffKey] || 1200;
+      const calc = calculateEloUpdate(eloBefore, botElo, winner, { whiteGames: Number(row.games_played) || 0 });
+      eloBefore = calc.whiteBefore;
+      eloAfter = calc.whiteAfter;
+      eloDelta = calc.whiteDelta;
+      expectedWinProb = Math.round(calc.expectedWhite * 100);
+    }
+
     const matchId = `mtc_${crypto.randomUUID().replace(/-/g, '').slice(0, 14)}`;
     await this.execSql(`
       INSERT INTO matches (
         id, mode, white_user_id, black_user_id, opponent_name, winner, result_reason,
         white_elo_before, white_elo_after, black_elo_before, black_elo_after, turns, created_at
-      ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
-    `, [matchId, mode, userId, opponentName || 'IA', winner, resultReason || '', row.elo, row.elo, Math.max(1, Number(turns) || 1), now]);
+      ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [matchId, mode, userId, opponentName || 'IA', winner, resultReason || '', eloBefore, eloAfter, botElo, botElo, Math.max(1, Number(turns) || 1), now]);
 
     await this.execSql(`
       UPDATE users
-      SET games_played = games_played + 1,
+      SET elo = ?,
+          games_played = games_played + 1,
           wins = wins + ?,
           losses = losses + ?,
           draws = draws + ?,
           bases_destroyed = bases_destroyed + ?,
           updated_at = ?
       WHERE id = ?
-    `, [isWin ? 1 : 0, (!isWin && !isDraw) ? 1 : 0, isDraw ? 1 : 0, Math.max(0, Number(basesDestroyed) || 0), now, userId]);
+    `, [eloAfter, isWin ? 1 : 0, (!isWin && !isDraw) ? 1 : 0, isDraw ? 1 : 0, Math.max(0, Number(basesDestroyed) || 0), now, userId]);
 
     let firstTimeClear = false;
     let unlockedExclusive = null;
@@ -808,6 +827,11 @@ export class ChessDatabase {
       matchId,
       xpGained: baseXp,
       modsGained,
+      eloBefore,
+      eloAfter,
+      eloDelta,
+      botElo,
+      expectedWinProb,
       firstTimeClear,
       unlockedExclusive,
       leveledUp: xpResult.leveledUp,

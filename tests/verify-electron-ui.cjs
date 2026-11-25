@@ -164,7 +164,8 @@ app.whenReady().then(async () => {
       await wait(300);
       results.mayaNoIntroOnRestart = !document.getElementById('boss-intro-overlay').classList.contains('active');
 
-      // Verificar descuento real de 25 XP en Pista
+      // Verificar que Deshacer está OCULTO en Modo Historia (Dios Maya) y Pista sigue disponible en Historia
+      results.undoHiddenInStory = document.getElementById('btn-undo').classList.contains('hidden');
       const xpBeforeHint = window.chessModApp.user.xp;
       document.getElementById('btn-hint').click();
       await wait(700);
@@ -255,6 +256,7 @@ app.whenReady().then(async () => {
       await wait(250);
       results.glitchHasUploadedTexture = document.getElementById('boss-portrait-slot').innerHTML.includes('glitch_texture.jpg')
         && document.getElementById('board-grid').innerHTML.includes('glitch_texture.jpg');
+      results.glitchBoardDynamicTextureActive = document.getElementById('board-inner').classList.contains('glitch-board-active');
 
       // 9. Verificar Cap. 5 Lv. 5 (CHESS): Modal obligatorio de 3 poderes + textura tablero de ajedrez + Súper IA Web Worker
       document.getElementById('btn-battle-back').click();
@@ -276,6 +278,8 @@ app.whenReady().then(async () => {
       await wait(350);
       results.chessHasBoardTexture = document.getElementById('boss-portrait-slot').innerHTML.includes('chessBoardTexPort')
         && document.getElementById('board-grid').innerHTML.includes('cbPieceTex');
+      results.chessEpicArenaActive = document.getElementById('view-battle').classList.contains('arena-chess-epic')
+        && !document.getElementById('chess-boss-svg').classList.contains('hidden');
       results.chessTeleportButtonVisible = !document.getElementById('chess-power-controls-card').classList.contains('hidden');
 
       // Hacer clic en e2 (fila 6, col 4 -> índice 52) y luego e4 (fila 4, col 4 -> índice 36)
@@ -335,12 +339,32 @@ app.whenReady().then(async () => {
       await wait(150);
       results.inventoryScreenHasTabs = document.querySelectorAll('#inventory-tabs-bar [data-inv-tab]').length === 5;
 
-      // 13. Verificar Tablero Colosal 12×12 (144 casillas jugables!)
+      // 13. Verificar Modal Selector (Bot con nivel / Jugador / Sala Privada) + Tablero Colosal 12×12 + Deshacer visible vs Bot + Perfil Elo FIDE + Ajustes Host Sala Privada
+      document.querySelector('[data-screen="profile"]').click();
+      await wait(150);
+      results.profileShowsFideElo = Boolean(document.getElementById('profile-elo-val'))
+        && (document.getElementById('profile-fide-cat')?.textContent || '').includes('FIDE');
+
+      document.querySelector('[data-screen="multiplayer"]').click();
+      await wait(150);
+      results.hostPrivateRoomSettingsExist = Boolean(
+        document.getElementById('private-mode-select')
+        && document.getElementById('private-time-select')
+        && document.getElementById('private-allow-powers')
+        && document.getElementById('private-allow-hints')
+        && document.getElementById('private-allow-undo')
+      );
+
       document.querySelector('[data-screen="play"]').click();
       await wait(150);
       document.querySelector('[data-start-special="special_colossal_12x12"]')?.click();
+      await wait(250);
+      results.modeLauncherOpened = document.getElementById('modal-mode-launcher')?.classList.contains('open') || false;
+      results.modeLauncherHasBotLevels = (document.getElementById('ml-bot-level-select')?.options?.length || 0) === 5;
+      document.getElementById('btn-ml-play-bot')?.click();
       await wait(400);
       results.colossal12x12Squares = document.querySelectorAll('#board-grid .square').length;
+      results.undoVisibleVsBot = !document.getElementById('btn-undo').classList.contains('hidden');
       document.getElementById('btn-battle-back').click();
       await wait(150);
 

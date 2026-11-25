@@ -219,19 +219,46 @@
             </div>
 
             <div>
-              <label for="private-mod-select" style="font-size:0.74rem;color:var(--gold);text-transform:uppercase;letter-spacing:0.06em;font-weight:700;display:block;margin-bottom:6px;">Mod de Código Abierto para la Sala</label>
-              <select id="private-mod-select" class="input-field"></select>
+              <label style="font-size:0.74rem;color:var(--gold);text-transform:uppercase;letter-spacing:0.06em;font-weight:700;display:block;margin-bottom:4px;">⚙️ Ajustes de Sala (Solo Anfitrión / Host)</label>
+              <div class="host-settings-grid">
+                <div>
+                  <label for="private-mode-select" style="font-size:0.7rem;color:var(--gold);display:block;margin-bottom:3px;">Modo de Juego</label>
+                  <select id="private-mode-select" class="input-field" style="padding:6px 8px;font-size:0.78rem;">
+                    <option value="">♟️ Clásico Oficial (8×8)</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="private-time-select" style="font-size:0.7rem;color:var(--gold);display:block;margin-bottom:3px;">Reloj por Jugador</label>
+                  <select id="private-time-select" class="input-field" style="padding:6px 8px;font-size:0.78rem;">
+                    <option value="1">1 min (Bullet)</option>
+                    <option value="3">3 min (Blitz)</option>
+                    <option value="5">5 min (Blitz)</option>
+                    <option value="10" selected>10 min (Rápida)</option>
+                    <option value="15">15 min (Clásica)</option>
+                    <option value="0">Sin límite</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="private-bet-select" style="font-size:0.7rem;color:var(--gold);display:block;margin-bottom:3px;">🪙 Apuesta de Mods</label>
+                  <select id="private-bet-select" class="input-field" style="padding:6px 8px;font-size:0.78rem;">
+                    <option value="0">Sin apuesta (Amistosa)</option>
+                    <option value="25">🪙 25 Mods (Bote 50)</option>
+                    <option value="50">🪙 50 Mods (Bote 100)</option>
+                    <option value="100">🪙 100 Mods (Bote 200)</option>
+                    <option value="250">🪙 250 Mods (Bote 500)</option>
+                  </select>
+                </div>
+                <div style="display:flex;flex-direction:column;justify-content:center;gap:5px;">
+                  <label class="host-toggle-label"><input type="checkbox" id="private-allow-powers" checked> ⚡ Permitir Poderes</label>
+                  <label class="host-toggle-label"><input type="checkbox" id="private-allow-hints"> 💡 Permitir Pistas (25 XP)</label>
+                  <label class="host-toggle-label"><input type="checkbox" id="private-allow-undo"> ↶ Permitir Deshacer</label>
+                </div>
+              </div>
             </div>
 
             <div>
-              <label for="private-bet-select" style="font-size:0.74rem;color:var(--gold);text-transform:uppercase;letter-spacing:0.06em;font-weight:700;display:block;margin-bottom:6px;">🪙 Apuesta de Mods en Sala Privada</label>
-              <select id="private-bet-select" class="input-field">
-                <option value="0">Sin apuesta (Amistosa)</option>
-                <option value="25">🪙 25 Mods (Bote 50)</option>
-                <option value="50">🪙 50 Mods (Bote 100)</option>
-                <option value="100">🪙 100 Mods (Bote 200)</option>
-                <option value="250">🪙 250 Mods (Bote 500)</option>
-              </select>
+              <label for="private-mod-select" style="font-size:0.74rem;color:var(--gold);text-transform:uppercase;letter-spacing:0.06em;font-weight:700;display:block;margin-bottom:6px;">Mod de Código Abierto para la Sala</label>
+              <select id="private-mod-select" class="input-field"></select>
             </div>
 
             <button id="btn-private-create" class="btn btn-primary">🔐 Crear Sala Privada</button>
@@ -595,13 +622,15 @@
               <h2 id="profile-name-h" style="font-family:var(--font-display);color:var(--gold-bright);font-size:1.5rem;">Jugador</h2>
               <div id="profile-id-txt" style="font-size:0.78rem;color:var(--text-muted);font-family:monospace;margin-top:3px;"></div>
               <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
-                <span class="pill">🏆 Elo: <strong id="profile-elo-val">0</strong></span>
+                <span class="pill" style="border-color:var(--gold);background:rgba(207,166,76,0.16);">🏆 Elo FIDE: <strong id="profile-elo-val">0</strong></span>
+                <span id="profile-fide-cat" class="pill muted">♟️ Novato FIDE</span>
                 <span id="profile-level-val" class="pill jade">Nv. 1</span>
                 <span id="profile-xp-val" class="pill muted">50 XP</span>
                 <span class="pill">🪙 <strong id="profile-mods-val">100</strong> Mods</span>
                 <span id="profile-vip-pill" class="vip-tag hidden">👑 Mod VIP</span>
                 <span id="profile-trainer-pill" class="pill hidden">🎓 Mentor</span>
               </div>
+              <div id="profile-fide-info" style="font-size:0.74rem;color:var(--text-muted);margin-top:6px;">Sistema Elo FIDE oficial: calcula tu probabilidad esperada contra cada rival (Jugadores Online y Bots calibrados) y sube o baja según el resultado.</div>
               <div class="xp-mini-track" style="height:8px;margin-top:10px;"><div id="profile-xp-bar" class="xp-mini-fill"></div></div>
             </div>
             <button id="btn-profile-logout" class="btn btn-danger btn-sm">Cerrar sesión</button>
@@ -987,6 +1016,41 @@
           <image href="/assets/images/blacky_ref.jpg" x="174" y="42" width="252" height="252" clip-path="url(#blackyMonClip)" preserveAspectRatio="xMidYMid slice"/>
           <path d="M150 220 L170 185 L158 164 L182 128" fill="none" stroke="#eef5ff" stroke-width="2.6" opacity="0.78"/>
           <path d="M450 220 L430 185 L442 164 L418 128" fill="none" stroke="#eef5ff" stroke-width="2.6" opacity="0.78"/>
+        </svg>
+
+        <!-- Presencia MONUMENTAL e IMPONENTE del Jefe Final Absoluto: CHESS -->
+        <svg id="chess-boss-svg" class="mayan-boss-figure chess-monument hidden" viewBox="0 0 600 320" aria-hidden="true">
+          <defs>
+            <pattern id="chessArenaTex" width="24" height="24" patternUnits="userSpaceOnUse">
+              <rect width="24" height="24" fill="#14110b"/>
+              <rect width="12" height="12" fill="#faf0dc"/>
+              <rect x="12" y="12" width="12" height="12" fill="#faf0dc"/>
+            </pattern>
+            <linearGradient id="chessArenaGold" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#fffbe0"/>
+              <stop offset="50%" stop-color="#f2c962"/>
+              <stop offset="100%" stop-color="#7c540e"/>
+            </linearGradient>
+          </defs>
+          <!-- Rayos imperiales -->
+          <g fill="url(#chessArenaGold)" opacity="0.22">
+            <polygon points="300,150 265,0 335,0"/>
+            <polygon points="300,150 40,20 110,0"/>
+            <polygon points="300,150 560,20 490,0"/>
+            <polygon points="300,150 0,130 0,76"/>
+            <polygon points="300,150 600,130 600,76"/>
+          </g>
+          <!-- Alas monumentales de Torres de Ajedrez -->
+          <path d="M88 300 L122 140 H148 V162 H170 V140 H196 L220 300 Z" fill="url(#chessArenaTex)" stroke="url(#chessArenaGold)" stroke-width="3"/>
+          <path d="M512 300 L478 140 H452 V162 H430 V140 H404 L380 300 Z" fill="url(#chessArenaTex)" stroke="url(#chessArenaGold)" stroke-width="3"/>
+          <!-- Corona Imperial de 7 puntas + Cruz Suprema -->
+          <path d="M300 6 V54 M274 28 H326" stroke="url(#chessArenaGold)" stroke-width="7" stroke-linecap="round"/>
+          <path d="M210 120 L192 52 L236 86 L262 34 L286 78 L300 42 L314 78 L338 34 L364 86 L408 52 L390 120 Z" fill="url(#chessArenaGold)" stroke="#1f1506" stroke-width="3"/>
+          <!-- Monolito Facial de CHESS -->
+          <path d="M222 120 H378 L360 248 L300 282 L240 248 Z" fill="url(#chessArenaTex)" stroke="url(#chessArenaGold)" stroke-width="4"/>
+          <polygon points="234,148 366,148 356,196 300,208 244,196" fill="#0d0b08" stroke="url(#chessArenaGold)" stroke-width="2.6"/>
+          <polygon points="252,162 290,168 282,182 256,178" fill="#fffbe0"/>
+          <polygon points="348,162 310,168 318,182 344,178" fill="#fffbe0"/>
         </svg>
       </div>
     </div>
@@ -1384,6 +1448,52 @@
         </div>
         <button type="submit" class="btn btn-danger" style="width:100%;">🚨 Enviar Reporte</button>
       </form>
+    </div>
+  </div>
+
+  <!-- MODAL SELECTOR DE MODO DE JUEGO: CONTRA BOT (CON NIVEL) / CONTRA JUGADOR / SALA PRIVADA -->
+  <div id="modal-mode-launcher" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Elegir cómo jugar este modo">
+    <div class="modal-box" style="max-width:640px;text-align:left;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
+        <span id="ml-badge" class="pill">MODO DE JUEGO</span>
+        <button id="btn-close-mode-launcher" class="btn btn-sm btn-icon">✕</button>
+      </div>
+      <h2 id="ml-title" style="text-align:left;margin-bottom:4px;">¿Cómo quieres jugar?</h2>
+      <p id="ml-desc" style="text-align:left;margin-bottom:10px;font-size:0.82rem;color:var(--text-muted);">Elige si deseas enfrentar a un Bot (eligiendo su nivel Elo FIDE), buscar emparejamiento contra un jugador real o crear una Sala Privada con código.</p>
+
+      <div class="mode-launcher-grid">
+        <div class="mode-launcher-option">
+          <div>
+            <strong style="color:var(--gold-bright);font-size:0.94rem;display:block;margin-bottom:4px;">🤖 Contra Bot (IA)</strong>
+            <p style="font-size:0.74rem;color:var(--text-muted);line-height:1.4;margin-bottom:8px;">Elige la fuerza Elo FIDE del bot. Cuenta para subir tu Elo real.</p>
+            <label for="ml-bot-level-select" style="font-size:0.7rem;color:var(--gold);display:block;margin-bottom:3px;">Nivel del Bot:</label>
+            <select id="ml-bot-level-select" class="input-field" style="padding:6px 8px;font-size:0.78rem;">
+              <option value="1">Nv. 1 — Principiante (400 Elo)</option>
+              <option value="2">Nv. 2 — Aficionado (800 Elo)</option>
+              <option value="3" selected>Nv. 3 — Club (1200 Elo)</option>
+              <option value="4">Nv. 4 — Experto (1650 Elo)</option>
+              <option value="5">Nv. 5 — Maestro (2150 Elo)</option>
+            </select>
+          </div>
+          <button id="btn-ml-play-bot" class="btn btn-sm btn-primary" style="width:100%;">🤖 Jugar vs Bot</button>
+        </div>
+
+        <div class="mode-launcher-option">
+          <div>
+            <strong style="color:#9ce0be;font-size:0.94rem;display:block;margin-bottom:4px;">⚔️ Contra Jugador</strong>
+            <p style="font-size:0.74rem;color:var(--text-muted);line-height:1.4;">Entra a la cola de emparejamiento oficial por Elo FIDE para este modo contra rivales reales.</p>
+          </div>
+          <button id="btn-ml-play-pvp" class="btn btn-sm btn-gold" style="width:100%;">🔎 Buscar Emparejamiento</button>
+        </div>
+
+        <div class="mode-launcher-option">
+          <div>
+            <strong style="color:#c4b5fd;font-size:0.94rem;display:block;margin-bottom:4px;">🔐 Sala Privada</strong>
+            <p style="font-size:0.74rem;color:var(--text-muted);line-height:1.4;">Crea una sala con código de 6 caracteres y configura tus propios ajustes como Host.</p>
+          </div>
+          <button id="btn-ml-play-private" class="btn btn-sm" style="width:100%;border-color:#a78bfa;">🔐 Crear / Unirse con Código</button>
+        </div>
+      </div>
     </div>
   </div>
 

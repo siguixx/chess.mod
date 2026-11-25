@@ -808,6 +808,123 @@
   filter: drop-shadow(0 0 26px rgba(201, 75, 60, 0.45));
 }
 
+/* ================= BATALLA IMPONENTE DE CHESS (CAPÍTULO 05 · JEFE FINAL) ================= */
+#view-battle.arena-chess-epic {
+  background: radial-gradient(ellipse at 50% 10%, #443419 0%, #1a150e 42%, #080705 100%) !important;
+}
+#view-battle.arena-chess-epic .board-pedestal {
+  border: 2px solid rgba(242, 201, 98, 0.72) !important;
+  box-shadow: 0 0 42px rgba(242, 201, 98, 0.34), 0 18px 46px rgba(0, 0, 0, 0.85) !important;
+}
+#view-battle.arena-chess-epic .boss-portrait-frame {
+  border-color: #f2c962 !important;
+  box-shadow: 0 0 26px rgba(242, 201, 98, 0.52) !important;
+}
+.chess-monument {
+  opacity: 0.68;
+  filter: drop-shadow(0 0 36px rgba(242, 201, 98, 0.56));
+  animation: chessMonumentFloat 4.6s ease-in-out infinite;
+}
+@keyframes chessMonumentFloat {
+  0%, 100% { transform: translateY(0px) scale(1); }
+  50% { transform: translateY(-8px) scale(1.025); }
+}
+#boss-intro-overlay.theme-chess {
+  background: radial-gradient(circle at 50% 38%, #3c2e14 0%, #120e08 58%, #040302 100%);
+}
+#boss-intro-overlay.theme-chess .intro-portrait-big {
+  border-color: #f2c962;
+  box-shadow: 0 0 58px rgba(242, 201, 98, 0.68);
+}
+
+/* ================= TABLERO DINÁMICO DE GLITCH (CAMBIA DE TEXTURA CADA TURNO) ================= */
+#board-inner.glitch-board-active {
+  box-shadow: inset 0 0 22px rgba(255, 61, 90, 0.52), 0 0 26px rgba(34, 211, 238, 0.35);
+}
+#board-inner.glitch-board-active .square.dark {
+  background-image:
+    linear-gradient(rgba(18, 6, 16, 0.62), rgba(14, 6, 20, 0.66)),
+    url('/assets/images/glitch_texture.jpg') !important;
+  background-size: 240% 240% !important;
+  background-blend-mode: overlay, normal;
+}
+#board-inner.glitch-board-active .square.light {
+  background-image:
+    linear-gradient(rgba(235, 224, 245, 0.72), rgba(212, 198, 228, 0.74)),
+    url('/assets/images/glitch_texture.jpg') !important;
+  background-size: 260% 260% !important;
+}
+#board-inner.glitch-board-active.glitch-phase-0 .square.dark {
+  background-position: 0% 0% !important;
+  filter: hue-rotate(0deg) contrast(1.14);
+}
+#board-inner.glitch-board-active.glitch-phase-1 .square.dark {
+  background-position: 65% 35% !important;
+  filter: hue-rotate(115deg) saturate(1.45) contrast(1.18);
+}
+#board-inner.glitch-board-active.glitch-phase-1 .square.light {
+  background-position: 35% 75% !important;
+  filter: hue-rotate(85deg) contrast(1.08);
+}
+#board-inner.glitch-board-active.glitch-phase-2 .square.dark {
+  background-position: 28% 82% !important;
+  filter: hue-rotate(235deg) saturate(1.65) contrast(1.22);
+}
+#board-inner.glitch-board-active.glitch-phase-2 .square.light {
+  background-position: 80% 18% !important;
+  filter: hue-rotate(210deg) saturate(1.25);
+}
+#board-inner.glitch-board-active.glitch-phase-3 .square.dark {
+  background-position: 92% 92% !important;
+  filter: hue-rotate(310deg) saturate(1.75) contrast(1.24);
+}
+#board-inner.glitch-board-active.glitch-phase-3 .square.light {
+  background-position: 15% 40% !important;
+  filter: hue-rotate(295deg) saturate(1.22);
+}
+
+/* Modal selector de modo de juego (Bot / Jugador / Sala Privada) + Ajustes del Host */
+.mode-launcher-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.mode-launcher-option {
+  background: rgba(20, 18, 15, 0.92);
+  border: 1px solid rgba(207, 166, 76, 0.32);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+}
+.host-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 8px 0 10px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(12, 11, 9, 0.72);
+  border: 1px solid rgba(207, 166, 76, 0.22);
+}
+.host-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.76rem;
+  color: #e6dfd0;
+  cursor: pointer;
+}
+.host-toggle-label input {
+  accent-color: var(--gold);
+  width: 16px;
+  height: 16px;
+}
+
 /* ================= SKINS DE FICHAS, TEXTURAS DE TABLERO Y PODERES OP ================= */
 .piece-wrap.piece-skin-jade .piece-svg {
   filter: drop-shadow(0 0 5px rgba(84, 219, 152, 0.75)) hue-rotate(82deg) saturate(1.35);

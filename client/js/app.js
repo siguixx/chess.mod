@@ -6,6 +6,7 @@ import {
   getCampaignUnlockReason
 } from '/shared/config/campaigns.js';
 import { TRAINERS, SPECIAL_GAME_MODES, CLAN_CREATE_COST_MODS } from '/shared/config/constants.js';
+import { getFideCategory, BOT_ELO_BY_DIFFICULTY } from '/shared/config/elo.js';
 import {
   COSMETIC_AVATARS,
   COSMETIC_FRAMES,
@@ -130,6 +131,8 @@ class ChessModApp {
     this.inQueue = false;
     this.queueTimeMinutes = 10;
     this.queueBetMods = 0;
+    this.queueSpecialModeId = null;
+    this.pendingLaunchMode = null;
     this.livePvpMatches = [];
     this.pending2FAChallengeToken = null;
     this.pendingAuthAfterLang = null;
@@ -388,14 +391,9 @@ class ChessModApp {
       document.getElementById('main-nav-bar')?.scrollBy({ left: 160, behavior: 'smooth' });
     });
 
-    // === 1. JUGAR (EXACTAMENTE 3 MODOS: Partida Rápida, Vs IA, Contra el Tiempo) ===
+    // === 1. JUGAR (Partida Rápida, Vs IA, Contra el Tiempo + Selector Bot/Jugador/Sala Privada) ===
     on('btn-play-quick-match', 'click', () => {
-      if (this.user) {
-        this.switchScreen('multiplayer');
-        if (!this.inQueue) this.toggleMatchmaking();
-      } else {
-        this.battle.startClassicMatch({ difficulty: 2, label: 'Partida Rápida', minutes: 10 });
-      }
+      this.openModeLauncher({ specialCfg: null, label: 'Partida Rápida', minutes: 10 });
     });
 
     document.querySelectorAll('#play-ai-diff-pills .time-opt').forEach((b) => {
@@ -405,7 +403,12 @@ class ChessModApp {
       });
     });
     on('btn-play-vs-ai', 'click', () => {
-      this.battle.startClassicMatch({ difficulty: this.selectedAiDifficulty, label: 'Vs IA', minutes: this.battle.selectedMinutes });
+      const botElo = BOT_ELO_BY_DIFFICULTY[this.selectedAiDifficulty] || 1200;
+      this.battle.startClassicMatch({
+        difficulty: this.selectedAiDifficulty,
+        label: `Vs Bot (${botElo} Elo)`,
+        minutes: this.battle.selectedMinutes
+      });
     });
 
     document.querySelectorAll('#play-timed-pills .time-opt').forEach((b) => {
@@ -416,7 +419,56 @@ class ChessModApp {
     });
     on('btn-play-timed', 'click', () => {
       const tag = this.selectedTimedMinutes === 1 ? 'Bullet 1m' : (this.selectedTimedMinutes <= 5 ? `Blitz ${this.selectedTimedMinutes}m` : `Rápida ${this.selectedTimedMinutes}m`);
-      this.battle.startClassicMatch({ difficulty: 3, label: `Contra el Tiempo (${tag})`, minutes: this.selectedTimedMinutes });
+      this.openModeLauncher({ specialCfg: null, label: `Contra el Tiempo (${tag})`, minutes: this.selectedTimedMinutes });
+    });
+
+    // === MODAL SELECTOR DE MODO: BOT (CON NIVEL) / CONTRA JUGADOR / SALA PRIVADA ===
+    on('btn-close-mode-launcher', 'click', () => {
+      this.pendingLaunchMode = null;
+      document.getElementById('modal-mode-launcher')?.classList.remove('open');
+    });
+    on('btn-ml-play-bot', 'click', () => {
+      const ctx = this.pendingLaunchMode;
+      if (!ctx) return;
+      const diff = Math.max(1, Math.min(5, parseInt(document.getElementById('ml-bot-level-select')?.value || '3', 10) || 3));
+      this.pendingLaunchMode = null;
+      document.getElementById('modal-mode-launcher')?.classList.remove('open');
+      if (ctx.specialCfg) {
+        this.battle.startSpecialMode(ctx.specialCfg, { difficulty: diff, minutes: ctx.minutes ?? this.battle.selectedMinutes });
+      } else {
+        const botElo = BOT_ELO_BY_DIFFICULTY[diff] || 1200;
+        this.battle.startClassicMatch({ difficulty: diff, label: `${ctx.label || 'Clásico'} (${botElo} Elo)`, minutes: ctx.minutes ?? this.battle.selectedMinutes });
+      }
+    });
+    on('btn-ml-play-pvp', 'click', () => {
+      const ctx = this.pendingLaunchMode;
+      this.pendingLaunchMode = null;
+      document.getElementById('modal-mode-launcher')?.classList.remove('open');
+      if (!this.user) {
+        this.openAuthModal('login');
+        showToast('Inicia sesión para buscar emparejamiento contra jugadores reales.', 'info');
+        return;
+      }
+      if (ctx?.minutes && [1, 3, 5, 10, 15].includes(Number(ctx.minutes))) {
+        this.queueTimeMinutes = Number(ctx.minutes);
+      }
+      this.queueSpecialModeId = ctx?.specialCfg?.id || null;
+      this.switchScreen('multiplayer');
+      if (this.inQueue) mpSocket.emit('queue:leave');
+      this.inQueue = false;
+      this.toggleMatchmaking(this.queueSpecialModeId);
+    });
+    on('btn-ml-play-private', 'click', () => {
+      const ctx = this.pendingLaunchMode;
+      this.pendingLaunchMode = null;
+      document.getElementById('modal-mode-launcher')?.classList.remove('open');
+      this.switchScreen('multiplayer');
+      this.renderMultiplayerScreen();
+      const modeSel = document.getElementById('private-mode-select');
+      if (modeSel) modeSel.value = ctx?.specialCfg?.id || '';
+      const timeSel = document.getElementById('private-time-select');
+      if (timeSel && ctx?.minutes !== undefined) timeSel.value = String(ctx.minutes);
+      showToast('Configura tus ajustes de Sala Privada como Host y crea o únete con código.', 'info');
     });
 
     // === 2. MULTIJUGADOR (APUESTAS DE MODS + ESPECTEAR EN VIVO) ===
@@ -1119,6 +1171,23 @@ class ChessModApp {
     return res.mod;
   }
 
+  openModeLauncher({ specialCfg = null, label = 'Ajedrez Clásico', minutes = this.battle.selectedMinutes } = {}) {
+    this.pendingLaunchMode = { specialCfg, label, minutes };
+    const badge = document.getElementById('ml-badge');
+    const title = document.getElementById('ml-title');
+    const desc = document.getElementById('ml-desc');
+    if (badge) badge.textContent = specialCfg ? `MODO CAÓTICO · ${specialCfg.badge}` : 'MODO COMPETITIVO · ELO FIDE';
+    if (title) title.textContent = specialCfg ? `${specialCfg.icon} ${specialCfg.name}` : `♟️ ${label}`;
+    if (desc) {
+      desc.textContent = specialCfg
+        ? `${specialCfg.description} Elige jugar contra Bot (nivel FIDE), buscar emparejamiento online o crear una Sala Privada con código.`
+        : 'Elige si deseas enfrentar a un Bot (nivel FIDE), buscar emparejamiento contra un jugador real o crear una Sala Privada con código.';
+    }
+    const lvlSel = document.getElementById('ml-bot-level-select');
+    if (lvlSel) lvlSel.value = String(this.selectedAiDifficulty || 3);
+    document.getElementById('modal-mode-launcher')?.classList.add('open');
+  }
+
   createPrivateRoom(overrideMod = null) {
     if (!this.user) {
       this.openAuthModal('login');
@@ -1130,9 +1199,28 @@ class ChessModApp {
       const selVal = document.getElementById('private-mod-select')?.value || '';
       if (selVal) chosenMod = this.savedMods.find((m) => m.id === selVal) || null;
     }
+    const specialModeId = document.getElementById('private-mode-select')?.value || null;
+    const timeMinutes = parseInt(document.getElementById('private-time-select')?.value ?? String(this.queueTimeMinutes), 10);
     const betMods = parseInt(document.getElementById('private-bet-select')?.value || '0', 10) || 0;
+    const allowPowers = document.getElementById('private-allow-powers')?.checked !== false;
+    const allowHints = Boolean(document.getElementById('private-allow-hints')?.checked);
+    const allowUndo = Boolean(document.getElementById('private-allow-undo')?.checked);
+    const roomSettings = {
+      specialModeId: specialModeId || null,
+      timeMinutes: Number.isFinite(timeMinutes) ? timeMinutes : 10,
+      betMods,
+      allowPowers,
+      allowHints,
+      allowUndo
+    };
     mpSocket.connect();
-    mpSocket.emit('private:create', { timeMinutes: this.queueTimeMinutes, betMods, customMod: chosenMod });
+    mpSocket.emit('private:create', {
+      timeMinutes: roomSettings.timeMinutes,
+      betMods,
+      specialModeId: roomSettings.specialModeId,
+      roomSettings,
+      customMod: chosenMod
+    });
   }
 
   async loadSecurityPanel() {
@@ -1240,7 +1328,7 @@ class ChessModApp {
     });
   }
 
-  toggleMatchmaking() {
+  toggleMatchmaking(specialModeIdOverride = undefined) {
     if (!this.user) {
       this.openAuthModal('login');
       showToast('Inicia sesión para jugar Multijugador Online con Elo.', 'info');
@@ -1249,11 +1337,17 @@ class ChessModApp {
     if (this.inQueue) {
       mpSocket.emit('queue:leave');
       this.inQueue = false;
+      this.queueSpecialModeId = null;
       clearInterval(this.queueTimerInterval);
       this.renderMultiplayerScreen();
     } else {
+      if (specialModeIdOverride !== undefined) this.queueSpecialModeId = specialModeIdOverride;
       mpSocket.connect();
-      mpSocket.emit('queue:join', { timeMinutes: this.queueTimeMinutes, betMods: this.queueBetMods || 0 });
+      mpSocket.emit('queue:join', {
+        timeMinutes: this.queueTimeMinutes,
+        betMods: this.queueBetMods || 0,
+        specialModeId: this.queueSpecialModeId || null
+      });
     }
   }
 
@@ -1262,7 +1356,9 @@ class ChessModApp {
     if (!el || !this.inQueue) return;
     const sec = Math.floor((Date.now() - this.queueStartedAt) / 1000);
     const range = 100 + Math.floor(sec / 2.5) * 50;
-    el.textContent = `Buscando rival real... ${sec}s · Rango Elo ±${range}`;
+    const sp = this.queueSpecialModeId ? SPECIAL_GAME_MODES.find((m) => m.id === this.queueSpecialModeId) : null;
+    const modePrefix = sp ? `[${sp.icon} ${sp.name}] ` : '';
+    el.textContent = `${modePrefix}Buscando rival real... ${sec}s · Rango Elo FIDE ±${range}`;
   }
 
   openAuthModal(tab = 'login') {
@@ -1696,6 +1792,14 @@ class ChessModApp {
     }
     document.getElementById('mp-queue-status')?.classList.toggle('hidden', !this.inQueue);
 
+    const modeSel = document.getElementById('private-mode-select');
+    if (modeSel) {
+      const prevMode = modeSel.value;
+      modeSel.innerHTML = `<option value="">♟️ Clásico Oficial (8×8)</option>`
+        + SPECIAL_GAME_MODES.map((m) => `<option value="${m.id}">${m.icon} ${m.name} (${m.badge})</option>`).join('');
+      if (prevMode && SPECIAL_GAME_MODES.some((m) => m.id === prevMode)) modeSel.value = prevMode;
+    }
+
     const sel = document.getElementById('private-mod-select');
     if (sel) {
       const prev = sel.value;
@@ -1819,6 +1923,12 @@ class ChessModApp {
     }
     document.getElementById('profile-id-txt').textContent = `ID único: ${u.id} · ${u.email}`;
     document.getElementById('profile-elo-val').textContent = String(u.elo);
+    const fideCatEl = document.getElementById('profile-fide-cat');
+    if (fideCatEl) {
+      const cat = u.fideCategory || getFideCategory(u.elo);
+      fideCatEl.textContent = `♟️ ${cat.title} (${cat.code})`;
+      fideCatEl.style.color = cat.color || 'var(--gold-bright)';
+    }
     document.getElementById('profile-level-val').textContent = `Nv. ${u.level} · ${u.levelTitle}`;
     document.getElementById('profile-xp-val').textContent = u.nextLevelXp ? `${u.xp} / ${u.nextLevelXp} XP` : `${u.xp} XP (Máximo)`;
     const modsValEl = document.getElementById('profile-mods-val');
@@ -2162,7 +2272,7 @@ class ChessModApp {
     box.querySelectorAll('[data-start-special]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const cfg = SPECIAL_GAME_MODES.find((x) => x.id === btn.dataset.startSpecial);
-        if (cfg) this.battle.startSpecialMode(cfg, { minutes: this.battle.selectedMinutes });
+        if (cfg) this.openModeLauncher({ specialCfg: cfg, minutes: this.battle.selectedMinutes });
       });
     });
   }

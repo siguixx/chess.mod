@@ -65,7 +65,9 @@ export function createGameRouter(db, authMiddleware, antiCheat = null) {
         turns = 1,
         basesDestroyed = 0,
         campaignId = null,
-        levelId = null
+        levelId = null,
+        rankedVsBot = false,
+        aiDifficulty = 3
       } = req.body || {};
 
       if (!['w', 'b', 'draw'].includes(winner)) {
@@ -88,7 +90,9 @@ export function createGameRouter(db, authMiddleware, antiCheat = null) {
         basesDestroyed,
         campaignId,
         levelId,
-        xpReward
+        xpReward,
+        rankedVsBot: Boolean(rankedVsBot) && !campaignId,
+        aiDifficulty: Math.max(1, Math.min(5, Math.round(Number(aiDifficulty) || 3)))
       });
 
       return res.json(report);

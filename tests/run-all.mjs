@@ -1506,6 +1506,97 @@ try {
     assert.ok(atEv.exploded.length >= 2, 'Captura atómica detona explosión 3×3');
     assert.equal(eAt.board[2][5], null, 'Pieza adyacente volatilizada por explosión');
   });
+
+  await test('Elo FIDE en perfil + Bot calibrado + Ajustes de Host en Sala Privada (12x12, allowPowers=false, allowUndo=true) + Blacky más difícil', async () => {
+    // 1. Crear dos cuentas nuevas para probar FIDE Elo vs Bot y Sala Privada con ajustes de Host
+    const rHost = await (await fetch(`${url}/api/auth/register`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'HostFide', email: 'hostfide@chessmod.test', password: 'Password123' })
+    })).json();
+    const rGuest = await (await fetch(`${url}/api/auth/register`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'GuestFide', email: 'guestfide@chessmod.test', password: 'Password123' })
+    })).json();
+    assert.equal(rHost.user.elo, 0);
+    assert.ok(rHost.user.fideCategory && rHost.user.fideCategory.code === 'NOV');
+
+    // Ganar contra Bot Nv.3 (1200 Elo) -> Elo FIDE real debe subir significativamente (K=40, E~0.001 => +40 Elo)
+    const botWin = await (await fetch(`${url}/api/game/report`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${rHost.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'classic', opponentName: 'Vs Bot', winner: 'w', turns: 18, rankedVsBot: true, aiDifficulty: 3 })
+    })).json();
+    assert.equal(botWin.botElo, 1200);
+    assert.ok(botWin.eloDelta >= 35, `Victoria vs Bot 1200 debe subir Elo FIDE (+${botWin.eloDelta})`);
+    assert.equal(botWin.profile.elo, botWin.eloAfter);
+
+    // 2. Sala Privada con Ajustes del Host: 12×12, allowPowers: false, allowHints: true, allowUndo: true
+    const sHost = ioClient(url, { auth: { token: rHost.token }, transports: ['websocket'] });
+    const sGuest = ioClient(url, { auth: { token: rGuest.token }, transports: ['websocket'] });
+    await Promise.all([
+      new Promise((res) => sHost.on('connect', res)),
+      new Promise((res) => sGuest.on('connect', res))
+    ]);
+
+    const createdP = new Promise((res) => sHost.once('private:created', res));
+    sHost.emit('private:create', {
+      roomSettings: {
+        specialModeId: 'special_colossal_12x12',
+        timeMinutes: 10,
+        betMods: 0,
+        allowPowers: false,
+        allowHints: true,
+        allowUndo: true
+      }
+    });
+    const created = await createdP;
+    assert.ok(created.code && created.roomSettings.allowPowers === false && created.roomSettings.allowHints === true && created.roomSettings.allowUndo === true);
+
+    const foundHostP = new Promise((res) => sHost.once('match:found', res));
+    const foundGuestP = new Promise((res) => sGuest.once('match:found', res));
+    sGuest.emit('private:join', { code: created.code });
+    const [mHost, mGuest] = await Promise.all([foundHostP, foundGuestP]);
+    assert.equal(mHost.state.boardSize, 12, 'Sala Privada con special_colossal_12x12 debe iniciar tablero 12×12');
+    assert.equal(mGuest.roomSettings.allowPowers, false);
+    assert.equal(mGuest.roomSettings.allowHints, true);
+    assert.equal(mGuest.roomSettings.allowUndo, true);
+
+    // Intentar usar poder cuando Host desactivó allowPowers -> servidor rechaza con match:error
+    const powErrP = new Promise((res) => sHost.once('match:error', res));
+    sHost.emit('match:use_power', { matchId: mHost.matchId, tr: 1, tc: 4 });
+    const powErr = await powErrP;
+    assert.ok(powErr.error.includes('desactivó los poderes'), 'Servidor debe bloquear poderes cuando Host pone allowPowers=false');
+
+    // Hacer una jugada en 12x12 (peón blanco fila 10 col 4 -> fila 9 col 4) y deshacer con match:undo_private
+    const moveStateP = new Promise((res) => sHost.once('match:state', res));
+    sHost.emit('match:move', { matchId: mHost.matchId, fr: 10, fc: 4, tr: 9, tc: 4 });
+    const afterMove = await moveStateP;
+    assert.equal(afterMove.state.turn, 'b');
+
+    const undoStateP = new Promise((res) => sHost.once('match:state', res));
+    sHost.emit('match:undo_private', { matchId: mHost.matchId });
+    const afterUndo = await undoStateP;
+    assert.equal(afterUndo.state.turn, 'w', 'Host habilitó allowUndo -> deshacer en Sala Privada revierte el turno');
+
+    sHost.disconnect();
+    sGuest.disconnect();
+
+    // 3. Blacky más difícil: 2 Damas + refuerzos de élite en fila 7 + sellado desde el turno 1
+    const bkHard = new BlackySecretEngine(10);
+    let qCount = 0, bCount = 0, nCount = 0;
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+      const p = bkHard.board[r][c];
+      if (p?.color === 'b') {
+        if (p.type === 'Q') qCount++;
+        if (p.type === 'B') bCount++;
+        if (p.type === 'N') nCount++;
+      }
+    }
+    assert.equal(qCount, 2, 'Blacky conserva 2 Damas iniciales');
+    assert.equal(bCount, 4, 'Blacky arranca reforzado con 4 Alfiles');
+    assert.equal(nCount, 4, 'Blacky arranca reforzado con 4 Caballos');
+    assert.equal(bkHard.cooldowns.seal, 0, 'Blacky sella desde su primer turno');
+  });
 } finally {
   await server.stop();
   try { fs.unlinkSync(tmpDb); } catch {}

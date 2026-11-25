@@ -1,4 +1,5 @@
-import { FILES, PIECE_NAMES, HINT_XP_COST, toAlg, formatClock, inBounds } from '/shared/config/constants.js';
+import { FILES, PIECE_NAMES, HINT_XP_COST, SPECIAL_GAME_MODES, toAlg, formatClock, inBounds } from '/shared/config/constants.js';
+import { BOT_ELO_BY_DIFFICULTY } from '/shared/config/elo.js';
 import { CAMPAIGN_MAP } from '/shared/config/campaigns.js';
 import { COSMETIC_BOARDS, COSMETIC_PIECE_SKINS, COSMETIC_POWERS } from '/shared/config/cosmetics.js';
 import {
@@ -459,6 +460,16 @@ export class BattleController {
     }
   }
 
+  syncGlitchBoardTexture() {
+    const inner = document.getElementById('board-inner');
+    if (!inner) return;
+    inner.classList.remove('glitch-board-active', 'glitch-phase-0', 'glitch-phase-1', 'glitch-phase-2', 'glitch-phase-3');
+    if (this.mode === 'glitch') {
+      const phase = ((Number(this.engine?.turnNumber) || 1) + (this.engine?.rifts?.length || 0)) % 4;
+      inner.classList.add('glitch-board-active', `glitch-phase-${phase}`);
+    }
+  }
+
   applyActiveBattleBoardTheme() {
     const root = document.documentElement;
     const inner = document.getElementById('board-inner');
@@ -472,6 +483,7 @@ export class BattleController {
       root.style.setProperty('--sq-dark', def.dark);
       root.style.setProperty('--board-pedestal-bg', def.pedestal);
       if (inner && def.textureClass) inner.classList.add(def.textureClass);
+      this.syncGlitchBoardTexture();
       return;
     }
 
@@ -481,6 +493,7 @@ export class BattleController {
       root.style.setProperty('--sq-dark', this.customMod.board.dark);
       root.style.setProperty('--board-pedestal-bg', this.customMod.board.pedestal);
       if (inner && this.customMod.board.textureClass) inner.classList.add(this.customMod.board.textureClass);
+      this.syncGlitchBoardTexture();
       return;
     }
 
@@ -490,6 +503,7 @@ export class BattleController {
     root.style.setProperty('--sq-dark', theme.dark);
     root.style.setProperty('--board-pedestal-bg', theme.pedestal);
     if (inner && theme.textureClass) inner.classList.add(theme.textureClass);
+    this.syncGlitchBoardTexture();
   }
 
   getActivePieceSkin() {
@@ -502,6 +516,10 @@ export class BattleController {
   getEquippedShopPower() {
     // Los poderes se pueden usar en CUALQUIER LUGAR MENOS en Modo Historia (y en Espectador solo lectura)
     if (this.isStoryMode() || this.mode === 'spectate') return null;
+    // Respetar ajuste del Host en Sala Privada cuando desactiva poderes
+    if (this.mode === 'online' && this.onlineMeta?.isPrivate && this.onlineMeta?.roomSettings?.allowPowers === false) {
+      return null;
+    }
     // En Lección de Entrenador: el entrenador te presta su poder específico para que lo practiques
     if (this.mode === 'coach_lesson' && this.trainerMeta?.taughtPowerId) {
       return resolvePowerDef(this.trainerMeta.taughtPowerId, null);
@@ -1210,15 +1228,16 @@ export class BattleController {
     } catch {}
   }
 
-  startSpecialMode(specialCfg, { minutes = this.selectedMinutes, showGuide = true } = {}) {
+  startSpecialMode(specialCfg, { difficulty = 3, minutes = this.selectedMinutes, showGuide = true } = {}) {
     this.mode = 'special';
     this.specialMeta = specialCfg;
     this.trainerMeta = null;
     this.customMod = null;
     this.randomRolledPower = null;
     this.bossId = 'classic_ai';
-    this.bossName = `${specialCfg.icon} ${specialCfg.name}`;
-    this.aiDifficulty = 3;
+    const botElo = BOT_ELO_BY_DIFFICULTY[difficulty] || 1200;
+    this.bossName = `${specialCfg.icon} ${specialCfg.name} (Bot Nv.${difficulty} · ${botElo} Elo)`;
+    this.aiDifficulty = Math.max(1, Math.min(5, Number(difficulty) || 3));
     this.campaignMeta = null;
     this.onlineMeta = null;
 
@@ -1304,19 +1323,36 @@ export class BattleController {
   startOnlineMatch(matchPayload) {
     this.mode = 'online';
     this.customMod = matchPayload.isPrivate ? (matchPayload.customMod || null) : null;
+    this.specialMeta = matchPayload.specialModeId
+      ? (SPECIAL_GAME_MODES.find((m) => m.id === matchPayload.specialModeId) || null)
+      : null;
     this.bossId = 'online_opponent';
     this.bossName = `${matchPayload.opponent.username} (${matchPayload.opponent.elo} Elo)`;
     this.campaignMeta = null;
+    const roomSettings = matchPayload.roomSettings || {
+      specialModeId: matchPayload.specialModeId || null,
+      timeMinutes: matchPayload.timeMinutes ?? 10,
+      allowPowers: true,
+      allowHints: false,
+      allowUndo: false,
+      betMods: matchPayload.betMods || 0
+    };
     this.onlineMeta = {
       matchId: matchPayload.matchId,
       isPrivate: Boolean(matchPayload.isPrivate),
       roomCode: matchPayload.roomCode || null,
+      specialModeId: matchPayload.specialModeId || null,
+      roomSettings,
       yourColor: matchPayload.yourColor,
       opponent: matchPayload.opponent,
       white: matchPayload.white,
       black: matchPayload.black
     };
-    this.engine = new ClassicChessEngine(matchPayload.timeMinutes);
+    const bSize = Number(matchPayload.state?.boardSize) || 8;
+    const isAtomic = Boolean(matchPayload.state?.atomicMode);
+    this.engine = (bSize > 8 || isAtomic)
+      ? new LargeBoardChessEngine(bSize, matchPayload.timeMinutes, { atomicMode: isAtomic })
+      : new ClassicChessEngine(matchPayload.timeMinutes);
     this.engine.loadState(matchPayload.state);
     this.sound.stopBossMusic();
 
@@ -1332,13 +1368,16 @@ export class BattleController {
         : `¡Rival encontrado! ${matchPayload.opponent.username} (${matchPayload.opponent.elo} Elo)`,
       'success'
     );
+    const privRulesSummary = matchPayload.isPrivate
+      ? `<li><strong>⚙️ Ajustes del Host:</strong> Poderes: <strong>${roomSettings.allowPowers ? 'SÍ' : 'NO'}</strong> · Pistas: <strong>${roomSettings.allowHints ? 'SÍ' : 'NO'}</strong> · Deshacer: <strong>${roomSettings.allowUndo ? 'SÍ' : 'NO'}</strong>${this.specialMeta ? ` · Modo: <strong>${this.specialMeta.icon} ${this.specialMeta.name}</strong>` : ''}.</li>`
+      : '';
     this.showPreMatchGuide({
-      modeTag: matchPayload.isPrivate ? `SALA PRIVADA ${matchPayload.roomCode || ''}` : 'MULTIJUGADOR PÚBLICO · ELO',
+      modeTag: matchPayload.isPrivate ? `SALA PRIVADA ${matchPayload.roomCode || ''}` : 'MULTIJUGADOR PÚBLICO · ELO FIDE',
       title: `Vs ${matchPayload.opponent.username}`,
-      subtitle: `Juegas con ${matchPayload.yourColor === 'w' ? 'BLANCAS (mueves primero)' : 'NEGRAS'} · ${matchPayload.timeMinutes} min`,
-      rulesHtml: matchPayload.isPrivate && this.customMod
-        ? `<li><strong>🧩 Mod de Código Abierto Activo («${this.customMod.name}»):</strong> ${this.customMod.description} (Sala Privada amistosa, no afecta Elo público).</li>`
-        : `<li><strong>🌐 Sala Pública Oficial:</strong> Se permiten únicamente poderes oficiales del juego (Tienda, Free Mittens y Mod VIP). Al terminar se actualiza tu Elo y ganas Mods.</li>`,
+      subtitle: `Juegas con ${matchPayload.yourColor === 'w' ? 'BLANCAS (mueves primero)' : 'NEGRAS'} · ${matchPayload.timeMinutes > 0 ? `${matchPayload.timeMinutes} min` : 'Sin reloj'}`,
+      rulesHtml: matchPayload.isPrivate
+        ? `${privRulesSummary}${this.customMod ? `<li><strong>🧩 Mod de Código Abierto («${this.customMod.name}»):</strong> ${this.customMod.description}</li>` : ''}`
+        : `<li><strong>🌐 Sala Pública Oficial:</strong> Sin pistas ni deshacer. Al terminar se actualiza tu Elo FIDE real y ganas Mods.${this.specialMeta ? ` Modo: <strong>${this.specialMeta.icon} ${this.specialMeta.name}</strong>.` : ''}</li>`,
       onStart: () => { this.paused = false; this.render(); }
     });
   }
@@ -1395,6 +1434,8 @@ export class BattleController {
       matchId: payload.matchId,
       isPrivate: Boolean(payload.isPrivate),
       roomCode: payload.roomCode || null,
+      specialModeId: payload.specialModeId || null,
+      roomSettings: payload.roomSettings || null,
       betMods: payload.betMods || 0,
       betPot: payload.betPot || 0,
       spectatorsCount: payload.spectatorsCount || 1,
@@ -1403,7 +1444,14 @@ export class BattleController {
       white: payload.white,
       black: payload.black
     };
-    this.engine = new ClassicChessEngine(payload.timeMinutes || 10);
+    this.specialMeta = payload.specialModeId
+      ? (SPECIAL_GAME_MODES.find((m) => m.id === payload.specialModeId) || null)
+      : null;
+    const bSize = Number(payload.state?.boardSize) || 8;
+    const isAtomic = Boolean(payload.state?.atomicMode);
+    this.engine = (bSize > 8 || isAtomic)
+      ? new LargeBoardChessEngine(bSize, payload.timeMinutes || 10, { atomicMode: isAtomic })
+      : new ClassicChessEngine(payload.timeMinutes || 10);
     this.engine.loadState(payload.state);
     this.sound.stopBossMusic();
 
@@ -1457,10 +1505,14 @@ export class BattleController {
     const isSpectate = this.mode === 'spectate';
     const has2x2Layer = isMayaBoss || (isGalaxy && this.engine.hasGalaxyMan) || Boolean(this.powerState?.giantUnits?.length);
 
-    document.getElementById('temple-backdrop-svg')?.classList.toggle('hidden', !(isMayaBoss || isBlacky));
+    const isChessBossEpic = isChessFinal && this.campaignMeta?.levelId === 5;
+    document.getElementById('view-battle')?.classList.toggle('arena-chess-epic', isChessBossEpic);
+    document.getElementById('temple-backdrop-svg')?.classList.toggle('hidden', !(isMayaBoss || isBlacky || isChessBossEpic));
     document.getElementById('mayan-boss-svg')?.classList.toggle('hidden', !isMayaBoss);
     document.getElementById('blacky-boss-svg')?.classList.toggle('hidden', !isBlacky);
+    document.getElementById('chess-boss-svg')?.classList.toggle('hidden', !isChessBossEpic);
     document.getElementById('pyramid-layer')?.classList.toggle('hidden', !has2x2Layer);
+    this.syncGlitchBoardTexture();
 
     document.getElementById('maya-hud-card')?.classList.toggle('hidden', !isMayaBoss);
     document.getElementById('maya-campaign-hud-card')?.classList.toggle('hidden', !(isMayaCamp || isGalaxy || isGlitch || isChessFinal));
@@ -1474,8 +1526,15 @@ export class BattleController {
     document.getElementById('shop-power-controls-card')?.classList.toggle('hidden', !this.getEquippedShopPower());
     document.getElementById('online-controls-card')?.classList.toggle('hidden', !isOnline);
 
-    document.getElementById('btn-undo')?.classList.toggle('hidden', isOnline || isSpectate);
-    document.getElementById('btn-hint')?.classList.toggle('hidden', isOnline || isSpectate);
+    // Reglas estrictas:
+    // - Deshacer ELIMINADO del Modo Historia, Blacky, Espectador y Multijugador Público; SOLO contra Bots (o Sala Privada si el Host lo activa)
+    // - Pista ELIMINADA de todo Multijugador y Espectador, EXCEPTO en Sala Privada cuando el Host la activa
+    const allowUndoHere = !this.isStoryMode() && !isBlacky && !isSpectate
+      && (!isOnline || Boolean(this.onlineMeta?.isPrivate && this.onlineMeta?.roomSettings?.allowUndo));
+    const allowHintHere = !isSpectate
+      && (!isOnline || Boolean(this.onlineMeta?.isPrivate && this.onlineMeta?.roomSettings?.allowHints));
+    document.getElementById('btn-undo')?.classList.toggle('hidden', !allowUndoHere);
+    document.getElementById('btn-hint')?.classList.toggle('hidden', !allowHintHere);
     document.getElementById('btn-restart')?.classList.toggle('hidden', isOnline || isSpectate);
 
     const portraitSlot = document.getElementById('boss-portrait-slot');
@@ -1628,9 +1687,10 @@ export class BattleController {
     }, 18000);
   }
 
-  /* ================= PISTA CON COSTE REAL DE 25 XP (GRATIS EN LECCIÓN DE ENTRENADOR) ================= */
+  /* ================= PISTA CON COSTE REAL DE 25 XP (SIN PISTA EN MULTIJUGADOR SALVO SALA PRIVADA CON AJUSTE DEL HOST) ================= */
   async requestHint() {
-    if (this.mode === 'online' || this.paused || this.phase !== 'PLAYER_TURN' || this.engine.winner) return;
+    const allowPrivateHint = this.mode === 'online' && Boolean(this.onlineMeta?.isPrivate && this.onlineMeta?.roomSettings?.allowHints);
+    if (this.mode === 'spectate' || (this.mode === 'online' && !allowPrivateHint) || this.paused || this.phase !== 'PLAYER_TURN' || this.engine.winner) return;
     if (this.mode === 'coach_lesson') {
       const hint = HintEngine.analyze(this.engine);
       if (!hint) return;
@@ -1657,8 +1717,10 @@ export class BattleController {
       document.getElementById('hint-text').textContent = `💡 (-${HINT_XP_COST} XP) ${hint.text}`;
       document.getElementById('hint-banner')?.classList.add('visible');
       this.sound.play('hint');
-      this.vfx.spawnShockwave(hint.from[0], hint.from[1], '#ffd966', 44);
-      this.vfx.spawnShockwave(hint.to[0], hint.to[1], '#4ce098', 44);
+      const [vfr, vfc] = this.toVisualCoords(hint.from[0], hint.from[1]);
+      const [vtr, vtc] = this.toVisualCoords(hint.to[0], hint.to[1]);
+      this.vfx.spawnShockwave(vfr, vfc, '#ffd966', 44);
+      this.vfx.spawnShockwave(vtr, vtc, '#4ce098', 44);
       this.render();
     } catch (err) {
       this.toast(err.message || `Necesitas ${HINT_XP_COST} XP para usar una pista.`, 'error');
@@ -1666,7 +1728,15 @@ export class BattleController {
   }
 
   undoMove() {
-    if (this.mode === 'online' || (this.phase !== 'PLAYER_TURN' && this.phase !== 'GAME_OVER')) return;
+    // Regla estricta: jamás deshacer en Modo Historia, Blacky ni Espectador; solo contra Bots o en Sala Privada con ajuste del Host
+    if (this.isStoryMode() || this.mode === 'blacky' || this.mode === 'spectate') return;
+    if (this.mode === 'online') {
+      if (this.onlineMeta?.isPrivate && this.onlineMeta?.roomSettings?.allowUndo && this.onlineMeta?.matchId) {
+        mpSocket.emit('match:undo_private', { matchId: this.onlineMeta.matchId });
+      }
+      return;
+    }
+    if (this.phase !== 'PLAYER_TURN' && this.phase !== 'GAME_OVER') return;
     if (!this.engine.undo()) return;
     document.getElementById('modal-gameover')?.classList.remove('open');
     this.selected = null;
@@ -1965,8 +2035,9 @@ export class BattleController {
         bestMove = aiRes?.move || null;
       } else if (this.mode === 'blacky') {
         const aiRes = await this.runSuperAiAsync(this.engine.cloneState(), {
-          maxDepth: 5,
-          thinkTimeMs: 1300,
+          maxDepth: 6,
+          thinkTimeMs: 1800,
+          qDepth: 4,
           blunderChance: 0,
           color: 'b'
         });
@@ -2243,6 +2314,7 @@ export class BattleController {
 
     if (api.getToken()) {
       try {
+        const isRankedBot = (this.mode === 'classic' || this.mode === 'special') && !this.customMod;
         const report = await api.reportMatch({
           mode: this.mode,
           opponentName: this.bossName,
@@ -2251,13 +2323,22 @@ export class BattleController {
           turns: this.engine.turnNumber,
           basesDestroyed: this.mode === 'maya' ? (4 - this.engine.countAliveBases()) : 0,
           campaignId: this.campaignMeta?.campaignId || null,
-          levelId: this.campaignMeta?.levelId || null
+          levelId: this.campaignMeta?.levelId || null,
+          rankedVsBot: isRankedBot,
+          aiDifficulty: this.aiDifficulty || 3
         });
         if (report.profile) this.onUserUpdated(report.profile);
+        const eloRow = Number.isFinite(report.botElo)
+          ? `<div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+              <span>Elo FIDE (vs Bot ${report.botElo} · Prob. ${report.expectedWinProb ?? 50}%):</span>
+              <strong style="color:${report.eloDelta >= 0 ? '#9ce0be' : '#ffaca3'};">${report.eloBefore} → ${report.eloAfter} (${report.eloDelta >= 0 ? `+${report.eloDelta}` : report.eloDelta})</strong>
+            </div>`
+          : '';
         extraHtml = `
           ${narrativeHtml}
           ${report.unlockedExclusive ? `<div style="color:#fff2c4;font-weight:700;margin-bottom:6px;">👑 ¡TÍTULO Y MARCO EXCLUSIVO DESBLOQUEADO: «${report.unlockedExclusive}»!</div>` : ''}
           ${report.leveledUp ? `<div style="color:#9ce0be; font-weight:700; margin-bottom:6px;">⬆ ¡SUBISTE AL NIVEL ${report.profile.level}! Nuevos cosméticos desbloqueados.</div>` : ''}
+          ${eloRow}
           <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
             <span>Experiencia ganada:</span>
             <strong style="color:var(--gold-bright);">+${report.xpGained} XP</strong>
@@ -2267,8 +2348,8 @@ export class BattleController {
             <strong style="color:#ffd859;">🪙 +${report.modsGained ?? 0} Mods</strong>
           </div>
           <div style="display:flex; justify-content:space-between; font-size:0.76rem; color:var(--text-muted);">
-            <span>Total XP / Mods:</span>
-            <strong>${report.profile.xp} XP · 🪙 ${report.profile.mods ?? 0} Mods</strong>
+            <span>Total Elo / XP / Mods:</span>
+            <strong>${report.profile.elo} Elo · ${report.profile.xp} XP · 🪙 ${report.profile.mods ?? 0} Mods</strong>
           </div>`;
       } catch (err) {
         extraHtml = narrativeHtml + `<div style="color:#ffaca3;font-size:0.78rem;">${err.message}</div>`;
@@ -2445,6 +2526,7 @@ export class BattleController {
   }
 
   render(hideR = -1, hideC = -1) {
+    this.syncGlitchBoardTexture();
     this.renderBoard(hideR, hideC);
     this.renderHintArrow();
     if (this.mode === 'maya' || (this.mode === 'galaxy' && this.engine.hasGalaxyMan) || (this.powerState?.giantUnits?.length > 0)) {
@@ -2760,7 +2842,10 @@ export class BattleController {
       }
     }
 
-    const canUndo = this.mode !== 'online' && (this.phase === 'PLAYER_TURN' || this.phase === 'GAME_OVER') && this.engine.history.length > 0;
+    const canUndo = !this.isStoryMode() && this.mode !== 'blacky' && this.mode !== 'spectate'
+      && (this.mode === 'online'
+        ? Boolean(this.onlineMeta?.isPrivate && this.onlineMeta?.roomSettings?.allowUndo && !this.engine.winner)
+        : ((this.phase === 'PLAYER_TURN' || this.phase === 'GAME_OVER') && this.engine.history.length > 0));
     const undoBtn = document.getElementById('btn-undo');
     const hintBtn = document.getElementById('btn-hint');
     if (undoBtn) undoBtn.disabled = !canUndo;
