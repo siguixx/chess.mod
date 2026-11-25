@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import express from 'express';
 import { validateUsername } from '../auth/authService.js';
 import { getAllCosmetics, MOD_VIP_PLAN } from '../../shared/config/cosmetics.js';
+import { TRAINERS } from '../../shared/config/constants.js';
 
 function getVipBillingConfig() {
   const stripeSecretKey = String(process.env.STRIPE_SECRET_KEY || '').trim();
@@ -264,6 +265,33 @@ export function createProfileRouter(db, authMiddleware) {
       const { avatar, frameId, boardThemeId, pieceSkinId, equippedPowerId } = req.body || {};
       const profile = await db.updateCosmetics(req.userId, { avatar, frameId, boardThemeId, pieceSkinId, equippedPowerId });
       return res.json({ user: profile });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Selección OBLIGATORIA y ÚNICA de Entrenador después de crear la cuenta (1 sola vez)
+  router.post('/profile/trainer', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const trainerId = String(req.body?.trainerId || '').trim();
+      const valid = TRAINERS.find((t) => t.id === trainerId);
+      if (!valid) return res.status(400).json({ error: 'Entrenador no válido.' });
+      const profile = await db.setUserTrainerOnce(req.userId, trainerId);
+      return res.json({ ok: true, user: profile, trainer: valid });
+    } catch (err) {
+      return res.status(err.status || 400).json({ code: err.code, trainerId: err.trainerId, error: err.message });
+    }
+  });
+
+  // Cambio de idioma desde el selector inicial o desde Configuración
+  router.patch('/profile/language', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const language = String(req.body?.language || 'es').trim().toLowerCase();
+      if (!['es', 'en', 'pt', 'fr'].includes(language)) {
+        return res.status(400).json({ error: 'Idioma no soportado.' });
+      }
+      const profile = await db.updateUserLanguage(req.userId, language);
+      return res.json({ ok: true, user: profile });
     } catch (err) {
       return res.status(400).json({ error: err.message });
     }

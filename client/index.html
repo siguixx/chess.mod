@@ -38,18 +38,18 @@
         <div class="nav-scroll-wrap">
           <button type="button" id="btn-nav-left" class="nav-scroll-arrow" aria-label="Desplazar menú a la izquierda">‹</button>
           <nav id="main-nav-bar" class="main-nav" aria-label="Menú principal CHESS.MOD">
-            <button class="nav-btn active" data-screen="play"><span class="nav-ico">⚔️</span><span>Jugar</span></button>
-            <button class="nav-btn" data-screen="multiplayer"><span class="nav-ico">🌐</span><span>Multijugador</span></button>
-            <button class="nav-btn" data-screen="story"><span class="nav-ico">📜</span><span>Modo Historia</span></button>
-            <button class="nav-btn" data-screen="shop"><span class="nav-ico">🛒</span><span>Tienda</span></button>
-            <button class="nav-btn" data-screen="mods"><span class="nav-ico">🧩</span><span>Taller de Mods</span></button>
-            <button class="nav-btn" data-screen="social"><span class="nav-ico">👥</span><span>Social</span></button>
-            <button class="nav-btn" data-screen="profile"><span class="nav-ico">👤</span><span>Perfil</span></button>
-            <button class="nav-btn" data-screen="customize"><span class="nav-ico">🎨</span><span>Personalización</span></button>
-            <button class="nav-btn" data-screen="ranking"><span class="nav-ico">🏆</span><span>Ranking Global</span></button>
-            <button class="nav-btn" data-screen="stats"><span class="nav-ico">📊</span><span>Estadísticas</span></button>
-            <button class="nav-btn" data-screen="settings"><span class="nav-ico">⚙️</span><span>Configuración</span></button>
-            <button id="nav-btn-mod" class="nav-btn hidden" data-screen="moderation"><span class="nav-ico">🛡️</span><span>Moderación</span></button>
+            <button class="nav-btn active" data-screen="play"><span class="nav-ico">⚔️</span><span data-i18n="nav_play">Jugar</span></button>
+            <button class="nav-btn" data-screen="multiplayer"><span class="nav-ico">🌐</span><span data-i18n="nav_multiplayer">Multijugador</span></button>
+            <button class="nav-btn" data-screen="story"><span class="nav-ico">📜</span><span data-i18n="nav_story">Modo Historia</span></button>
+            <button class="nav-btn" data-screen="shop"><span class="nav-ico">🛒</span><span data-i18n="nav_shop">Tienda</span></button>
+            <button class="nav-btn" data-screen="mods"><span class="nav-ico">🧩</span><span data-i18n="nav_mods">Taller de Mods</span></button>
+            <button class="nav-btn" data-screen="social"><span class="nav-ico">👥</span><span data-i18n="nav_social">Social</span></button>
+            <button class="nav-btn" data-screen="profile"><span class="nav-ico">👤</span><span data-i18n="nav_profile">Perfil</span></button>
+            <button class="nav-btn" data-screen="customize"><span class="nav-ico">🎨</span><span data-i18n="nav_customize">Personalización</span></button>
+            <button class="nav-btn" data-screen="ranking"><span class="nav-ico">🏆</span><span data-i18n="nav_ranking">Ranking Global</span></button>
+            <button class="nav-btn" data-screen="stats"><span class="nav-ico">📊</span><span data-i18n="nav_stats">Estadísticas</span></button>
+            <button class="nav-btn" data-screen="settings"><span class="nav-ico">⚙️</span><span data-i18n="nav_settings">Configuración</span></button>
+            <button id="nav-btn-mod" class="nav-btn hidden" data-screen="moderation"><span class="nav-ico">🛡️</span><span data-i18n="nav_moderation">Moderación</span></button>
           </nav>
           <button type="button" id="btn-nav-right" class="nav-scroll-arrow" aria-label="Desplazar menú a la derecha">›</button>
         </div>
@@ -75,11 +75,11 @@
     <main class="menu-content">
       <!-- 1. JUGAR (EXACTAMENTE 3 MODOS — CERO BOSS FIGHTS DIRECTOS) -->
       <section id="screen-play" class="screen-section active">
-        <div class="screen-header">
+          <div class="screen-header">
           <div>
             <div class="screen-kicker">CHESS.MOD · AJEDREZ CLÁSICO Y COMPETITIVO</div>
-            <h1 class="screen-title">JUGAR</h1>
-            <p class="screen-subtitle">Elige uno de los tres modos clásicos. Todos los Jefes y combates especiales pertenecen al Modo Historia.</p>
+            <h1 class="screen-title" data-i18n="play_title">JUGAR</h1>
+            <p class="screen-subtitle" data-i18n="play_subtitle">Elige uno de los tres modos clásicos. Todos los Jefes y combates especiales pertenecen al Modo Historia.</p>
           </div>
           <span class="pill">💡 Pista IA: 25 XP</span>
         </div>
@@ -89,17 +89,17 @@
           <div class="mode-card featured">
             <div>
               <span class="pill jade" style="margin-bottom:8px;">CLÁSICO · MATCHMAKING</span>
-              <h3>⚡ Partida Rápida</h3>
+              <h3 data-i18n="play_quick">⚡ Partida Rápida</h3>
               <p>Ajedrez clásico inmediato. Si iniciaste sesión, te conecta directo a la cola rápida de matchmaking competitivo con Elo desde 0.</p>
             </div>
-            <button id="btn-play-quick-match" class="btn btn-gold">⚡ Jugar Partida Rápida</button>
+            <button id="btn-play-quick-match" class="btn btn-gold" data-i18n="play_quick_btn">⚡ Jugar Partida Rápida</button>
           </div>
 
           <!-- Opción 2: Vs IA -->
           <div class="mode-card">
             <div>
               <span class="pill" style="margin-bottom:8px;">ENTRENAMIENTO TÁCTICO</span>
-              <h3>🤖 Vs IA</h3>
+              <h3 data-i18n="play_ai">🤖 Vs IA</h3>
               <p>Enfrenta al motor táctico clásico eligiendo la dificultad que prefieras (de Principiante a Gran Maestro).</p>
               <div id="play-ai-diff-pills" class="time-pills" style="margin-top:10px;">
                 <button class="time-opt" data-diff="1">Nv.1</button>
@@ -109,14 +109,14 @@
                 <button class="time-opt" data-diff="5">Nv.5</button>
               </div>
             </div>
-            <button id="btn-play-vs-ai" class="btn btn-primary">🤖 Iniciar Vs IA</button>
+            <button id="btn-play-vs-ai" class="btn btn-primary" data-i18n="play_ai_btn">🤖 Iniciar Vs IA</button>
           </div>
 
           <!-- Opción 3: Contra el Tiempo -->
           <div class="mode-card">
             <div>
               <span class="pill crimson" style="margin-bottom:8px;">BULLET · BLITZ · RÁPIDA</span>
-              <h3>⏱️ Contra el Tiempo</h3>
+              <h3 data-i18n="play_timed">⏱️ Contra el Tiempo</h3>
               <p>Pon a prueba tus reflejos bajo presión estricta de reloj en partidas cronometradas.</p>
               <div id="play-timed-pills" class="time-pills" style="margin-top:10px;">
                 <button class="time-opt" data-mins="1">Bullet 1m</button>
@@ -125,18 +125,18 @@
                 <button class="time-opt" data-mins="10">Rápida 10m</button>
               </div>
             </div>
-            <button id="btn-play-timed" class="btn">⏱️ Jugar Contra el Tiempo</button>
+            <button id="btn-play-timed" class="btn" data-i18n="play_timed_btn">⏱️ Jugar Contra el Tiempo</button>
           </div>
         </div>
 
-        <!-- ENTRENADORES MENTORES (ENSEÑAN A JUGAR Y A USAR CADA PODER · STARTER: YAM GATO SIAMÉS) -->
+        <!-- ENTRENADOR PERMANENTE (SE ELIGE 1 SOLA VEZ OBLIGATORIAMENTE TRAS CREAR LA CUENTA) -->
         <div class="panel-card" style="margin-top:18px;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
             <div>
-              <div class="screen-kicker" style="margin-bottom:2px;">MENTORES QUE ENSEÑAN · CON PODER INCLUIDO PARA PRACTICAR</div>
-              <h2 style="font-family:var(--font-display);color:var(--gold-bright);font-size:1.2rem;">🎓 Tus Entrenadores (No pelean contra ti, te enseñan)</h2>
+              <div class="screen-kicker" style="margin-bottom:2px;">MENTOR PERMANENTE · ELECCIÓN ÚNICA AL CREAR CUENTA</div>
+              <h2 style="font-family:var(--font-display);color:var(--gold-bright);font-size:1.2rem;" data-i18n="trainers_heading">🎓 Tu Entrenador Mentor</h2>
             </div>
-            <button id="btn-open-trainer-modal" class="btn btn-sm btn-gold">🐱 Cambiar Entrenador</button>
+            <span id="play-trainer-lock-badge" class="pill jade">🔒 Elección única</span>
           </div>
           <div id="play-trainers-grid" class="trainers-grid"></div>
         </div>
@@ -145,7 +145,7 @@
         <div class="panel-card" style="margin-top:18px;">
           <div style="margin-bottom:12px;">
             <div class="screen-kicker" style="margin-bottom:2px;">MODOS ESPECIALES Y ABSURDOS</div>
-            <h2 style="font-family:var(--font-display);color:var(--gold-bright);font-size:1.2rem;">🎲 Modos de Juego Locos (6×6, Poderes Random y Más)</h2>
+            <h2 style="font-family:var(--font-display);color:var(--gold-bright);font-size:1.2rem;" data-i18n="special_modes_heading">🎲 Modos de Juego Locos (6×6, Poderes Random y Más)</h2>
             <p style="font-size:0.8rem;color:var(--text-muted);margin-top:3px;">Tableros alternativos, ruleta de poderes OP cada turno, lluvia de Damas, terremotos y guerra de Fichas Grandes 2×2.</p>
           </div>
           <div id="special-modes-grid" class="trainers-grid"></div>
@@ -558,6 +558,7 @@
                 <span id="profile-xp-val" class="pill muted">50 XP</span>
                 <span class="pill">🪙 <strong id="profile-mods-val">100</strong> Mods</span>
                 <span id="profile-vip-pill" class="vip-tag hidden">👑 Mod VIP</span>
+                <span id="profile-trainer-pill" class="pill hidden">🎓 Mentor</span>
               </div>
               <div class="xp-mini-track" style="height:8px;margin-top:10px;"><div id="profile-xp-bar" class="xp-mini-fill"></div></div>
             </div>
@@ -726,18 +727,33 @@
         </div>
       </section>
 
-      <!-- 8. CONFIGURACIÓN -->
+      <!-- 8. CONFIGURACIÓN COMPLETA -->
       <section id="screen-settings" class="screen-section">
         <div class="screen-header">
           <div>
-            <div class="screen-kicker">PREFERENCIAS DE SISTEMA</div>
-            <h1 class="screen-title">CONFIGURACIÓN</h1>
+            <div class="screen-kicker" data-i18n="settings_kicker">PREFERENCIAS COMPLETAS DE SISTEMA</div>
+            <h1 class="screen-title" data-i18n="settings_title">CONFIGURACIÓN</h1>
+            <p class="screen-subtitle" data-i18n="settings_subtitle">Personaliza el idioma, audio, tablero, animaciones, VFX, accesibilidad y controles al máximo.</p>
           </div>
+          <button id="btn-reset-settings" class="btn btn-sm" data-i18n="settings_reset_btn">↺ Restablecer Ajustes por Defecto</button>
         </div>
 
         <div class="settings-stack">
+          <!-- 1. IDIOMA -->
           <div class="panel-card">
-            <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:10px;">Audio Independiente</h3>
+            <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;" data-i18n="settings_lang_title">🌐 Idioma / Language</h3>
+            <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;" data-i18n="settings_lang_desc">Cambia el idioma del juego en tiempo real. Se guarda automáticamente en tu cuenta.</p>
+            <div id="settings-lang-pills" class="time-pills" style="flex-wrap:wrap;gap:8px;">
+              <button class="time-opt active" data-set-lang="es">🇪🇸 Español</button>
+              <button class="time-opt" data-set-lang="en">🇺🇸 English</button>
+              <button class="time-opt" data-set-lang="pt">🇧🇷 Português</button>
+              <button class="time-opt" data-set-lang="fr">🇫🇷 Français</button>
+            </div>
+          </div>
+
+          <!-- 2. AUDIO Y DIÁLOGOS -->
+          <div class="panel-card">
+            <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:10px;" data-i18n="settings_audio_title">🔊 Audio y Diálogos</h3>
             <div class="setting-row">
               <label for="set-music-vol">🎵 Volumen Música de Batallas y Jefes</label>
               <div style="display:flex;align-items:center;gap:10px;">
@@ -753,20 +769,94 @@
               </div>
             </div>
             <div class="setting-row">
-              <span>Silenciar todo el audio</span>
+              <span>🔇 Silenciar todo el audio</span>
               <input id="set-mute-all" type="checkbox" style="accent-color:var(--gold);width:18px;height:18px;cursor:pointer;">
+            </div>
+            <div class="setting-row">
+              <span>💬 Mostrar diálogos dinámicos de Jefes y Entrenadores</span>
+              <input id="set-show-dialogues" type="checkbox" checked style="accent-color:var(--gold);width:18px;height:18px;cursor:pointer;">
+            </div>
+            <div class="setting-row">
+              <span>⏰ Aviso sonoro cuando queda poco tiempo (&lt; 30s)</span>
+              <input id="set-low-time-alert" type="checkbox" checked style="accent-color:var(--gold);width:18px;height:18px;cursor:pointer;">
             </div>
           </div>
 
+          <!-- 3. TABLERO Y JUGABILIDAD -->
           <div class="panel-card">
-            <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:10px;">Juego, Relojes y Pantalla</h3>
+            <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:10px;" data-i18n="settings_board_title">♟️ Tablero y Jugabilidad</h3>
             <div class="setting-row">
-              <span>Reducir VFX (modo rendimiento)</span>
+              <span>🧭 Mostrar coordenadas del tablero (a–h, 1–8)</span>
+              <input id="set-show-coords" type="checkbox" checked style="accent-color:var(--gold);width:18px;height:18px;cursor:pointer;">
+            </div>
+            <div class="setting-row">
+              <span>🟨 Resaltar última jugada realizada</span>
+              <input id="set-highlight-last" type="checkbox" checked style="accent-color:var(--gold);width:18px;height:18px;cursor:pointer;">
+            </div>
+            <div class="setting-row">
+              <span>🎯 Mostrar indicadores de jugadas legales</span>
+              <input id="set-show-legal" type="checkbox" checked style="accent-color:var(--gold);width:18px;height:18px;cursor:pointer;">
+            </div>
+            <div class="setting-row">
+              <span>👑 Auto-coronar peones a Dama automáticamente</span>
+              <input id="set-auto-queen" type="checkbox" style="accent-color:var(--gold);width:18px;height:18px;cursor:pointer;">
+            </div>
+            <div class="setting-row">
+              <span>📖 Mostrar guía previa de reglas antes de cada partida</span>
+              <input id="set-prematch-guide" type="checkbox" checked style="accent-color:var(--gold);width:18px;height:18px;cursor:pointer;">
+            </div>
+            <div class="setting-row" style="flex-wrap:wrap;gap:8px;">
+              <span>⚡ Velocidad de animación de piezas</span>
+              <div id="settings-anim-pills" class="time-pills">
+                <button class="time-opt" data-anim-speed="instant">Instantánea</button>
+                <button class="time-opt" data-anim-speed="fast">Rápida</button>
+                <button class="time-opt active" data-anim-speed="normal">Normal</button>
+                <button class="time-opt" data-anim-speed="cinematic">Cinemática</button>
+              </div>
+            </div>
+            <div class="setting-row" style="flex-wrap:wrap;gap:8px;">
+              <span>📐 Tamaño del tablero en pantalla</span>
+              <div id="settings-scale-pills" class="time-pills">
+                <button class="time-opt" data-board-scale="compact">Compacto</button>
+                <button class="time-opt active" data-board-scale="normal">Estándar</button>
+                <button class="time-opt" data-board-scale="large">Grande</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. GRÁFICOS, VFX Y ACCESIBILIDAD -->
+          <div class="panel-card">
+            <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:10px;" data-i18n="settings_vfx_title">✨ Gráficos, VFX y Accesibilidad</h3>
+            <div class="setting-row">
+              <span>🚀 Reducir VFX y partículas (modo rendimiento)</span>
               <input id="set-reduced-vfx" type="checkbox" style="accent-color:var(--gold);width:18px;height:18px;cursor:pointer;">
             </div>
-            <div class="setting-row" style="flex-wrap:wrap;">
+            <div class="setting-row">
+              <span>💥 Vibración de tablero al aplastar o activar poderes</span>
+              <input id="set-board-shake" type="checkbox" checked style="accent-color:var(--gold);width:18px;height:18px;cursor:pointer;">
+            </div>
+            <div class="setting-row">
+              <span>👁️ Seguimiento ocular de jefes con el cursor</span>
+              <input id="set-eye-tracking" type="checkbox" checked style="accent-color:var(--gold);width:18px;height:18px;cursor:pointer;">
+            </div>
+            <div class="setting-row">
+              <span>✨ Partículas ambientales de fondo</span>
+              <input id="set-bg-particles" type="checkbox" checked style="accent-color:var(--gold);width:18px;height:18px;cursor:pointer;">
+            </div>
+            <div class="setting-row">
+              <span>🌓 Modo Alto Contraste (bordes y textos reforzados)</span>
+              <input id="set-high-contrast" type="checkbox" style="accent-color:var(--gold);width:18px;height:18px;cursor:pointer;">
+            </div>
+          </div>
+
+          <!-- 5. RELOJES Y PANTALLA -->
+          <div class="panel-card">
+            <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:10px;" data-i18n="settings_system_title">⏱️ Relojes, Pantalla y Sistema</h3>
+            <div class="setting-row" style="flex-wrap:wrap;gap:8px;">
               <span>Reloj por defecto en partidas locales</span>
               <div id="settings-time-pills" class="time-pills">
+                <button class="time-opt" data-mins="1">1 min</button>
+                <button class="time-opt" data-mins="3">3 min</button>
                 <button class="time-opt" data-mins="5">5 min</button>
                 <button class="time-opt active" data-mins="10">10 min</button>
                 <button class="time-opt" data-mins="15">15 min</button>
@@ -1032,12 +1122,12 @@
   <div id="modal-auth" class="modal-backdrop">
     <div class="modal-box" style="max-width:440px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <h2 style="margin:0;font-size:1.22rem;">CUENTA CHESS.MOD</h2>
+        <h2 style="margin:0;font-size:1.22rem;" data-i18n="auth_title">CUENTA CHESS.MOD</h2>
         <button id="btn-auth-close" class="btn btn-sm btn-icon">✕</button>
       </div>
       <div class="auth-tabs">
-        <button class="auth-tab active" data-tab="login">Iniciar sesión</button>
-        <button class="auth-tab" data-tab="register">Crear cuenta</button>
+        <button class="auth-tab active" data-tab="login" data-i18n="auth_tab_login">Iniciar sesión</button>
+        <button class="auth-tab" data-tab="register" data-i18n="auth_tab_register">Crear cuenta</button>
       </div>
 
       <button id="btn-google-oauth" class="btn" style="width:100%;margin-bottom:12px;background:#f5f2eb;color:#171512;">
@@ -1183,16 +1273,35 @@
     </div>
   </div>
 
-  <!-- SELECTOR DE ENTRENADORES AL ENTRAR (STARTER: YAM GATO SIAMÉS · ENSEÑAN PODERES) -->
-  <div id="modal-trainer-picker" class="modal-backdrop">
-    <div class="modal-box" style="max-width:780px;text-align:left;">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
-        <span class="pill">🎓 BIENVENIDO A CHESS.MOD</span>
-        <button id="btn-close-trainer-modal" class="btn btn-sm">Ir al Menú ✕</button>
+  <!-- SELECTOR DE IDIOMA OBLIGATORIO ANTES DE CREAR CUENTA (CAMBIABLE EN AJUSTES) -->
+  <div id="modal-language-picker" class="modal-backdrop mandatory-lock" role="dialog" aria-modal="true" aria-label="Elegir idioma">
+    <div class="modal-box" style="max-width:560px;text-align:center;">
+      <div style="font-size:0.72rem;letter-spacing:0.22em;color:var(--gold);font-family:var(--font-display);margin-bottom:4px;" data-i18n="langGateKicker">BIENVENIDO A CHESS.MOD</div>
+      <h2 style="margin-bottom:6px;" data-i18n="langGateTitle">ELIGE TU IDIOMA</h2>
+      <p style="margin-bottom:16px;font-size:0.84rem;color:var(--text-muted);" data-i18n="langGateDesc">Antes de crear tu cuenta, selecciona el idioma de tu interfaz. Podrás cambiarlo en cualquier momento desde Configuración.</p>
+      <div id="language-gate-grid" class="lang-gate-grid">
+        <button type="button" class="lang-choice-card" data-pick-lang="es"><span class="lang-flag">🇪🇸</span><strong>Español</strong><small>Idioma original</small></button>
+        <button type="button" class="lang-choice-card" data-pick-lang="en"><span class="lang-flag">🇺🇸</span><strong>English</strong><small>Play in English</small></button>
+        <button type="button" class="lang-choice-card" data-pick-lang="pt"><span class="lang-flag">🇧🇷</span><strong>Português</strong><small>Jogar em Português</small></button>
+        <button type="button" class="lang-choice-card" data-pick-lang="fr"><span class="lang-flag">🇫🇷</span><strong>Français</strong><small>Jouer en Français</small></button>
       </div>
-      <h2 style="text-align:left;margin-bottom:4px;">ELIGE TU ENTRENADOR MENTOR</h2>
-      <p style="text-align:left;margin-bottom:14px;">Tus entrenadores <strong>te enseñan a jugar con consejos en vivo y pistas gratis</strong> (no luchan contra ti). Cada uno incluye un poder distinto para que te acostumbres — empieza con <strong>🐱 Yam (Gato Siamés)</strong> o entrena hasta con <strong>🐾 BLACKY (3200 Elo)</strong>.</p>
+    </div>
+  </div>
+
+  <!-- SELECTOR OBLIGATORIO DE ENTRENADOR (1 SOLA VEZ DESPUÉS DE CREAR CUENTA — IMPOSIBLE DE SALTAR) -->
+  <div id="modal-trainer-picker" class="modal-backdrop mandatory-lock" role="dialog" aria-modal="true" aria-label="Elegir entrenador permanente">
+    <div class="modal-box" style="max-width:820px;text-align:left;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
+        <span class="pill crimson" data-i18n="trainer_modal_badge">🔒 ELECCIÓN ÚNICA Y OBLIGATORIA</span>
+        <span class="pill">🎓 1 sola vez por cuenta</span>
+      </div>
+      <h2 style="text-align:left;margin-bottom:4px;" data-i18n="trainer_modal_title">ELIGE TU ENTRENADOR PERMANENTE</h2>
+      <p style="text-align:left;margin-bottom:14px;" data-i18n="trainer_modal_desc">Debes elegir 1 entrenador mentor después de crear tu cuenta. Esta elección es obligatoria, permanente y no se puede saltar ni cambiar después.</p>
       <div id="modal-trainers-grid" class="trainers-grid"></div>
+      <div style="margin-top:16px;display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap;border-top:1px solid rgba(207,166,76,0.22);padding-top:14px;">
+        <span id="trainer-pending-label" style="font-size:0.8rem;color:var(--text-muted);margin-right:auto;">Selecciona una tarjeta de entrenador arriba para continuar.</span>
+        <button id="btn-confirm-permanent-trainer" class="btn btn-gold" disabled style="padding:11px 20px;font-size:0.9rem;" data-i18n="trainer_confirm_btn">🔒 Confirmar Entrenador Permanente</button>
+      </div>
     </div>
   </div>
 

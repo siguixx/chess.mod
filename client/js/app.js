@@ -22,6 +22,30 @@ import { renderAvatarMarkup, SVGS } from './svgs.js';
 import { getBossPortraitSVG } from './portraits.js';
 import { api } from './api.js';
 import { mpSocket } from './socket.js';
+import {
+  hasSavedLanguage,
+  getSavedLanguage,
+  saveLanguage,
+  applyLanguageToDOM,
+  t
+} from './i18n.js';
+
+const PREFS_STORAGE_KEY = 'chess_mod_prefs_v2';
+const DEFAULT_PREFS = {
+  showCoords: true,
+  highlightLastMove: true,
+  showLegalHints: true,
+  autoQueen: false,
+  showPreMatchGuide: true,
+  animSpeed: 'normal',
+  boardScale: 'normal',
+  boardShake: true,
+  eyeTracking: true,
+  bgParticles: true,
+  highContrast: false,
+  showDialogues: true,
+  lowTimeAlert: true
+};
 
 function showToast(message, type = 'info') {
   const box = document.getElementById('toast-container');
@@ -105,6 +129,10 @@ class ChessModApp {
     this.queueBetMods = 0;
     this.livePvpMatches = [];
     this.pending2FAChallengeToken = null;
+    this.pendingAuthAfterLang = null;
+    this.pendingTrainerId = null;
+    this.lang = getSavedLanguage();
+    this.prefs = this.loadAppPrefs();
     this.queueTimerInterval = null;
     this.queueStartedAt = 0;
 
@@ -121,10 +149,52 @@ class ChessModApp {
       }
     });
 
+    this.applyAppPrefs();
+    applyLanguageToDOM(this.lang);
     this.bindMenuEvents();
     this.bindSocketEvents();
     this.syncSettingsUI();
     this.bootstrap();
+  }
+
+  loadAppPrefs() {
+    try {
+      const raw = localStorage.getItem(PREFS_STORAGE_KEY);
+      if (raw) return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
+    } catch {}
+    return { ...DEFAULT_PREFS };
+  }
+
+  saveAppPrefs() {
+    try { localStorage.setItem(PREFS_STORAGE_KEY, JSON.stringify(this.prefs)); } catch {}
+  }
+
+  applyAppPrefs() {
+    const p = this.prefs;
+    document.body.classList.toggle('hide-coords', p.showCoords === false);
+    document.body.classList.toggle('hide-last-move', p.highlightLastMove === false);
+    document.body.classList.toggle('hide-legal-dots', p.showLegalHints === false);
+    document.body.classList.toggle('hide-bg-particles', p.bgParticles === false);
+    document.body.classList.toggle('high-contrast-mode', Boolean(p.highContrast));
+    document.body.classList.toggle('board-scale-compact', p.boardScale === 'compact');
+    document.body.classList.toggle('board-scale-large', p.boardScale === 'large');
+    this.vfx.setShakeEnabled(p.boardShake !== false);
+    this.vfx.setBgParticlesEnabled(p.bgParticles !== false);
+    this.battle.setPreferences(p);
+  }
+
+  async setLanguage(code, persistToServer = true) {
+    this.lang = saveLanguage(code);
+    applyLanguageToDOM(this.lang);
+    this.syncSettingsUI();
+    this.renderSidebarUser();
+    this.renderTrainersGrids();
+    if (persistToServer && this.user && api.getToken()) {
+      try {
+        const res = await api.updateLanguage(this.lang);
+        if (res?.user) this.user = res.user;
+      } catch {}
+    }
   }
 
   async bootstrap() {
@@ -132,6 +202,10 @@ class ChessModApp {
       const res = await api.me();
       this.googleOAuthConfigured = Boolean(res.googleOAuthConfigured);
       if (res.authenticated && res.user) {
+        if (res.user.language && !hasSavedLanguage()) {
+          this.lang = saveLanguage(res.user.language);
+          applyLanguageToDOM(this.lang);
+        }
         this.setUser(res.user);
         mpSocket.connect();
       } else {
@@ -146,9 +220,15 @@ class ChessModApp {
     this.renderTrainersGrids();
     this.renderSpecialModesGrid();
     const openedSecret = this.checkSecretBossUrl();
-    if (!openedSecret && !sessionStorage.getItem('chess_mod_trainer_prompt_seen')) {
-      sessionStorage.setItem('chess_mod_trainer_prompt_seen', '1');
-      document.getElementById('modal-trainer-picker')?.classList.add('open');
+    if (!openedSecret) {
+      if (!this.user && !hasSavedLanguage()) {
+        // Antes de crear tu cuenta: selección obligatoria de idioma
+        this.pendingAuthAfterLang = 'register';
+        document.getElementById('modal-language-picker')?.classList.add('open');
+      } else if (this.user && !this.user.trainerId) {
+        // Después de crear cuenta (o si falta elegir entrenador): selección única y obligatoria
+        this.openMandatoryTrainerModal();
+      }
     }
     window.addEventListener('hashchange', () => this.checkSecretBossUrl());
   }
@@ -532,6 +612,7 @@ class ChessModApp {
         mpSocket.connect();
         document.getElementById('modal-auth')?.classList.remove('open');
         showToast(`¡Bienvenido de vuelta, ${res.user.username}!`, 'success');
+        if (!res.user.trainerId) this.openMandatoryTrainerModal();
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -554,6 +635,7 @@ class ChessModApp {
         mpSocket.connect();
         document.getElementById('modal-auth')?.classList.remove('open');
         showToast(`🔐 Acceso 2FA verificado. ¡Bienvenido, ${res.user.username}!`, 'success');
+        if (!res.user.trainerId) this.openMandatoryTrainerModal();
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -667,9 +749,16 @@ class ChessModApp {
         const password = document.getElementById('reg-password').value;
         const res = await api.register({ username, email, password });
         this.setUser(res.user);
+        if (this.lang && this.lang !== 'es') {
+          api.updateLanguage(this.lang).then((r) => { if (r?.user) this.user = r.user; }).catch(() => {});
+        }
         mpSocket.connect();
         document.getElementById('modal-auth')?.classList.remove('open');
         showToast(`Cuenta creada y vinculada: ${res.user.username} (0 Elo · 50 XP · ${res.user.mods ?? 100} Mods)`, 'success');
+        // Elección de entrenador 1 sola vez, obligatoria y sin poder saltar después de crear la cuenta
+        if (!res.user.trainerId) {
+          this.openMandatoryTrainerModal();
+        }
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -682,9 +771,58 @@ class ChessModApp {
     // === 6. RANKING ===
     on('btn-refresh-ranking', 'click', () => this.loadLeaderboard());
 
-    // === ENTRENADORES ===
-    on('btn-open-trainer-modal', 'click', () => document.getElementById('modal-trainer-picker')?.classList.add('open'));
-    on('btn-close-trainer-modal', 'click', () => document.getElementById('modal-trainer-picker')?.classList.remove('open'));
+    // === SELECTOR OBLIGATORIO DE IDIOMA PREVIO A CREAR CUENTA ===
+    document.querySelectorAll('#language-gate-grid [data-pick-lang]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const chosen = btn.dataset.pickLang || 'es';
+        this.setLanguage(chosen, true);
+        document.getElementById('modal-language-picker')?.classList.remove('open');
+        const nextTab = this.pendingAuthAfterLang;
+        this.pendingAuthAfterLang = null;
+        if (!this.user && nextTab) {
+          this.switchAuthTab(nextTab);
+          document.getElementById('modal-auth')?.classList.add('open');
+        }
+      });
+    });
+
+    // === ENTRENADORES (ELECCIÓN ÚNICA Y OBLIGATORIA — NO SE PUEDE SALTAR) ===
+    on('btn-confirm-permanent-trainer', 'click', async () => {
+      if (!this.pendingTrainerId) {
+        showToast('Debes elegir un entrenador para continuar.', 'error');
+        return;
+      }
+      if (!this.user) {
+        this.openAuthModal('register');
+        return;
+      }
+      const btn = document.getElementById('btn-confirm-permanent-trainer');
+      if (btn) btn.disabled = true;
+      try {
+        const res = await api.chooseTrainerOnce(this.pendingTrainerId);
+        this.pendingTrainerId = null;
+        this.setUser(res.user);
+        document.getElementById('modal-trainer-picker')?.classList.remove('open');
+        this.renderTrainersGrids();
+        const chosen = TRAINERS.find((x) => x.id === res.user.trainerId);
+        showToast(`🔒 Entrenador permanente asignado: ${chosen?.name || res.user.trainerId}. ¡Ya puedes entrenar con él!`, 'success');
+      } catch (err) {
+        if (btn) btn.disabled = false;
+        showToast(err.message || 'No se pudo asignar tu entrenador.', 'error');
+      }
+    });
+
+    // Bloquear tecla Escape cuando hay un modal obligatorio abierto (idioma o entrenador único)
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const langOpen = document.getElementById('modal-language-picker')?.classList.contains('open');
+        const trOpen = document.getElementById('modal-trainer-picker')?.classList.contains('open');
+        if (langOpen || trOpen) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+    });
 
     // === SOCIAL (CLANES, AMIGOS, REPORTES) ===
     document.querySelectorAll('#social-tabs-bar [data-social-tab]').forEach((btn) => {
@@ -782,7 +920,13 @@ class ChessModApp {
       }
     });
 
-    // === 8. CONFIGURACIÓN ===
+    // === 8. CONFIGURACIÓN COMPLETA ===
+    document.querySelectorAll('#settings-lang-pills [data-set-lang]').forEach((b) => {
+      b.addEventListener('click', () => {
+        this.setLanguage(b.dataset.setLang, true);
+        showToast(`🌐 Idioma cambiado a ${b.textContent.trim()}.`, 'success');
+      });
+    });
     on('set-music-vol', 'input', (e) => { this.sound.setMusicVolume(e.target.value); this.syncSettingsUI(); });
     on('set-sfx-vol', 'input', (e) => { this.sound.setSfxVolume(e.target.value); this.syncSettingsUI(); });
     on('set-mute-all', 'change', (e) => { this.sound.setMasterMute(e.target.checked); this.syncSettingsUI(); });
@@ -791,11 +935,62 @@ class ChessModApp {
       this.sound.savePrefs();
       this.vfx.setReduced(e.target.checked);
     });
+
+    const bindPrefCheckbox = (id, key) => {
+      on(id, 'change', (e) => {
+        this.prefs[key] = Boolean(e.target.checked);
+        this.saveAppPrefs();
+        this.applyAppPrefs();
+      });
+    };
+    bindPrefCheckbox('set-show-dialogues', 'showDialogues');
+    bindPrefCheckbox('set-low-time-alert', 'lowTimeAlert');
+    bindPrefCheckbox('set-show-coords', 'showCoords');
+    bindPrefCheckbox('set-highlight-last', 'highlightLastMove');
+    bindPrefCheckbox('set-show-legal', 'showLegalHints');
+    bindPrefCheckbox('set-auto-queen', 'autoQueen');
+    bindPrefCheckbox('set-prematch-guide', 'showPreMatchGuide');
+    bindPrefCheckbox('set-board-shake', 'boardShake');
+    bindPrefCheckbox('set-eye-tracking', 'eyeTracking');
+    bindPrefCheckbox('set-bg-particles', 'bgParticles');
+    bindPrefCheckbox('set-high-contrast', 'highContrast');
+
+    document.querySelectorAll('#settings-anim-pills [data-anim-speed]').forEach((b) => {
+      b.addEventListener('click', () => {
+        this.prefs.animSpeed = b.dataset.animSpeed;
+        this.saveAppPrefs();
+        this.applyAppPrefs();
+        this.syncSettingsUI();
+      });
+    });
+    document.querySelectorAll('#settings-scale-pills [data-board-scale]').forEach((b) => {
+      b.addEventListener('click', () => {
+        this.prefs.boardScale = b.dataset.boardScale;
+        this.saveAppPrefs();
+        this.applyAppPrefs();
+        this.syncSettingsUI();
+      });
+    });
     document.querySelectorAll('#settings-time-pills .time-opt').forEach((b) => {
       b.addEventListener('click', () => {
         this.battle.selectedMinutes = parseInt(b.dataset.mins, 10);
         document.querySelectorAll('#settings-time-pills .time-opt').forEach((x) => x.classList.toggle('active', x === b));
       });
+    });
+    on('btn-reset-settings', 'click', () => {
+      this.prefs = { ...DEFAULT_PREFS };
+      this.saveAppPrefs();
+      this.sound.setMusicVolume(0.65);
+      this.sound.setSfxVolume(0.72);
+      this.sound.setMasterMute(false);
+      this.sound.reducedVfx = false;
+      this.sound.savePrefs();
+      this.vfx.setReduced(false);
+      this.battle.selectedMinutes = 10;
+      this.applyAppPrefs();
+      this.syncSettingsUI();
+      document.querySelectorAll('#settings-time-pills .time-opt').forEach((x) => x.classList.toggle('active', x.dataset.mins === '10'));
+      showToast('↺ Ajustes restablecidos a los valores por defecto.', 'info');
     });
     on('btn-toggle-fullscreen', 'click', () => this.toggleFullscreen());
     on('btn-desktop-quit', 'click', () => window.chessDesktop?.quit());
@@ -1019,8 +1214,24 @@ class ChessModApp {
   }
 
   openAuthModal(tab = 'login') {
+    if (!hasSavedLanguage()) {
+      this.pendingAuthAfterLang = tab;
+      document.getElementById('modal-language-picker')?.classList.add('open');
+      return;
+    }
     this.switchAuthTab(tab);
     document.getElementById('modal-auth')?.classList.add('open');
+  }
+
+  openMandatoryTrainerModal() {
+    if (!this.user || this.user.trainerId) return;
+    this.pendingTrainerId = null;
+    const confirmBtn = document.getElementById('btn-confirm-permanent-trainer');
+    if (confirmBtn) confirmBtn.disabled = true;
+    const lbl = document.getElementById('trainer-pending-label');
+    if (lbl) lbl.textContent = 'Selecciona una tarjeta de entrenador arriba para continuar.';
+    this.renderTrainersGrids();
+    document.getElementById('modal-trainer-picker')?.classList.add('open');
   }
 
   switchAuthTab(tab) {
@@ -1070,20 +1281,45 @@ class ChessModApp {
 
   syncSettingsUI() {
     const s = this.sound;
+    const p = this.prefs;
+    const setChecked = (id, val) => { const el = document.getElementById(id); if (el) el.checked = Boolean(val); };
     const m = document.getElementById('set-music-vol');
     const sf = document.getElementById('set-sfx-vol');
-    const mu = document.getElementById('set-mute-all');
-    const vf = document.getElementById('set-reduced-vfx');
     if (m) m.value = s.musicVol;
     if (sf) sf.value = s.sfxVol;
-    if (mu) mu.checked = s.muted;
-    if (vf) vf.checked = s.reducedVfx;
-    document.getElementById('set-music-pct').textContent = `${Math.round(s.musicVol * 100)}%`;
-    document.getElementById('set-sfx-pct').textContent = `${Math.round(s.sfxVol * 100)}%`;
+    setChecked('set-mute-all', s.muted);
+    setChecked('set-reduced-vfx', s.reducedVfx);
+    setChecked('set-show-dialogues', p.showDialogues !== false);
+    setChecked('set-low-time-alert', p.lowTimeAlert !== false);
+    setChecked('set-show-coords', p.showCoords !== false);
+    setChecked('set-highlight-last', p.highlightLastMove !== false);
+    setChecked('set-show-legal', p.showLegalHints !== false);
+    setChecked('set-auto-queen', Boolean(p.autoQueen));
+    setChecked('set-prematch-guide', p.showPreMatchGuide !== false);
+    setChecked('set-board-shake', p.boardShake !== false);
+    setChecked('set-eye-tracking', p.eyeTracking !== false);
+    setChecked('set-bg-particles', p.bgParticles !== false);
+    setChecked('set-high-contrast', Boolean(p.highContrast));
+
+    const mp = document.getElementById('set-music-pct');
+    const sp = document.getElementById('set-sfx-pct');
+    if (mp) mp.textContent = `${Math.round(s.musicVol * 100)}%`;
+    if (sp) sp.textContent = `${Math.round(s.sfxVol * 100)}%`;
+
+    document.querySelectorAll('#settings-lang-pills [data-set-lang]').forEach((b) => {
+      b.classList.toggle('active', b.dataset.setLang === this.lang);
+    });
+    document.querySelectorAll('#settings-anim-pills [data-anim-speed]').forEach((b) => {
+      b.classList.toggle('active', b.dataset.animSpeed === (p.animSpeed || 'normal'));
+    });
+    document.querySelectorAll('#settings-scale-pills [data-board-scale]').forEach((b) => {
+      b.classList.toggle('active', b.dataset.boardScale === (p.boardScale || 'normal'));
+    });
   }
 
   renderAllScreens() {
     this.renderSidebarUser();
+    this.renderTrainersGrids();
     this.renderMultiplayerScreen();
     this.renderCampaignScreen();
     this.renderShopScreen();
@@ -1119,7 +1355,7 @@ class ChessModApp {
       if (xpEl) xpEl.textContent = `Nv.${u.level} · ${u.xp} XP`;
       if (modsEl) modsEl.textContent = `🪙 ${u.mods ?? 100}`;
       if (barEl) barEl.style.width = `${u.levelProgressPct || 0}%`;
-      if (btnEl) btnEl.textContent = 'Ver Perfil';
+      if (btnEl) btnEl.textContent = t('sidebar_profile_btn', this.lang);
     } else {
       if (avatarEl) {
         avatarEl.className = 'avatar-badge frame_stone';
@@ -1127,13 +1363,13 @@ class ChessModApp {
       }
       if (nameEl) {
         nameEl.className = 'sidebar-user-name';
-        nameEl.textContent = 'Invitado';
+        nameEl.textContent = t('sidebar_guest', this.lang);
       }
       if (eloEl) eloEl.textContent = 'Elo 0';
       if (xpEl) xpEl.textContent = '0 XP';
       if (modsEl) modsEl.textContent = '🪙 100';
       if (barEl) barEl.style.width = '0%';
-      if (btnEl) btnEl.textContent = 'Iniciar sesión / Registro';
+      if (btnEl) btnEl.textContent = t('sidebar_login_btn', this.lang);
     }
   }
 
@@ -1435,6 +1671,12 @@ class ChessModApp {
     const modsValEl = document.getElementById('profile-mods-val');
     if (modsValEl) modsValEl.textContent = String(u.mods ?? 100);
     document.getElementById('profile-vip-pill')?.classList.toggle('hidden', !u.isVip);
+    const trPill = document.getElementById('profile-trainer-pill');
+    if (trPill) {
+      const tr = TRAINERS.find((x) => x.id === u.trainerId);
+      trPill.classList.toggle('hidden', !tr);
+      if (tr) trPill.textContent = `🎓 Mentor: ${tr.name}`;
+    }
     document.getElementById('profile-xp-bar').style.width = `${u.levelProgressPct || 0}%`;
 
     const inputName = document.getElementById('input-edit-username');
@@ -1605,43 +1847,106 @@ class ChessModApp {
   }
 
   renderTrainersGrids() {
-    const selectedId = localStorage.getItem('chess_mod_selected_trainer') || 'trainer_yam';
-    const html = TRAINERS.map((t) => {
-      const isSelected = t.id === selectedId;
-      return `
-      <div class="trainer-card ${t.isHardest ? 'hardest' : ''}" style="${isSelected ? 'border-color:#ffd859;box-shadow:0 0 18px rgba(255,216,89,0.22);' : ''}">
-        <div>
-          <div class="trainer-head">
-            <div class="trainer-portrait">${getBossPortraitSVG(t.bossId)}</div>
-            <div style="min-width:0;">
-              <span class="pill ${t.isHardest ? 'crimson' : (t.isStarter ? 'jade' : 'muted')}" style="margin-bottom:4px;font-size:0.62rem;">${t.badge}</span>
-              <h4 style="font-family:var(--font-display);color:${t.isHardest ? '#ff9494' : 'var(--gold-bright)'};font-size:0.94rem;">${t.name}</h4>
-              <div style="font-size:0.72rem;font-weight:700;color:#ffe27a;">🎓 Mentor · ${t.elo} Elo</div>
-            </div>
-          </div>
-          <div style="margin-top:8px;padding:5px 8px;border-radius:7px;background:rgba(207,166,76,0.12);border:1px solid rgba(207,166,76,0.3);font-size:0.72rem;color:#ffe799;">
-            <strong>Enseña:</strong> ${t.taughtPowerLabel}
-          </div>
-          <p style="font-size:0.74rem;color:var(--text-muted);line-height:1.4;margin-top:6px;">${t.description}</p>
-        </div>
-        <button class="btn btn-sm ${t.isHardest ? 'btn-danger' : 'btn-gold'}" data-start-trainer="${t.id}" style="width:100%;">
-          ${t.isStarter ? '🐱 Aprender con Yam' : `🎓 Aprender con ${t.name.split(' ')[0]}`}
-        </button>
-      </div>`;
-    }).join('');
+    const chosenId = this.user?.trainerId || null;
 
-    for (const id of ['play-trainers-grid', 'modal-trainers-grid']) {
-      const box = document.getElementById(id);
-      if (!box) continue;
-      box.innerHTML = html;
-      box.querySelectorAll('[data-start-trainer]').forEach((btn) => {
+    // 1. Grilla de la pantalla Jugar (refleja elección permanente o invita a crear cuenta)
+    const playBox = document.getElementById('play-trainers-grid');
+    const badge = document.getElementById('play-trainer-lock-badge');
+    if (badge) {
+      if (chosenId) {
+        const chosenTr = TRAINERS.find((x) => x.id === chosenId);
+        badge.textContent = `🔒 Mentor Permanente: ${chosenTr?.name || chosenId}`;
+        badge.className = 'pill jade';
+      } else {
+        badge.textContent = '🔒 Elección única al crear cuenta';
+        badge.className = 'pill muted';
+      }
+    }
+    if (playBox) {
+      playBox.innerHTML = TRAINERS.map((tr) => {
+        const isMine = chosenId === tr.id;
+        const isLockedOut = Boolean(chosenId) && !isMine;
+        return `
+        <div class="trainer-card ${tr.isHardest ? 'hardest' : ''} ${isMine ? 'selected-choice' : ''} ${isLockedOut ? 'locked-other' : ''}">
+          <div>
+            <div class="trainer-head">
+              <div class="trainer-portrait">${getBossPortraitSVG(tr.bossId)}</div>
+              <div style="min-width:0;">
+                <span class="pill ${isMine ? 'jade' : (tr.isHardest ? 'crimson' : (tr.isStarter ? 'jade' : 'muted'))}" style="margin-bottom:4px;font-size:0.62rem;">
+                  ${isMine ? '✓ TU MENTOR PERMANENTE' : tr.badge}
+                </span>
+                <h4 style="font-family:var(--font-display);color:${tr.isHardest ? '#ff9494' : 'var(--gold-bright)'};font-size:0.94rem;">${tr.name}</h4>
+                <div style="font-size:0.72rem;font-weight:700;color:#ffe27a;">🎓 Mentor · ${tr.elo} Elo</div>
+              </div>
+            </div>
+            <div style="margin-top:8px;padding:5px 8px;border-radius:7px;background:rgba(207,166,76,0.12);border:1px solid rgba(207,166,76,0.3);font-size:0.72rem;color:#ffe799;">
+              <strong>Enseña:</strong> ${tr.taughtPowerLabel}
+            </div>
+            <p style="font-size:0.74rem;color:var(--text-muted);line-height:1.4;margin-top:6px;">${tr.description}</p>
+          </div>
+          ${isLockedOut
+            ? `<button class="btn btn-sm" disabled style="width:100%;">🔒 Bloqueado (Ya elegiste tu entrenador)</button>`
+            : `<button class="btn btn-sm ${tr.isHardest ? 'btn-danger' : 'btn-gold'}" data-start-trainer="${tr.id}" style="width:100%;">
+                ${chosenId ? (tr.isStarter ? '🐱 Entrenar con Yam' : `🎓 Entrenar con ${tr.name.split(' ')[0]}`) : '🔒 Crear cuenta para elegir'}
+              </button>`}
+        </div>`;
+      }).join('');
+
+      playBox.querySelectorAll('[data-start-trainer]').forEach((btn) => {
         btn.addEventListener('click', () => {
-          const trainer = TRAINERS.find((x) => x.id === btn.dataset.startTrainer);
-          if (!trainer) return;
-          try { localStorage.setItem('chess_mod_selected_trainer', trainer.id); } catch {}
-          document.getElementById('modal-trainer-picker')?.classList.remove('open');
+          if (!this.user) {
+            this.openAuthModal('register');
+            showToast('Crea tu cuenta primero para elegir tu Entrenador Permanente (1 sola vez).', 'info');
+            return;
+          }
+          if (!this.user.trainerId) {
+            this.openMandatoryTrainerModal();
+            return;
+          }
+          const trainer = TRAINERS.find((x) => x.id === this.user.trainerId);
+          if (trainer) this.battle.startTrainerMatch(trainer, { minutes: this.battle.selectedMinutes });
+        });
+      });
+    }
+
+    // 2. Grilla del Modal Obligatorio de Elección Única (post-registro, imposible de saltar)
+    const modalBox = document.getElementById('modal-trainers-grid');
+    if (modalBox) {
+      modalBox.innerHTML = TRAINERS.map((tr) => {
+        const isPending = this.pendingTrainerId === tr.id;
+        return `
+        <div class="trainer-card ${tr.isHardest ? 'hardest' : ''} ${isPending ? 'selected-choice' : ''}" data-pick-trainer-card="${tr.id}" style="cursor:pointer;">
+          <div>
+            <div class="trainer-head">
+              <div class="trainer-portrait">${getBossPortraitSVG(tr.bossId)}</div>
+              <div style="min-width:0;">
+                <span class="pill ${isPending ? 'jade' : (tr.isHardest ? 'crimson' : (tr.isStarter ? 'jade' : 'muted'))}" style="margin-bottom:4px;font-size:0.62rem;">
+                  ${isPending ? '✓ SELECCIONADO' : tr.badge}
+                </span>
+                <h4 style="font-family:var(--font-display);color:${tr.isHardest ? '#ff9494' : 'var(--gold-bright)'};font-size:0.94rem;">${tr.name}</h4>
+                <div style="font-size:0.72rem;font-weight:700;color:#ffe27a;">🎓 Mentor · ${tr.elo} Elo</div>
+              </div>
+            </div>
+            <div style="margin-top:8px;padding:5px 8px;border-radius:7px;background:rgba(207,166,76,0.12);border:1px solid rgba(207,166,76,0.3);font-size:0.72rem;color:#ffe799;">
+              <strong>Enseña:</strong> ${tr.taughtPowerLabel}
+            </div>
+            <p style="font-size:0.74rem;color:var(--text-muted);line-height:1.4;margin-top:6px;">${tr.description}</p>
+          </div>
+          <button type="button" class="btn btn-sm ${isPending ? 'btn-gold' : 'btn-primary'}" style="width:100%;">
+            ${isPending ? '✓ Elegido (haz clic abajo para confirmar)' : `Seleccionar a ${tr.name.split(' ')[0]}`}
+          </button>
+        </div>`;
+      }).join('');
+
+      modalBox.querySelectorAll('[data-pick-trainer-card]').forEach((card) => {
+        card.addEventListener('click', () => {
+          this.pendingTrainerId = card.dataset.pickTrainerCard;
+          const tr = TRAINERS.find((x) => x.id === this.pendingTrainerId);
+          const lbl = document.getElementById('trainer-pending-label');
+          if (lbl && tr) lbl.innerHTML = `Seleccionado: <strong style="color:var(--gold-bright);">${tr.name}</strong> (elección permanente, no se podrá cambiar).`;
+          const confirmBtn = document.getElementById('btn-confirm-permanent-trainer');
+          if (confirmBtn) confirmBtn.disabled = false;
           this.renderTrainersGrids();
-          this.battle.startTrainerMatch(trainer, { minutes: this.battle.selectedMinutes });
         });
       });
     }

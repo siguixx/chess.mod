@@ -157,6 +157,16 @@ class ApiClient {
     this.syncSnapshot();
     return res;
   }
+  async chooseTrainerOnce(trainerId) {
+    const res = await this.request('/api/profile/trainer', { method: 'POST', body: JSON.stringify({ trainerId }) });
+    this.syncSnapshot();
+    return res;
+  }
+  async updateLanguage(language) {
+    const res = await this.request('/api/profile/language', { method: 'PATCH', body: JSON.stringify({ language }) });
+    this.syncSnapshot();
+    return res;
+  }
   getLeaderboard() { return this.request('/api/leaderboard'); }
   validateCampaignStart(campaignId, levelId) {
     return this.request('/api/game/campaign/start', { method: 'POST', body: JSON.stringify({ campaignId, levelId }) });

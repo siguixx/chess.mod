@@ -48,23 +48,64 @@ app.whenReady().then(async () => {
       const brandImg = document.querySelector('.brand-logo-img');
       results.logoLoaded = Boolean(brandImg && brandImg.complete && brandImg.naturalWidth > 0);
 
+      // 0B. Selector de Idioma OBLIGATORIO antes de crear cuenta + cambio en Ajustes
+      results.langGateOpenedInitially = document.getElementById('modal-language-picker')?.classList.contains('open') || false;
+      results.langGateHasNoCloseBtn = !document.querySelector('#modal-language-picker .btn-icon');
+      // Elegir Inglés primero -> debe traducir la interfaz y abrir el modal de crear cuenta
+      document.querySelector('#language-gate-grid [data-pick-lang="en"]')?.click();
+      await wait(250);
+      results.langSwitchedToEn = document.querySelector('#screen-play .screen-title')?.textContent.trim() === 'PLAY';
+      results.authOpenedAfterLang = document.getElementById('modal-auth')?.classList.contains('open') || false;
+
       // 1. Menú «JUGAR»: SOLO 3 modos (Partida Rápida, Vs IA, Contra el Tiempo), CERO Boss Fights
       const playCards = [...document.querySelectorAll('#play-modes-grid .mode-card h3')].map(el => el.textContent.trim());
       results.playModeCount = playCards.length;
       results.playModes = playCards;
       results.hasDirectBossInPlay = Boolean(document.getElementById('btn-play-boss-maya') || document.getElementById('btn-play-boss-mittens'));
 
-      // 2. Registrar usuario real desde la UI -> debe empezar con 0 Elo y 50 XP
-      document.getElementById('btn-sidebar-auth').click();
+      // 2. Registrar usuario real desde la UI -> debe empezar con 0 Elo, 50 XP y abrir OBLIGATORIAMENTE el selector de Entrenador 1 sola vez
       document.querySelector('.auth-tab[data-tab="register"]').click();
       document.getElementById('reg-username').value = 'VerifWin11';
       document.getElementById('reg-email').value = 'verif@chessmod.local';
       document.getElementById('reg-password').value = 'Password123';
       document.getElementById('form-register').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-      await wait(600);
+      await wait(650);
       results.registeredSidebarName = document.getElementById('sidebar-username').textContent;
       results.registeredSidebarElo = document.getElementById('sidebar-elo').textContent;
       results.registeredSidebarXp = document.getElementById('sidebar-xp').textContent;
+
+      // 2B. Verificar selector de Entrenador obligatorio y sin poder saltar después de crear cuenta
+      results.trainerModalOpenedAfterReg = document.getElementById('modal-trainer-picker')?.classList.contains('open') || false;
+      results.trainerModalUnskippable = !document.getElementById('btn-close-trainer-modal') && document.getElementById('btn-confirm-permanent-trainer')?.disabled === true;
+      // Verificar que SVGs de personajes tienen sombreado/gradientes reales (no planos)
+      const trainerSvgHtml = document.getElementById('modal-trainers-grid')?.innerHTML || '';
+      results.svgsHaveGradients = trainerSvgHtml.includes('linearGradient') && trainerSvgHtml.includes('radialGradient');
+
+      // Elegir a Yam y confirmar permanentemente
+      document.querySelector('#modal-trainers-grid [data-pick-trainer-card="trainer_yam"]')?.click();
+      await wait(150);
+      document.getElementById('btn-confirm-permanent-trainer')?.click();
+      await wait(500);
+      results.trainerModalClosedAfterConfirm = !document.getElementById('modal-trainer-picker')?.classList.contains('open');
+      results.trainerLockedInPlayGrid = document.querySelectorAll('#play-trainers-grid .trainer-card.locked-other').length === 5;
+
+      // 2C. Configuración completa: cambiar idioma a Español, desactivar guía previa para agilizar pruebas, probar alto contraste y coordenadas
+      document.querySelector('[data-screen="settings"]').click();
+      await wait(150);
+      document.querySelector('#settings-lang-pills [data-set-lang="es"]')?.click();
+      await wait(200);
+      results.langSwitchedBackToEs = document.querySelector('#screen-play .screen-title')?.textContent.trim() === 'JUGAR';
+      const hcChk = document.getElementById('set-high-contrast');
+      if (hcChk) { hcChk.checked = true; hcChk.dispatchEvent(new Event('change')); }
+      results.highContrastApplied = document.body.classList.contains('high-contrast-mode');
+      if (hcChk) { hcChk.checked = false; hcChk.dispatchEvent(new Event('change')); }
+      const coordsChk = document.getElementById('set-show-coords');
+      if (coordsChk) { coordsChk.checked = false; coordsChk.dispatchEvent(new Event('change')); }
+      results.hideCoordsApplied = document.body.classList.contains('hide-coords');
+      if (coordsChk) { coordsChk.checked = true; coordsChk.dispatchEvent(new Event('change')); }
+      const preChk = document.getElementById('set-prematch-guide');
+      if (preChk) { preChk.checked = false; preChk.dispatchEvent(new Event('change')); }
+      results.settingsControlsCount = document.querySelectorAll('#screen-settings input, #screen-settings button').length;
 
       // 3. Modo Historia: 5 capítulos, Cap. 2-5 bloqueados inicialmente
       document.querySelector('[data-screen="story"]').click();

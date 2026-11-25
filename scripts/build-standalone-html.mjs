@@ -120,6 +120,8 @@ function hydrateUser(u, matches = []) {
     title: u.customTitle || '',
     levelProgressPct: lvInfo.progressPct,
     campaigns,
+    trainerId: u.trainerId || null,
+    language: u.language || 'es',
     unlockedCosmetics: [...unlockedCosmetics],
     recentMatches: matches.slice(0, 20)
   };
@@ -309,6 +311,29 @@ class StandaloneApiClient {
       saveStore(store);
     }
     return { user: hydrateUser(store.user, store.matches) };
+  }
+
+  async chooseTrainerOnce(trainerId) {
+    const store = loadStore();
+    if (!store.user) await this.me();
+    const s = loadStore();
+    if (s.user.trainerId) {
+      const err = new Error('Ya elegiste tu entrenador permanente. Solo se puede escoger 1 vez al crear la cuenta.');
+      err.status = 409;
+      throw err;
+    }
+    s.user.trainerId = trainerId;
+    saveStore(s);
+    return { ok: true, user: hydrateUser(s.user, s.matches) };
+  }
+
+  async updateLanguage(language) {
+    const store = loadStore();
+    if (store.user) {
+      store.user.language = language || 'es';
+      saveStore(store);
+    }
+    return { ok: true, user: hydrateUser(store.user, store.matches) };
   }
 
   async getLeaderboard() {

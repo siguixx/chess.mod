@@ -995,11 +995,17 @@ try {
     });
     assert.equal(buyBk.status, 400, 'Zarpa Traidora de Blacky no puede comprarse en tienda');
 
-    // 3. Clanes: cuesta 150 Mods crear; Bob (100 Mods) falla con INSUFFICIENT_MODS, Alice (ya ganó Mods) SÍ puede crear y Bob se une
+    // 3. Clanes: cuesta 150 Mods crear; jugador nuevo (100 Mods) falla con INSUFFICIENT_MODS, Alice (ya ganó Mods) SÍ puede crear y Bob se une
     assert.equal(CLAN_CREATE_COST_MODS, 150);
+    const poorReg = await (await fetch(`${url}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'PoorClanUser', email: 'poorclan@chessmod.test', password: 'Password123' })
+    })).json();
+    const poorH = { Authorization: `Bearer ${poorReg.token}`, 'Content-Type': 'application/json' };
     const clanFail = await fetch(`${url}/api/clans`, {
       method: 'POST',
-      headers: bobH,
+      headers: poorH,
       body: JSON.stringify({ name: 'ClanPobre', tag: 'POB' })
     });
     assert.equal(clanFail.status, 400);
@@ -1285,6 +1291,65 @@ try {
     s1.disconnect();
     s2.disconnect();
     sSpec.disconnect();
+  });
+
+  await test('Entrenador permanente (elección 1 sola vez, 409 en 2do intento) + Idioma en perfil y snapshot', async () => {
+    const regRes = await fetch(`${url}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'TrainerLockUser', email: 'trainerlock@chessmod.test', password: 'Password123' })
+    });
+    assert.equal(regRes.status, 201);
+    const regData = await regRes.json();
+    assert.equal(regData.user.trainerId, null, 'Cuenta recién creada debe iniciar sin entrenador elegido');
+    assert.equal(regData.user.language, 'es');
+
+    const hdrs = { Authorization: `Bearer ${regData.token}`, 'Content-Type': 'application/json' };
+
+    // Elegir idioma -> guarda en DB
+    const langRes = await fetch(`${url}/api/profile/language`, {
+      method: 'PATCH',
+      headers: hdrs,
+      body: JSON.stringify({ language: 'en' })
+    });
+    assert.equal(langRes.status, 200);
+    assert.equal((await langRes.json()).user.language, 'en');
+
+    // Primera elección de entrenador -> 200 OK y bloqueado permanentemente
+    const pick1 = await fetch(`${url}/api/profile/trainer`, {
+      method: 'POST',
+      headers: hdrs,
+      body: JSON.stringify({ trainerId: 'trainer_yam' })
+    });
+    assert.equal(pick1.status, 200);
+    assert.equal((await pick1.json()).user.trainerId, 'trainer_yam');
+
+    // Segundo intento de cambiar entrenador -> 409 TRAINER_ALREADY_CHOSEN
+    const pick2 = await fetch(`${url}/api/profile/trainer`, {
+      method: 'POST',
+      headers: hdrs,
+      body: JSON.stringify({ trainerId: 'trainer_kael' })
+    });
+    assert.equal(pick2.status, 409);
+    const pick2Data = await pick2.json();
+    assert.equal(pick2Data.code, 'TRAINER_ALREADY_CHOSEN');
+    assert.equal(pick2Data.trainerId, 'trainer_yam');
+
+    // Snapshot firmado conserva trainer_id y language incluso tras borrado y restauración completa
+    const snapRes = await fetch(`${url}/api/auth/me`, { headers: hdrs });
+    assert.equal(snapRes.status, 200);
+    const { snapshot } = await snapRes.json();
+    assert.ok(typeof snapshot === 'string' && snapshot.includes('.'));
+    await server.db.execSql('DELETE FROM users WHERE id = ?', [regData.user.id]);
+    const restRes = await fetch(`${url}/api/auth/restore-snapshot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ snapshot })
+    });
+    assert.equal(restRes.status, 200);
+    const restData = await restRes.json();
+    assert.equal(restData.user.trainerId, 'trainer_yam');
+    assert.equal(restData.user.language, 'en');
   });
 } finally {
   await server.stop();

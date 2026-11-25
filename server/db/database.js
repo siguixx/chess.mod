@@ -54,7 +54,9 @@ export class ChessDatabase {
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_pending_secret TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS backup_codes_json TEXT NOT NULL DEFAULT '[]'",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS security_pin_hash TEXT",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1"
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS trainer_id TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'es'"
       ];
       for (const sql of pgMigrations) {
         await this.pgPool.query(sql).catch(() => {});
@@ -83,7 +85,9 @@ export class ChessDatabase {
         "ALTER TABLE users ADD COLUMN totp_pending_secret TEXT",
         "ALTER TABLE users ADD COLUMN backup_codes_json TEXT NOT NULL DEFAULT '[]'",
         "ALTER TABLE users ADD COLUMN security_pin_hash TEXT",
-        "ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1"
+        "ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE users ADD COLUMN trainer_id TEXT",
+        "ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'es'"
       ];
       for (const sql of sqliteMigrations) {
         try { this.sqlite.exec(sql); } catch {}
@@ -189,6 +193,8 @@ export class ChessDatabase {
       boardThemeId,
       pieceSkinId,
       equippedPowerId,
+      trainerId: row.trainer_id || null,
+      language: row.language || 'es',
       isVip,
       isModerator,
       isBanned,
@@ -309,6 +315,28 @@ export class ChessDatabase {
     `, [id, username, username.toLowerCase(), email.toLowerCase(), passwordHash, passwordSalt, googleId, avatar, INITIAL_ELO, initialXp, INITIAL_MODS, lvl, now, now]);
 
     return this.getFullUserProfile(id);
+  }
+
+  async setUserTrainerOnce(userId, trainerId) {
+    const row = await this.findUserById(userId);
+    if (!row) throw new Error('Usuario no encontrado.');
+    if (row.trainer_id) {
+      const err = new Error('Ya elegiste tu entrenador permanente al crear tu cuenta. No se puede cambiar.');
+      err.status = 409;
+      err.code = 'TRAINER_ALREADY_CHOSEN';
+      err.trainerId = row.trainer_id;
+      throw err;
+    }
+    const now = new Date().toISOString();
+    await this.execSql('UPDATE users SET trainer_id = ?, updated_at = ? WHERE id = ?', [trainerId, now, userId]);
+    return this.getFullUserProfile(userId);
+  }
+
+  async updateUserLanguage(userId, language) {
+    const safe = ['es', 'en', 'pt', 'fr'].includes(language) ? language : 'es';
+    const now = new Date().toISOString();
+    await this.execSql('UPDATE users SET language = ?, updated_at = ? WHERE id = ?', [safe, now, userId]);
+    return this.getFullUserProfile(userId);
   }
 
   async findUserByEmail(email) {
@@ -1297,6 +1325,8 @@ export class ChessDatabase {
         board_theme_id: row.board_theme_id,
         piece_skin_id: row.piece_skin_id,
         equipped_power_id: row.equipped_power_id,
+        trainer_id: row.trainer_id || null,
+        language: row.language || 'es',
         title: row.title || '',
         elo: Number(row.elo) || 0,
         xp: Number(row.xp) || 50,
@@ -1335,10 +1365,10 @@ export class ChessDatabase {
     await this.execSql(`
       INSERT INTO users (
         id, username, username_lower, email, password_hash, password_salt,
-        avatar, frame_id, board_theme_id, piece_skin_id, equipped_power_id, title,
+        avatar, frame_id, board_theme_id, piece_skin_id, equipped_power_id, trainer_id, language, title,
         elo, xp, mods, vip_active, vip_expires_at, is_moderator, is_banned, ban_reason, level,
         wins, losses, draws, games_played, bases_destroyed, hints_used, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       u.id,
       finalUsername,
@@ -1351,6 +1381,8 @@ export class ChessDatabase {
       u.board_theme_id || 'board_classic_maya',
       u.piece_skin_id || 'pieces_classic',
       u.equipped_power_id || 'power_none',
+      u.trainer_id || null,
+      u.language || 'es',
       u.title || '',
       Number(u.elo) || 0,
       Number(u.xp) || 50,

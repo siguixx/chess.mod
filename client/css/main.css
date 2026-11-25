@@ -581,3 +581,117 @@ html, body {
     max-height: 88dvh;
   }
 }
+
+/* ================= SELECTOR DE IDIOMA Y AJUSTES AVANZADOS ================= */
+.lang-gate-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.lang-choice-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 18px 14px;
+  border-radius: 12px;
+  background: linear-gradient(160deg, rgba(42, 36, 28, 0.94), rgba(18, 16, 13, 0.96));
+  border: 1.5px solid rgba(207, 166, 76, 0.35);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.lang-choice-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--gold-bright);
+  box-shadow: 0 10px 24px rgba(207, 166, 76, 0.22);
+}
+
+.lang-choice-card .lang-flag {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.lang-choice-card strong {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--gold-bright);
+}
+
+.lang-choice-card small {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.modal-backdrop.mandatory-lock {
+  background: rgba(6, 5, 4, 0.9);
+  backdrop-filter: blur(8px);
+}
+
+.trainer-card.selected-choice {
+  border-color: #ffd859 !important;
+  box-shadow: 0 0 24px rgba(255, 216, 89, 0.35) !important;
+  transform: translateY(-2px);
+}
+
+.trainer-card.locked-other {
+  opacity: 0.45;
+  filter: grayscale(0.45);
+}
+
+/* Preferencias visuales aplicadas desde Configuración */
+body.hide-coords .coord-rank,
+body.hide-coords .coord-file {
+  display: none !important;
+}
+
+body.hide-last-move .square.last-move {
+  box-shadow: none !important;
+  background-image: none !important;
+}
+
+body.hide-legal-dots .legal-dot,
+body.hide-legal-dots .legal-capture-ring {
+  opacity: 0 !important;
+}
+
+body.hide-bg-particles #bg-vfx-canvas {
+  display: none !important;
+}
+
+body.high-contrast-mode {
+  --text-main: #ffffff;
+  --text-muted: #ded7c8;
+  --border-stone: rgba(239, 208, 131, 0.65);
+}
+
+body.high-contrast-mode .square.light {
+  filter: brightness(1.09) contrast(1.08);
+}
+
+body.high-contrast-mode .square.dark {
+  filter: brightness(0.82) contrast(1.12);
+}
+
+body.board-scale-compact .board-pedestal {
+  transform: scale(0.88);
+  transform-origin: center top;
+}
+
+body.board-scale-large .board-pedestal {
+  transform: scale(1.08);
+  transform-origin: center top;
+}
+
+@media (max-width: 600px) {
+  .lang-gate-grid {
+    grid-template-columns: 1fr;
+  }
+  body.board-scale-compact .board-pedestal,
+  body.board-scale-large .board-pedestal {
+    transform: none;
+  }
+}

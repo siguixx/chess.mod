@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS users (
   board_theme_id TEXT NOT NULL DEFAULT 'board_classic_maya',
   piece_skin_id TEXT NOT NULL DEFAULT 'pieces_classic',
   equipped_power_id TEXT NOT NULL DEFAULT 'power_none',
+  trainer_id TEXT,
+  language TEXT NOT NULL DEFAULT 'es',
   title TEXT NOT NULL DEFAULT '',
   elo INTEGER NOT NULL DEFAULT 0,
   xp INTEGER NOT NULL DEFAULT 50,

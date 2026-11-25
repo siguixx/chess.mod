@@ -128,6 +128,22 @@ export class BattleController {
     this.paused = true;
     this.introPlaying = false;
     this.phase = 'PLAYER_TURN';
+    this.lowTimeWarnedSide = { w: false, b: false };
+    this.prefs = {
+      showCoords: true,
+      highlightLastMove: true,
+      showLegalHints: true,
+      autoQueen: false,
+      showPreMatchGuide: true,
+      animSpeed: 'normal',
+      boardScale: 'normal',
+      boardShake: true,
+      eyeTracking: true,
+      bgParticles: true,
+      highContrast: false,
+      showDialogues: true,
+      lowTimeAlert: true
+    };
 
     this.selected = null;
     this.legalMoves = [];
@@ -163,6 +179,14 @@ export class BattleController {
     this.bindUI();
     this.bindOnlineEvents();
     this.startClockLoop();
+  }
+
+  setPreferences(newPrefs = {}) {
+    this.prefs = { ...this.prefs, ...newPrefs };
+    if (this.vfx) {
+      this.vfx.setShakeEnabled(this.prefs.boardShake !== false);
+      this.vfx.setBgParticlesEnabled(this.prefs.bgParticles !== false);
+    }
   }
 
   initSuperAiWorker() {
@@ -285,7 +309,7 @@ export class BattleController {
 
     // Seguimiento ocular del jefe
     document.addEventListener('mousemove', (e) => {
-      if (this.vfx.reduced) return;
+      if (this.vfx.reduced || this.prefs?.eyeTracking === false) return;
       const dx = Math.max(-5, Math.min(5, ((e.clientX / window.innerWidth) - 0.5) * 10));
       const dy = Math.max(-3, Math.min(4, ((e.clientY / window.innerHeight) - 0.35) * 7));
       document.querySelectorAll('.js-tracked-eyes').forEach((el) => {
@@ -712,7 +736,7 @@ export class BattleController {
 
   showPreMatchGuide({ title, subtitle, modeTag, rulesHtml, onStart }) {
     const modal = document.getElementById('modal-prematch');
-    if (!modal) {
+    if (!modal || this.prefs?.showPreMatchGuide === false) {
       if (typeof onStart === 'function') onStart();
       return;
     }
@@ -1656,6 +1680,10 @@ export class BattleController {
       const is6x6 = this.mode === 'special' && this.specialMeta?.id === 'special_6x6';
       const promoRank = is6x6 ? (myColor === 'w' ? 1 : 6) : (myColor === 'w' ? 0 : 7);
       if (!chosen.isWaterShot && !chosen.isPlayerTeleport && piece?.type === 'P' && chosen.tr === promoRank) {
+        if (this.prefs?.autoQueen) {
+          this.commitPlayerMove(chosen, 'Q');
+          return;
+        }
         this.pendingPromoMove = chosen;
         document.getElementById('modal-promo')?.classList.add('open');
         return;
@@ -2223,11 +2251,18 @@ export class BattleController {
   }
 
   animatePieceSlide(svgKey, fr, fc, tr, tc, onDone) {
+    const speedMap = { instant: 0, fast: 110, normal: 235, cinematic: 410 };
+    const dur = speedMap[this.prefs?.animSpeed] ?? 235;
+    if (dur <= 0) {
+      onDone();
+      return;
+    }
     const layer = document.getElementById('anim-piece-layer');
     const [vfr, vfc] = this.toVisualCoords(fr, fc);
     const [vtr, vtc] = this.toVisualCoords(tr, tc);
     const el = document.createElement('div');
     el.className = 'flying-piece';
+    el.style.transitionDuration = `${dur}ms`;
     el.style.left = `${vfc * 12.5}%`;
     el.style.top = `${vfr * 12.5}%`;
     el.innerHTML = SVGS[svgKey] || MITTENS_SVGS[svgKey] || GALAXY_SVGS[svgKey] || GLITCH_SVGS[svgKey] || CHESS_ORIGIN_SVGS[svgKey] || '';
@@ -2236,7 +2271,7 @@ export class BattleController {
       el.style.left = `${vtc * 12.5}%`;
       el.style.top = `${vtr * 12.5}%`;
     }));
-    setTimeout(() => { el.remove(); onDone(); }, 235);
+    setTimeout(() => { el.remove(); onDone(); }, dur);
   }
 
   animateMittensConversion(originalType, newType, capR, capC, spawnR, spawnC, onDone) {
@@ -2265,7 +2300,7 @@ export class BattleController {
   }
 
   showBossSpeech(text) {
-    if (!text || this.mode === 'online' || this.mode === 'classic') return;
+    if (!text || this.mode === 'online' || this.mode === 'classic' || this.prefs?.showDialogues === false) return;
     const wrap = document.getElementById('boss-speech-wrap');
     const txt = document.getElementById('boss-speech-text');
     if (!wrap || !txt) return;
@@ -2318,6 +2353,13 @@ export class BattleController {
       const side = this.engine.turn;
       if (this.engine.clocks[side] === null || this.engine.clocks[side] === undefined) return;
       this.engine.clocks[side] = Math.max(0, this.engine.clocks[side] - dt);
+      if (this.prefs?.lowTimeAlert !== false && side === 'w' && this.engine.clocks[side] > 0 && this.engine.clocks[side] <= 30 && !this.lowTimeWarnedSide.w) {
+        this.lowTimeWarnedSide.w = true;
+        this.sound.play('hint');
+        this.toast('⏱️ ¡Menos de 30 segundos en tu reloj!', 'info');
+      } else if (this.engine.clocks[side] > 32) {
+        this.lowTimeWarnedSide[side] = false;
+      }
       this.renderClocks();
 
       if (this.engine.clocks[side] <= 0) {

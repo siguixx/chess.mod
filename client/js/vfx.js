@@ -2,6 +2,8 @@ export class VFXEngine {
   constructor(sound) {
     this.sound = sound;
     this.reduced = Boolean(sound?.reducedVfx);
+    this.shakeEnabled = true;
+    this.bgParticlesEnabled = true;
     this.introMode = false;
 
     this.bgCanvas = document.getElementById('bg-vfx-canvas');
@@ -26,6 +28,14 @@ export class VFXEngine {
   setReduced(val) {
     this.reduced = Boolean(val);
     this.initAmbientParticles();
+  }
+
+  setShakeEnabled(val) {
+    this.shakeEnabled = Boolean(val);
+  }
+
+  setBgParticlesEnabled(val) {
+    this.bgParticlesEnabled = Boolean(val);
   }
 
   setIntroMode(active) {
@@ -77,7 +87,7 @@ export class VFXEngine {
   }
 
   triggerBoardShake(heavy = false) {
-    if (this.reduced) return;
+    if (this.reduced || !this.shakeEnabled) return;
     const ped = document.getElementById('board-pedestal');
     if (!ped) return;
     ped.classList.remove('board-shake', 'board-shake-heavy');
@@ -302,7 +312,10 @@ export class VFXEngine {
 
   loop(ts) {
     this.time = ts * 0.001;
-    if (this.bgCtx && this.bgCanvas) this.drawAtmospheric(this.bgCtx, window.innerWidth, window.innerHeight, false);
+    if (this.bgCtx && this.bgCanvas) {
+      if (this.bgParticlesEnabled) this.drawAtmospheric(this.bgCtx, window.innerWidth, window.innerHeight, false);
+      else this.bgCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    }
     if (this.introMode && this.introCtx && this.introCanvas) this.drawAtmospheric(this.introCtx, window.innerWidth, window.innerHeight, true);
     this.drawBoardEffects();
     requestAnimationFrame((t) => this.loop(t));
