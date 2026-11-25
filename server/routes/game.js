@@ -2,7 +2,7 @@ import express from 'express';
 import { HINT_XP_COST } from '../../shared/config/constants.js';
 import { getCampaignLevel, isCampaignLevelUnlocked, getCampaignUnlockReason } from '../../shared/config/campaigns.js';
 
-export function createGameRouter(db, authMiddleware) {
+export function createGameRouter(db, authMiddleware, antiCheat = null) {
   const router = express.Router();
 
   /**
@@ -43,6 +43,20 @@ export function createGameRouter(db, authMiddleware) {
    */
   router.post('/report', authMiddleware.requireAuth, async (req, res) => {
     try {
+      // Anti-Cheat: bloquea intentos de inyectar dinero/Mods/XP/Elo o granjas automatizadas
+      if (antiCheat) {
+        const finding = antiCheat.checkSinglePlayerReport(req.userId, req.body || {});
+        if (finding) {
+          const acRes = await antiCheat.flagUser(req.userId, req.user?.username, finding);
+          return res.status(403).json({
+            code: 'ANTICHEAT_BLOCKED',
+            category: finding.category,
+            autoSuspended: acRes.autoSuspended,
+            error: `🛡️ Anti-Cheat activado: ${finding.details}`
+          });
+        }
+      }
+
       const {
         mode = 'classic',
         opponentName = 'IA',

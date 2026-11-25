@@ -151,6 +151,19 @@ CREATE TABLE IF NOT EXISTS security_events (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS anticheat_flags (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  username TEXT NOT NULL,
+  category TEXT NOT NULL,
+  severity TEXT NOT NULL DEFAULT 'medium',
+  score INTEGER NOT NULL DEFAULT 25,
+  details TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_users_elo ON users(elo DESC, wins DESC);
 CREATE INDEX IF NOT EXISTS idx_matches_white ON matches(white_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_matches_black ON matches(black_user_id, created_at DESC);

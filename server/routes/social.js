@@ -159,5 +159,14 @@ export function createSocialRouter(db, authMiddleware, multiplayer) {
     }
   });
 
+  router.post('/mod/anticheat/:id/dismiss', authMiddleware.requireModerator, async (req, res) => {
+    try {
+      const result = await db.dismissAntiCheatFlag(req.params.id);
+      return res.json(result);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  });
+
   return router;
 }

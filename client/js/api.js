@@ -153,8 +153,8 @@ class ApiClient {
     this.syncSnapshot();
     return res;
   }
-  async claimBattlePassTier(tier) {
-    const res = await this.request('/api/battlepass/claim', { method: 'POST', body: JSON.stringify({ tier }) });
+  async claimBattlePassTier(tier, track = 'free') {
+    const res = await this.request('/api/battlepass/claim', { method: 'POST', body: JSON.stringify({ tier, track }) });
     this.syncSnapshot();
     return res;
   }
@@ -229,6 +229,9 @@ class ApiClient {
   }
   modResolveReport(reportId, status, resolutionNote) {
     return this.request(`/api/mod/reports/${encodeURIComponent(reportId)}/resolve`, { method: 'POST', body: JSON.stringify({ status, resolutionNote }) });
+  }
+  modDismissAntiCheatFlag(flagId) {
+    return this.request(`/api/mod/anticheat/${encodeURIComponent(flagId)}/dismiss`, { method: 'POST', body: '{}' });
   }
   async modGrantAll() {
     const res = await this.request('/api/mod/grant-all', { method: 'POST', body: '{}' });

@@ -67,7 +67,7 @@ async function verifyStripePaidSession(sessionId, stripeSecretKey) {
   return data;
 }
 
-export function createProfileRouter(db, authMiddleware) {
+export function createProfileRouter(db, authMiddleware, antiCheat = null) {
   const router = express.Router();
 
   router.get('/cosmetics', (_req, res) => res.json(getAllCosmetics()));
@@ -85,6 +85,13 @@ export function createProfileRouter(db, authMiddleware) {
 
   router.post('/shop/buy', authMiddleware.requireAuth, async (req, res) => {
     try {
+      if (antiCheat) {
+        const finding = antiCheat.detectEconomyTampering(req.body);
+        if (finding) {
+          await antiCheat.flagUser(req.userId, req.user?.username, finding);
+          return res.status(403).json({ code: 'ANTICHEAT_BLOCKED', error: `🛡️ Anti-Cheat: ${finding.details}` });
+        }
+      }
       const itemId = String(req.body?.itemId || '').trim();
       if (!itemId) return res.status(400).json({ error: 'Debes indicar el artículo a comprar.' });
       const result = await db.buyShopItem(req.userId, itemId);
@@ -228,19 +235,19 @@ export function createProfileRouter(db, authMiddleware) {
     }
   });
 
-  /* ================= PASE DE BATALLA TEMPORADA 1 ($10 USD o 5,000 MODS) ================= */
+  /* ================= PASE DE BATALLA TEMPORADA 1 (GRATIS 50 NV + PREMIUM SOLO DE PAGA $10 USD) ================= */
   router.get('/battlepass', (_req, res) => {
     const cfg = getVipBillingConfig();
     return res.json({ season: BATTLE_PASS_S1, billingConfigured: cfg.billingConfigured });
   });
 
-  router.post('/battlepass/buy-mods', authMiddleware.requireAuth, async (req, res) => {
-    try {
-      const result = await db.buyBattlePassS1WithMods(req.userId);
-      return res.json(result);
-    } catch (err) {
-      return res.status(err.status || 400).json({ code: err.code, error: err.message });
-    }
+  router.post('/battlepass/buy-mods', authMiddleware.requireAuth, async (_req, res) => {
+    return res.status(402).json({
+      ok: false,
+      code: 'PAYMENT_REQUIRED',
+      priceLabel: BATTLE_PASS_S1.priceLabel,
+      error: 'El Pase de Batalla Premium Temporada 1 es únicamente de paga ($10.00 USD). El carril gratuito (50 niveles) es gratis para todos.'
+    });
   });
 
   router.post('/battlepass/checkout', authMiddleware.requireAuth, async (req, res) => {
@@ -249,13 +256,13 @@ export function createProfileRouter(db, authMiddleware) {
       const user = await db.getFullUserProfile(req.userId);
       if (!user) return res.status(404).json({ error: 'Usuario no encontrado.' });
       if (user.battlePassS1?.owned) {
-        return res.status(400).json({ error: 'Ya tienes desbloqueado el Pase de Batalla Temporada 1.' });
+        return res.status(400).json({ error: 'Ya tienes desbloqueado el Pase de Batalla Premium Temporada 1.' });
       }
       if (!cfg.stripeConfigured) {
         return res.status(402).json({
           ok: false,
           code: 'PAYMENT_REQUIRED',
-          error: 'El cobro con tarjeta ($10 USD) requiere STRIPE_SECRET_KEY en Render. También puedes desbloquearlo ahora mismo con 5,000 Mods.'
+          error: 'El Pase de Batalla Premium cuesta $10.00 USD con cobro real (requiere STRIPE_SECRET_KEY en Render). Mientras tanto puedes reclamar gratis los 50 niveles del Carril Gratuito.'
         });
       }
       const origin = `${req.protocol}://${req.get('host')}`;
@@ -305,10 +312,36 @@ export function createProfileRouter(db, authMiddleware) {
     }
   });
 
+  router.post('/battlepass/webhook', async (req, res) => {
+    try {
+      const cfg = getVipBillingConfig();
+      const secret = cfg.serverBillingSecret || cfg.stripeWebhookSecret;
+      const headerSec = String(req.headers['x-vip-billing-secret'] || '');
+      if (!secret || headerSec.length !== secret.length || !crypto.timingSafeEqual(Buffer.from(headerSec), Buffer.from(secret))) {
+        return res.status(401).json({ error: 'Firma de webhook inválida.' });
+      }
+      const obj = req.body?.data?.object || req.body || {};
+      const userId = obj.client_reference_id || obj.metadata?.userId || obj.userId;
+      if (!userId) return res.status(400).json({ error: 'Falta userId.' });
+      const result = await db.activateBattlePassS1(userId);
+      return res.json({ ok: true, user: result.user });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  });
+
   router.post('/battlepass/claim', authMiddleware.requireAuth, async (req, res) => {
     try {
+      if (antiCheat) {
+        const finding = antiCheat.detectEconomyTampering(req.body);
+        if (finding) {
+          await antiCheat.flagUser(req.userId, req.user?.username, finding);
+          return res.status(403).json({ code: 'ANTICHEAT_BLOCKED', error: `🛡️ Anti-Cheat: ${finding.details}` });
+        }
+      }
       const tier = Number(req.body?.tier);
-      const result = await db.claimBattlePassTier(req.userId, tier);
+      const track = req.body?.track === 'paid' ? 'paid' : 'free';
+      const result = await db.claimBattlePassTier(req.userId, tier, track);
       return res.json(result);
     } catch (err) {
       return res.status(err.status || 400).json({ code: err.code, error: err.message });
@@ -349,6 +382,13 @@ export function createProfileRouter(db, authMiddleware) {
 
   router.patch('/profile/cosmetics', authMiddleware.requireAuth, async (req, res) => {
     try {
+      if (antiCheat) {
+        const finding = antiCheat.detectEconomyTampering(req.body);
+        if (finding) {
+          await antiCheat.flagUser(req.userId, req.user?.username, finding);
+          return res.status(403).json({ code: 'ANTICHEAT_BLOCKED', error: `🛡️ Anti-Cheat: ${finding.details}` });
+        }
+      }
       const { avatar, frameId, boardThemeId, pieceSkinId, equippedPowerId } = req.body || {};
       const profile = await db.updateCosmetics(req.userId, { avatar, frameId, boardThemeId, pieceSkinId, equippedPowerId });
       return res.json({ user: profile });

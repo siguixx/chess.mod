@@ -733,3 +733,57 @@ body.board-scale-large .board-pedestal {
   .bp-tiers-grid { grid-template-columns: 1fr; }
   .mod-action-group .btn { flex: 1 1 auto; font-size: 0.7rem; padding: 5px 7px; }
 }
+
+/* ================= PASE DE BATALLA 50 NIVELES (DOBLE CARRIL GRATIS + PAGA) & SKINS RÚSTICAS ================= */
+.bp-dual-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bp-tier-row {
+  display: grid;
+  grid-template-columns: 78px 1fr 1fr;
+  gap: 10px;
+  align-items: stretch;
+  background: rgba(16, 15, 20, 0.88);
+  border: 1px solid var(--border-stone);
+  border-radius: 12px;
+  padding: 10px;
+}
+.bp-tier-num-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 11, 16, 0.9);
+  border: 1px solid rgba(207, 166, 76, 0.35);
+  border-radius: 9px;
+  padding: 8px 4px;
+  text-align: center;
+}
+.bp-track-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: rgba(24, 22, 20, 0.88);
+  border: 1px solid rgba(138, 126, 106, 0.35);
+}
+.bp-track-cell.paid {
+  background: linear-gradient(135deg, rgba(22, 26, 46, 0.92), rgba(40, 22, 46, 0.9));
+  border-color: rgba(244, 114, 182, 0.45);
+}
+.bp-track-cell.claimed {
+  border-color: rgba(81, 150, 116, 0.8);
+  background: rgba(18, 36, 28, 0.85);
+}
+.bp-track-cell.locked { opacity: 0.72; }
+.piece-wrap.piece-skin-ugly-cardboard .piece-svg { filter: sepia(0.75) saturate(0.45) brightness(0.84) contrast(0.85); }
+.piece-wrap.piece-skin-ugly-mud .piece-svg { filter: sepia(0.95) saturate(0.7) hue-rotate(-14deg) brightness(0.66) contrast(1.05); }
+.piece-wrap.piece-skin-ugly-rust .piece-svg { filter: sepia(0.85) saturate(1.1) hue-rotate(-24deg) brightness(0.78) contrast(0.92); }
+@media (max-width: 720px) {
+  .bp-tier-row { grid-template-columns: 1fr; }
+  .bp-tier-num-col { flex-direction: row; justify-content: space-between; padding: 6px 10px; }
+}

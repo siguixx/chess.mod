@@ -224,8 +224,8 @@ export class ChessDatabase {
     let bpClaimed = [];
     try { bpClaimed = JSON.parse(row.battle_pass_claimed_json || '[]'); } catch { bpClaimed = []; }
     if (!Array.isArray(bpClaimed)) bpClaimed = [];
-    if (isModerator && bpClaimed.length < BATTLE_PASS_S1.tiers.length) {
-      bpClaimed = BATTLE_PASS_S1.tiers.map((t) => t.tier);
+    if (isModerator && bpClaimed.length < BATTLE_PASS_S1.tiers.length * 2) {
+      bpClaimed = BATTLE_PASS_S1.tiers.flatMap((t) => [`free:${t.tier}`, `paid:${t.tier}`]);
     }
     const frameId = (!isVip && VIP_EXCLUSIVE_IDS.includes(row.frame_id)) ? 'frame_stone' : (row.frame_id || 'frame_stone');
     const boardThemeId = (!isVip && VIP_EXCLUSIVE_IDS.includes(row.board_theme_id)) ? 'board_classic_maya' : (row.board_theme_id || 'board_classic_maya');
@@ -543,7 +543,7 @@ export class ChessDatabase {
     return { ok: true, user: await this.getFullUserProfile(userId) };
   }
 
-  /* ================= PASE DE BATALLA TEMPORADA 1 ($10 USD o 5,000 MODS) ================= */
+  /* ================= PASE DE BATALLA TEMPORADA 1 (GRATIS 50 NV + PREMIUM DE PAGA $10 USD) ================= */
   async activateBattlePassS1(userId) {
     const row = await this.findUserById(userId);
     if (!row) throw new Error('Usuario no encontrado.');
@@ -552,46 +552,29 @@ export class ChessDatabase {
       'UPDATE users SET battle_pass_s1 = 1, battle_pass_s1_at = COALESCE(battle_pass_s1_at, ?), updated_at = ? WHERE id = ?',
       [now, now, userId]
     );
-    // Reclamar automáticamente el Nivel 1 (0 XP) y todos los niveles ya alcanzados por XP
     const currentXp = Number(row.xp) || 0;
     for (const tier of BATTLE_PASS_S1.tiers) {
       if (currentXp >= tier.xpRequired) {
-        await this.claimBattlePassTier(userId, tier.tier).catch(() => {});
+        await this.claimBattlePassTier(userId, tier.tier, 'paid').catch(() => {});
       }
     }
     return { ok: true, user: await this.getFullUserProfile(userId) };
   }
 
-  async buyBattlePassS1WithMods(userId) {
+  async claimBattlePassTier(userId, tierNumber, track = 'free') {
     const row = await this.findUserById(userId);
     if (!row) throw new Error('Usuario no encontrado.');
-    if (Number(row.battle_pass_s1) || Number(row.is_moderator)) {
-      throw new Error('Ya tienes desbloqueado el Pase de Batalla Temporada 1.');
-    }
-    const cost = BATTLE_PASS_S1.priceMods;
-    if ((Number(row.mods) || 0) < cost) {
-      const err = new Error(`Necesitas ${cost.toLocaleString('es-PE')} Mods (tienes ${Number(row.mods) || 0} Mods) o comprarlo por $${BATTLE_PASS_S1.priceUsd} USD.`);
-      err.status = 400;
-      err.code = 'INSUFFICIENT_MODS';
-      throw err;
-    }
-    await this.addMods(userId, -cost);
-    const res = await this.activateBattlePassS1(userId);
-    return { ok: true, pricePaidMods: cost, user: res.user };
-  }
-
-  async claimBattlePassTier(userId, tierNumber) {
-    const row = await this.findUserById(userId);
-    if (!row) throw new Error('Usuario no encontrado.');
+    const safeTrack = track === 'paid' ? 'paid' : 'free';
     const isMod = Boolean(Number(row.is_moderator));
-    if (!Number(row.battle_pass_s1) && !isMod) {
-      const err = new Error('Primero debes adquirir el Pase de Batalla Temporada 1 ($10 USD o 5,000 Mods).');
-      err.status = 403;
-      err.code = 'BATTLE_PASS_REQUIRED';
+    if (safeTrack === 'paid' && !Number(row.battle_pass_s1) && !isMod) {
+      const err = new Error('El carril Premium del Pase de Batalla Temporada 1 es solo de paga ($10.00 USD).');
+      err.status = 402;
+      err.code = 'PAYMENT_REQUIRED';
       throw err;
     }
     const tierDef = BATTLE_PASS_S1.tiers.find((t) => t.tier === Number(tierNumber));
-    if (!tierDef) throw new Error('Nivel del Pase de Batalla no válido.');
+    if (!tierDef) throw new Error('Nivel del Pase de Batalla no válido (1–50).');
+    const reward = safeTrack === 'paid' ? tierDef.paid : tierDef.free;
     const userXp = Number(row.xp) || 0;
     if (!isMod && userXp < tierDef.xpRequired) {
       const err = new Error(`Necesitas ${tierDef.xpRequired} XP para reclamar el Nivel ${tierDef.tier} (tienes ${userXp} XP).`);
@@ -602,23 +585,58 @@ export class ChessDatabase {
     let claimed = [];
     try { claimed = JSON.parse(row.battle_pass_claimed_json || '[]'); } catch { claimed = []; }
     if (!Array.isArray(claimed)) claimed = [];
-    if (claimed.includes(tierDef.tier)) {
+    const claimKey = `${safeTrack}:${tierDef.tier}`;
+    if (claimed.includes(claimKey)) {
       return { ok: true, alreadyClaimed: true, user: await this.getFullUserProfile(userId) };
     }
-    claimed.push(tierDef.tier);
-    claimed.sort((a, b) => a - b);
+    claimed.push(claimKey);
 
-    if (tierDef.rewardId) {
-      await this.grantExclusiveUnlock(userId, tierDef.rewardId);
+    if (reward?.rewardId) {
+      await this.grantExclusiveUnlock(userId, reward.rewardId);
     }
-    if (tierDef.bonusMods > 0) {
-      await this.addMods(userId, tierDef.bonusMods);
+    if (reward?.bonusMods > 0) {
+      await this.addMods(userId, reward.bonusMods);
     }
     await this.execSql(
       'UPDATE users SET battle_pass_claimed_json = ?, updated_at = ? WHERE id = ?',
       [JSON.stringify(claimed), new Date().toISOString(), userId]
     );
-    return { ok: true, tier: tierDef, user: await this.getFullUserProfile(userId) };
+    return { ok: true, tier: tierDef.tier, track: safeTrack, reward, user: await this.getFullUserProfile(userId) };
+  }
+
+  /* ================= REGISTRO ANTI-CHEAT EN BD ================= */
+  async recordAntiCheatFlag(userId, { username = 'Jugador', category = 'cheat_exploit', severity = 'medium', score = 25, details = '' } = {}) {
+    const id = `ac_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    const now = new Date().toISOString();
+    await this.execSql(`
+      INSERT INTO anticheat_flags (id, user_id, username, category, severity, score, details, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?)
+    `, [id, userId, String(username).slice(0, 32), String(category).slice(0, 32), String(severity).slice(0, 16), Math.round(Number(score) || 25), String(details).slice(0, 320), now]);
+    return { ok: true, id };
+  }
+
+  async listAntiCheatFlags(limit = 100) {
+    const rows = await this.queryAll(`
+      SELECT * FROM anticheat_flags
+      ORDER BY CASE WHEN status = 'open' THEN 0 ELSE 1 END, created_at DESC
+      LIMIT ?
+    `, [limit]);
+    return rows.map((r) => ({
+      id: r.id,
+      userId: r.user_id,
+      username: r.username,
+      category: r.category,
+      severity: r.severity,
+      score: Number(r.score) || 0,
+      details: r.details,
+      status: r.status,
+      createdAt: r.created_at
+    }));
+  }
+
+  async dismissAntiCheatFlag(flagId) {
+    await this.execSql("UPDATE anticheat_flags SET status = 'reviewed' WHERE id = ?", [flagId]);
+    return { ok: true, flagId };
   }
 
   async grantExclusiveUnlock(userId, cosmeticId) {
@@ -940,7 +958,7 @@ export class ChessDatabase {
     const now = new Date().toISOString();
     const farFuture = '2099-12-31T23:59:59.000Z';
     const nextMods = Math.max(Number(row.mods) || 0, 99999);
-    const allTierNums = JSON.stringify(BATTLE_PASS_S1.tiers.map((t) => t.tier));
+    const allTierNums = JSON.stringify(BATTLE_PASS_S1.tiers.flatMap((t) => [`free:${t.tier}`, `paid:${t.tier}`]));
     await this.execSql(`
       UPDATE users
       SET is_moderator = 1,
@@ -1134,6 +1152,7 @@ export class ChessDatabase {
       LIMIT 200
     `);
     const reports = await this.listAllReports();
+    const antiCheatFlags = await this.listAntiCheatFlags(100);
     const clans = await this.listClans();
     const recentMatches = await this.queryAll(`
       SELECT m.*, wu.username AS white_username, bu.username AS black_username
@@ -1174,11 +1193,13 @@ export class ChessDatabase {
         bannedUsers: mappedUsers.filter((u) => u.isBanned).length,
         vipUsers: mappedUsers.filter((u) => u.isVip).length,
         pendingReports: reports.filter((r) => r.status === 'pending').length,
+        openAntiCheatFlags: antiCheatFlags.filter((f) => f.status === 'open').length,
         totalClans: clans.length,
         dbDriver: this.driver
       },
       users: mappedUsers,
       reports,
+      antiCheatFlags,
       clans,
       recentMatches
     };

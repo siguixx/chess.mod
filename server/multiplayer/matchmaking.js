@@ -29,9 +29,10 @@ function generateRoomCode() {
 }
 
 export class MultiplayerManager {
-  constructor(io, db) {
+  constructor(io, db, antiCheat = null) {
     this.io = io;
     this.db = db;
+    this.antiCheat = antiCheat;
     this.queue = [];
     this.matches = new Map();
     this.socketToMatch = new Map();
@@ -339,7 +340,25 @@ export class MultiplayerManager {
 
         const capturedBefore = room.engine.board[tr]?.[tc] ? { ...room.engine.board[tr][tc] } : null;
         const result = room.engine.validateAndExecuteMove(fr, fc, tr, tc, promoType, true);
-        if (!result.ok) return socket.emit('match:error', { error: result.error });
+        if (!result.ok) {
+          if (this.antiCheat) {
+            const spam = this.antiCheat.recordIllegalAction(room.id, socket.userId, result.error);
+            if (spam) this.antiCheat.flagUser(socket.userId, socket.username, spam).catch(() => {});
+          }
+          return socket.emit('match:error', { error: result.error });
+        }
+
+        // Anti-Cheat en tiempo real: detectar velocidad inhumana o cadencia robótica de bots
+        if (this.antiCheat) {
+          const botFinding = this.antiCheat.recordOnlineMoveTiming(room.id, socket.userId);
+          if (botFinding) {
+            this.antiCheat.flagUser(socket.userId, socket.username, botFinding).then((acRes) => {
+              if (acRes.autoSuspended) {
+                this.disconnectUserById(socket.userId);
+              }
+            }).catch(() => {});
+          }
+        }
 
         if (capturedBefore) {
           applyMittensAssimilationIfActive(room.engine, room.powerState, expectedColor, fr, fc, capturedBefore);

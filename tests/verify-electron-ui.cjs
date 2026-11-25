@@ -180,7 +180,7 @@ app.whenReady().then(async () => {
       await wait(150);
       results.mittensLevels = [...document.querySelectorAll('#campaign-levels-container .campaign-level-card strong')].map(el => el.textContent.trim());
 
-      // Verificar Hombre Peón (Lv. 1): tiene intro al entrar y retrato NO tiene gato ni mittens_ref.png ni :3
+      // Verificar Hombre Peón (Lv. 1): tiene intro, retrato con IDs únicos (sin colisión con #app-shell.hidden!), SIN gato y SIN música de jefe
       document.querySelectorAll('#campaign-levels-container .campaign-level-card button')[0].click();
       await wait(350);
       results.hombrePeonIntroShown = document.getElementById('boss-intro-overlay').classList.contains('active');
@@ -188,6 +188,11 @@ app.whenReady().then(async () => {
       await wait(250);
       const pawnPortraitHtml = document.getElementById('boss-portrait-slot').innerHTML;
       results.hombrePeonHasNoCat = !pawnPortraitHtml.includes('mittens_ref.png') && !pawnPortraitHtml.includes('cat-ear') && !pawnPortraitHtml.includes(':3');
+      // Verificar que los gradientes del retrato tienen IDs únicos que NO colisionan con el menú oculto
+      const gradIdsInBattle = [...document.querySelectorAll('#boss-portrait-slot [id]')].map(el => el.id);
+      const anyDuplicateGradId = gradIdsInBattle.some(id => document.querySelectorAll('#' + CSS.escape(id)).length > 1);
+      results.portraitIdsUniqueNoHiddenCollision = gradIdsInBattle.length > 0 && !anyDuplicateGradId;
+      results.minibossNoMusicPlaying = [...document.querySelectorAll('audio')].every(a => a.paused);
       document.getElementById('btn-battle-back').click();
       await wait(150);
 
@@ -317,11 +322,18 @@ app.whenReady().then(async () => {
       results.rankingRows = document.querySelectorAll('#ranking-tbody tr').length;
       results.rankingFirstText = document.querySelector('#ranking-tbody tr')?.textContent.replace(/\\s+/g, ' ').trim() || '';
 
-      // 12. Verificar Pase de Batalla Temporada 1 (10 niveles, $10 USD / 5,000 Mods)
-      document.querySelector('[data-screen="battlepass"]').click();
+      // 12. Verificar Pase de Batalla (50 niveles Gratis + Paga $10) DENTRO de la Tienda + Inventario separado
+      document.querySelector('[data-screen="shop"]').click();
       await wait(200);
-      results.battlePassTiersRendered = document.querySelectorAll('#bp-tiers-grid .bp-tier-card').length;
-      results.battlePassHasBuyBtns = Boolean(document.getElementById('btn-bp-buy-mods') && document.getElementById('btn-bp-buy-usd'));
+      document.querySelector('#bp-range-pills [data-bp-range="all"]')?.click();
+      await wait(150);
+      results.battlePassTiersRendered = document.querySelectorAll('#bp-tiers-grid .bp-tier-row').length;
+      results.battlePassInsideShop = !document.getElementById('shop-battlepass-panel')?.classList.contains('hidden');
+      results.battlePassPaidOnlyUsdBtn = Boolean(document.getElementById('btn-bp-buy-usd')) && !document.getElementById('btn-bp-buy-mods');
+
+      document.querySelector('[data-screen="customize"]').click();
+      await wait(150);
+      results.inventoryScreenHasTabs = document.querySelectorAll('#inventory-tabs-bar [data-inv-tab]').length === 5;
 
       // 13. Verificar Tablero Colosal 12×12 (144 casillas jugables!)
       document.querySelector('[data-screen="play"]').click();

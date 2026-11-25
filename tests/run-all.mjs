@@ -1371,7 +1371,7 @@ try {
     })).json();
     assert.equal(modLogin.user.isModerator, true);
     assert.equal(modLogin.user.battlePassS1.owned, true, 'El Moderador debe tener el Pase de Batalla T1 ya desbloqueado');
-    assert.equal(modLogin.user.battlePassS1.claimedTiers.length, 10);
+    assert.equal(modLogin.user.battlePassS1.claimedTiers.length, 100, 'Moderador tiene los 50 niveles Gratis + 50 niveles Premium');
     const modHdrs = { Authorization: `Bearer ${modLogin.token}`, 'Content-Type': 'application/json' };
 
     // 3. Moderador puede expulsar por días (temp ban) y descontar Mods a otro jugador
@@ -1410,23 +1410,69 @@ try {
     await fetch(`${url}/api/mod/unban`, { method: 'POST', headers: modHdrs, body: JSON.stringify({ userId: targetReg.user.id }) });
     assert.equal((await fetch(`${url}/api/profile`, { headers: targetH })).status, 200);
 
-    // 4. Pase de Batalla Temporada 1 ($10 USD o 5,000 Mods): falla sin 5,000 Mods, funciona al tener 5,000 Mods
+    // 4. Pase de Batalla 50 niveles (Carril Gratuito gratis + Carril Premium SOLO DE PAGA $10 USD)
     assert.equal(BATTLE_PASS_S1.priceUsd, 10);
-    assert.equal(BATTLE_PASS_S1.priceMods, 5000);
-    const bpFail = await fetch(`${url}/api/battlepass/buy-mods`, { method: 'POST', headers: targetH, body: '{}' });
-    assert.equal(bpFail.status, 400);
-    assert.equal((await bpFail.json()).code, 'INSUFFICIENT_MODS');
+    assert.equal(BATTLE_PASS_S1.paidOnly, true);
+    assert.equal(BATTLE_PASS_S1.tiers.length, 50);
+    assert.equal(BATTLE_PASS_S1.tiers[49].free.rewardId, 'power_free_weak_shove', 'Nivel 50 gratuito da poder bajo Empujón Débil');
 
-    await fetch(`${url}/api/mod/adjust-mods`, {
-      method: 'POST',
-      headers: modHdrs,
-      body: JSON.stringify({ userId: targetReg.user.id, deltaMods: 5000, reason: 'Prueba Pase T1' })
+    // Reclamar Nivel 1 Gratuito funciona sin pagar
+    const claimFree1 = await fetch(`${url}/api/battlepass/claim`, {
+      method: 'POST', headers: targetH, body: JSON.stringify({ tier: 1, track: 'free' })
     });
-    const bpOk = await fetch(`${url}/api/battlepass/buy-mods`, { method: 'POST', headers: targetH, body: '{}' });
-    assert.equal(bpOk.status, 200);
-    const bpData = await bpOk.json();
-    assert.equal(bpData.user.battlePassS1.owned, true);
-    assert.equal(bpData.user.unlockedCosmetics.includes('frame_bp_s1_vanguard'), true, 'Tier 1 se desbloquea automáticamente al comprar Pase T1');
+    assert.equal(claimFree1.status, 200);
+
+    // Intentar reclamar Nivel 1 Premium sin pagar -> 402 PAYMENT_REQUIRED
+    const claimPaidBlocked = await fetch(`${url}/api/battlepass/claim`, {
+      method: 'POST', headers: targetH, body: JSON.stringify({ tier: 1, track: 'paid' })
+    });
+    assert.equal(claimPaidBlocked.status, 402);
+
+    // Intentar comprar Pase Premium con Mods -> 402 PAYMENT_REQUIRED (solo de paga $10)
+    const bpNoMods = await fetch(`${url}/api/battlepass/buy-mods`, { method: 'POST', headers: targetH, body: '{}' });
+    assert.equal(bpNoMods.status, 402);
+
+    // Webhook verificado de pago real $10 USD activa el Pase Premium
+    const bpPaidWh = await fetch(`${url}/api/battlepass/webhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-vip-billing-secret': 'test_vip_billing_secret_2026' },
+      body: JSON.stringify({ data: { object: { client_reference_id: targetReg.user.id } } })
+    });
+    assert.equal(bpPaidWh.status, 200);
+    const bpPaidData = await bpPaidWh.json();
+    assert.equal(bpPaidData.user.battlePassS1.owned, true);
+    assert.equal(bpPaidData.user.unlockedCosmetics.includes('frame_bp_s1_vanguard'), true);
+
+    // Probar poder bajo del Nivel 50 gratuito (Empujón Débil: solo empuja 1 Peón 1 casilla atrás)
+    const eShove = new ClassicChessEngine(10);
+    const psShove = createInitialPowerState();
+    const shoveDef = resolvePowerDef('power_free_weak_shove');
+    eShove.board[3][4] = { id: 'bP_shove', color: 'b', type: 'P' };
+    eShove.board[2][4] = null;
+    const shoveRes = executeBattlePowerAction(eShove, psShove, 'w', shoveDef, { tr: 3, tc: 4 });
+    assert.equal(shoveRes.ok, true);
+    assert.equal(eShove.board[2][4]?.id, 'bP_shove', 'Empujón Débil empuja al Peón rival 1 casilla atrás sin destruirlo');
+
+    // 4B. SISTEMA ANTI-CHEAT: bloquea aumentadores de dinero/Mods y detecta velocidad inhumana de bots
+    const moneyHack = await fetch(`${url}/api/game/report`, {
+      method: 'POST',
+      headers: targetH,
+      body: JSON.stringify({ mode: 'classic', opponentName: 'IA', winner: 'w', mods: 999999, xp: 999999 })
+    });
+    assert.equal(moneyHack.status, 403);
+    assert.equal((await moneyHack.json()).code, 'ANTICHEAT_BLOCKED');
+
+    // Bot speed detection (<160ms x 6)
+    let botAlert = null;
+    const baseTs = Date.now();
+    for (let i = 0; i < 8; i++) {
+      botAlert = server.antiCheat.recordOnlineMoveTiming('match_bot_test', targetReg.user.id, baseTs + i * 70);
+      if (botAlert) break;
+    }
+    assert.ok(botAlert && botAlert.category === 'bot_speed', 'Anti-Cheat detecta velocidad inhumana de bots (<160ms)');
+
+    const modOvCheck = await (await fetch(`${url}/api/mod/overview`, { headers: modHdrs })).json();
+    assert.ok(modOvCheck.antiCheatFlags.some((f) => f.category === 'money_hack' && f.userId === targetReg.user.id), 'Panel de Moderación muestra alertas Anti-Cheat');
 
     // 5. Poderes caros escalados (hasta 5,000 Mods) + ejecución real de Supernova y Omnipotencia
     const prices = COSMETIC_POWERS.filter((p) => p.priceMods > 0).map((p) => p.priceMods);

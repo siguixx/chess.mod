@@ -42,11 +42,10 @@
             <button class="nav-btn" data-screen="multiplayer"><span class="nav-ico">🌐</span><span data-i18n="nav_multiplayer">Multijugador</span></button>
             <button class="nav-btn" data-screen="story"><span class="nav-ico">📜</span><span data-i18n="nav_story">Modo Historia</span></button>
             <button class="nav-btn" data-screen="shop"><span class="nav-ico">🛒</span><span data-i18n="nav_shop">Tienda</span></button>
-            <button class="nav-btn" data-screen="battlepass"><span class="nav-ico">🎖️</span><span data-i18n="nav_battlepass">Pase T1</span></button>
+            <button class="nav-btn" data-screen="customize"><span class="nav-ico">🎒</span><span data-i18n="nav_customize">Inventario</span></button>
             <button class="nav-btn" data-screen="mods"><span class="nav-ico">🧩</span><span data-i18n="nav_mods">Taller de Mods</span></button>
             <button class="nav-btn" data-screen="social"><span class="nav-ico">👥</span><span data-i18n="nav_social">Social</span></button>
             <button class="nav-btn" data-screen="profile"><span class="nav-ico">👤</span><span data-i18n="nav_profile">Perfil</span></button>
-            <button class="nav-btn" data-screen="customize"><span class="nav-ico">🎨</span><span data-i18n="nav_customize">Personalización</span></button>
             <button class="nav-btn" data-screen="ranking"><span class="nav-ico">🏆</span><span data-i18n="nav_ranking">Ranking Global</span></button>
             <button class="nav-btn" data-screen="stats"><span class="nav-ico">📊</span><span data-i18n="nav_stats">Estadísticas</span></button>
             <button class="nav-btn" data-screen="settings"><span class="nav-ico">⚙️</span><span data-i18n="nav_settings">Configuración</span></button>
@@ -325,47 +324,51 @@
           </div>
         </div>
 
-        <!-- TABS DE TIENDA POR MODS -->
+        <!-- TABS DE TIENDA (INCLUYE PASE DE BATALLA DENTRO DE LA TIENDA; LO EQUIPABLE VA AL INVENTARIO) -->
         <div class="shop-tabs" id="shop-tabs-bar">
-          <button class="shop-tab-btn active" data-shop-tab="powers">⚡ Poderes OP</button>
-          <button class="shop-tab-btn" data-shop-tab="pieceSkins">♟️ Fichas & Texturas</button>
-          <button class="shop-tab-btn" data-shop-tab="boards">🏁 Tableros Texturizados</button>
+          <button class="shop-tab-btn active" data-shop-tab="battlepass">🎖️ Pase de Batalla T1 (50 Nv.)</button>
+          <button class="shop-tab-btn" data-shop-tab="powers">⚡ Poderes en Venta</button>
+          <button class="shop-tab-btn" data-shop-tab="pieceSkins">♟️ Fichas en Venta</button>
+          <button class="shop-tab-btn" data-shop-tab="boards">🏁 Tableros en Venta</button>
         </div>
 
-        <div id="shop-items-grid" class="shop-grid"></div>
-      </section>
-
-      <!-- 3B-2. PASE DE BATALLA TEMPORADA 1 ($10 USD o 5,000 MODS) -->
-      <section id="screen-battlepass" class="screen-section">
-        <div class="screen-header">
-          <div>
-            <div class="screen-kicker">TEMPORADA 1 · RECOMPENSAS EXCLUSIVAS</div>
-            <h1 class="screen-title">🎖️ PASE DE BATALLA — TEMPORADA 1</h1>
-            <p class="screen-subtitle">Desbloquea poderes míticos, skins de fichas, tableros exclusivos, marcos, avatar Emperador y +2,400 Mods extra. Usable en todos los modos menos en Modo Historia.</p>
-          </div>
-          <span id="bp-owned-badge" class="pill muted">Bloqueado</span>
-        </div>
-
-        <div class="panel-card bp-hero-card" style="margin-bottom:18px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;">
-            <div style="flex:1;min-width:240px;">
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-                <span class="pill" style="border-color:#38bdf8;color:#7dd3fc;">TEMPORADA 1</span>
-                <span class="pill">💵 $10 USD o 🪙 5,000 Mods</span>
+        <!-- PASE DE BATALLA TEMPORADA 1 DENTRO DE LA TIENDA (50 NIVELES: CARRILES GRATUITO + DE PAGA $10 USD) -->
+        <div id="shop-battlepass-panel">
+          <div class="panel-card bp-hero-card" style="margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;">
+              <div style="flex:1;min-width:240px;">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+                  <span class="pill" style="border-color:#38bdf8;color:#7dd3fc;">TEMPORADA 1 · 50 NIVELES</span>
+                  <span id="bp-owned-badge" class="pill muted">Carril Gratis Activo</span>
+                </div>
+                <h2 style="font-family:var(--font-display);color:#fff4c2;font-size:1.25rem;margin-bottom:4px;">🎖️ Pase de Batalla — Temporada 1</h2>
+                <p id="bp-progress-desc" style="font-size:0.8rem;color:#d6e4f0;line-height:1.45;">
+                  <strong>Carril Gratuito (50 niveles):</strong> pequeños Mods, skins rústicas, tableros básicos y un poder bajo (<em>Empujón Débil</em>) en el Nivel 50.<br>
+                  <strong>Carril de Paga ($10.00 USD):</strong> poderes míticos, skins premium, tableros exclusivos y miles de Mods. Usable en todo <strong>menos en Modo Historia</strong>.
+                </p>
+                <div class="xp-mini-track" style="height:9px;margin-top:10px;"><div id="bp-xp-bar" class="xp-mini-fill" style="background:linear-gradient(90deg,#38bdf8,#f472b6,#ffd859);"></div></div>
+                <div id="bp-xp-label" style="font-size:0.75rem;color:#7dd3fc;margin-top:4px;font-weight:700;">0 / 3,920 XP Temporada 1</div>
               </div>
-              <h2 style="font-family:var(--font-display);color:#fff4c2;font-size:1.3rem;margin-bottom:4px;">El Despertar del Chess</h2>
-              <p id="bp-progress-desc" style="font-size:0.82rem;color:#d6e4f0;line-height:1.45;">Gana XP jugando partidas para subir los 10 niveles del Pase de Batalla Temporada 1. Todas las recompensas aplican en Partida Rápida, Vs IA, Modos Caóticos, Online y Salas Privadas (nunca en Modo Historia).</p>
-              <div class="xp-mini-track" style="height:9px;margin-top:10px;"><div id="bp-xp-bar" class="xp-mini-fill" style="background:linear-gradient(90deg,#38bdf8,#f472b6,#ffd859);"></div></div>
-              <div id="bp-xp-label" style="font-size:0.75rem;color:#7dd3fc;margin-top:4px;font-weight:700;">0 / 2,400 XP Temporada 1</div>
-            </div>
-            <div id="bp-buy-actions" style="display:flex;flex-direction:column;gap:8px;min-width:220px;">
-              <button id="btn-bp-buy-mods" class="btn btn-gold">🪙 Desbloquear por 5,000 Mods</button>
-              <button id="btn-bp-buy-usd" class="btn btn-primary">💳 Comprar por $10.00 USD</button>
+              <div id="bp-buy-actions" style="display:flex;flex-direction:column;gap:8px;min-width:220px;">
+                <button id="btn-bp-buy-usd" class="btn btn-gold">💳 Comprar Pase Premium ($10.00 USD)</button>
+                <span style="font-size:0.71rem;color:var(--text-muted);text-align:center;">Pase de Paga exclusivo ($10 USD) · Carril Gratis siempre disponible</span>
+              </div>
             </div>
           </div>
+
+          <div id="bp-range-pills" class="time-pills" style="margin-bottom:12px;flex-wrap:wrap;gap:6px;">
+            <button class="time-opt active" data-bp-range="1-10">Nv. 1–10</button>
+            <button class="time-opt" data-bp-range="11-20">Nv. 11–20</button>
+            <button class="time-opt" data-bp-range="21-30">Nv. 21–30</button>
+            <button class="time-opt" data-bp-range="31-40">Nv. 31–40</button>
+            <button class="time-opt" data-bp-range="41-50">Nv. 41–50</button>
+            <button class="time-opt" data-bp-range="all">Todos (50)</button>
+          </div>
+
+          <div id="bp-tiers-grid" class="bp-dual-list"></div>
         </div>
 
-        <div id="bp-tiers-grid" class="bp-tiers-grid"></div>
+        <div id="shop-items-grid" class="shop-grid hidden"></div>
       </section>
 
       <!-- 3C. TALLER DE MODS (CÓDIGO ABIERTO · SOLO SALAS PRIVADAS) -->
@@ -532,6 +535,11 @@
 
         <div id="mod-stats-grid" class="stats-cards-4"></div>
 
+        <div class="panel-card" style="margin-bottom:16px;border-color:rgba(245,158,11,0.55);">
+          <h3 style="font-family:var(--font-display);color:#ffd859;margin-bottom:10px;">🛡️ Alertas Automáticas Anti-Cheat (Bots, Trampas y Hacks de Dinero/Mods)</h3>
+          <div id="mod-anticheat-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+        </div>
+
         <div class="panel-card" style="margin-bottom:16px;">
           <h3 style="font-family:var(--font-display);color:#ff9b90;margin-bottom:10px;">🚨 Reportes de Hacks y Cheats</h3>
           <div id="mod-reports-list" style="display:flex;flex-direction:column;gap:8px;"></div>
@@ -676,35 +684,45 @@
         </div>
       </section>
 
-      <!-- 5. PERSONALIZACIÓN -->
+      <!-- 5. INVENTARIO EQUIPABLE (PODERES, FICHAS, TABLEROS, AVATARES Y MARCOS) -->
       <section id="screen-customize" class="screen-section">
         <div class="screen-header">
           <div>
-            <div class="screen-kicker">DESBLOQUEABLES POR NIVEL Y LOGROS</div>
-            <h1 class="screen-title">PERSONALIZACIÓN</h1>
-            <p class="screen-subtitle">Sube de nivel o derrota a CHESS para desbloquear avatares, marcos exclusivos y estilos de tablero.</p>
+            <div class="screen-kicker">TU EQUIPAMIENTO · PODERES, FICHAS, TABLEROS Y COSMÉTICOS</div>
+            <h1 class="screen-title">🎒 INVENTARIO</h1>
+            <p class="screen-subtitle">Equipa aquí todo lo que has obtenido en la Tienda, Pase de Batalla, Jefes y Niveles. <strong>Aplica en todos los modos excepto Modo Historia.</strong></p>
           </div>
         </div>
 
-        <div class="panel-card" style="margin-bottom:16px;">
-          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;">Avatares</h3>
-          <div id="cosmetics-avatars-grid" class="cosmetics-grid"></div>
+        <div id="inventory-loadout-summary" class="panel-card" style="margin-bottom:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;"></div>
+
+        <div class="shop-tabs" id="inventory-tabs-bar" style="margin-bottom:14px;">
+          <button class="shop-tab-btn active" data-inv-tab="powers">⚡ Poderes</button>
+          <button class="shop-tab-btn" data-inv-tab="pieceSkins">♟️ Fichas</button>
+          <button class="shop-tab-btn" data-inv-tab="boards">🗺️ Tableros</button>
+          <button class="shop-tab-btn" data-inv-tab="avatars">👤 Avatares</button>
+          <button class="shop-tab-btn" data-inv-tab="frames">🖼️ Marcos</button>
         </div>
-        <div class="panel-card" style="margin-bottom:16px;">
-          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;">Marcos de Retrato</h3>
-          <div id="cosmetics-frames-grid" class="cosmetics-grid"></div>
+
+        <div id="inv-panel-powers" class="panel-card inv-tab-panel">
+          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:8px;">⚡ Mis Poderes Equipables</h3>
+          <div id="cosmetics-powers-grid" class="cosmetics-grid"></div>
         </div>
-        <div class="panel-card" style="margin-bottom:16px;">
-          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;">Estilos de Tablero</h3>
-          <div id="cosmetics-boards-grid" class="cosmetics-grid"></div>
-        </div>
-        <div class="panel-card" style="margin-bottom:16px;">
-          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;">Fichas (Skins y Sonidos)</h3>
+        <div id="inv-panel-pieceSkins" class="panel-card inv-tab-panel hidden">
+          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:8px;">♟️ Mis Skins de Fichas</h3>
           <div id="cosmetics-pieces-grid" class="cosmetics-grid"></div>
         </div>
-        <div class="panel-card">
-          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;">Poder Equipado en Batalla</h3>
-          <div id="cosmetics-powers-grid" class="cosmetics-grid"></div>
+        <div id="inv-panel-boards" class="panel-card inv-tab-panel hidden">
+          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:8px;">🗺️ Mis Tableros</h3>
+          <div id="cosmetics-boards-grid" class="cosmetics-grid"></div>
+        </div>
+        <div id="inv-panel-avatars" class="panel-card inv-tab-panel hidden">
+          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:8px;">👤 Mis Avatares</h3>
+          <div id="cosmetics-avatars-grid" class="cosmetics-grid"></div>
+        </div>
+        <div id="inv-panel-frames" class="panel-card inv-tab-panel hidden">
+          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:8px;">🖼️ Mis Marcos de Retrato</h3>
+          <div id="cosmetics-frames-grid" class="cosmetics-grid"></div>
         </div>
       </section>
 

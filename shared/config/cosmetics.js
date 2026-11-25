@@ -21,30 +21,62 @@ export const VIP_EXCLUSIVE_IDS = [
   'power_vip_golden_freeze'
 ];
 
+function buildBattlePassS1Tiers() {
+  const freeSpecials = {
+    5: { rewardType: 'cosmetic', rewardId: 'pieces_free_cardboard', bonusMods: 0, title: 'Fichas Cartón Mojado (Gratis)', icon: '📦' },
+    12: { rewardType: 'cosmetic', rewardId: 'board_free_cardboard', bonusMods: 0, title: 'Tablero Cartón Gris (Gratis)', icon: '📦' },
+    20: { rewardType: 'cosmetic', rewardId: 'pieces_free_mud', bonusMods: 0, title: 'Fichas Barro Seco (Gratis)', icon: '🪨' },
+    28: { rewardType: 'cosmetic', rewardId: 'board_free_dirt', bonusMods: 0, title: 'Tablero Tierra Suelta (Gratis)', icon: '🟫' },
+    36: { rewardType: 'cosmetic', rewardId: 'pieces_free_rust', bonusMods: 0, title: 'Fichas Plástico Oxidado (Gratis)', icon: '🔩' },
+    42: { rewardType: 'cosmetic', rewardId: 'board_free_old_slate', bonusMods: 0, title: 'Tablero Pizarra Vieja (Gratis)', icon: '🧱' },
+    50: { rewardType: 'cosmetic', rewardId: 'power_free_weak_shove', bonusMods: 25, title: 'Poder Bajo: Empujón Débil + 25 Mods', icon: '💨' }
+  };
+  const paidSpecials = {
+    1: { rewardType: 'cosmetic', rewardId: 'frame_bp_s1_vanguard', bonusMods: 250, title: 'Marco Vanguardia T1 + 250 Mods', icon: '🎖️' },
+    5: { rewardType: 'cosmetic', rewardId: 'pieces_bp_diamond', bonusMods: 0, title: 'Fichas Diamante Astral (T1)', icon: '💎' },
+    10: { rewardType: 'cosmetic', rewardId: 'board_bp_white_gold', bonusMods: 0, title: 'Tablero Templo de Oro Blanco (T1)', icon: '🏛️' },
+    15: { rewardType: 'mods', rewardId: null, bonusMods: 350, title: '+350 Mods Premium', icon: '🪙' },
+    20: { rewardType: 'cosmetic', rewardId: 'preset:bp_s1_emperor', bonusMods: 200, title: 'Avatar Emperador T1 + 200 Mods', icon: '👑' },
+    25: { rewardType: 'cosmetic', rewardId: 'power_bp_thunder', bonusMods: 0, title: 'Poder T1: Relámpago en Cadena', icon: '🌩️' },
+    30: { rewardType: 'cosmetic', rewardId: 'pieces_bp_crimson_plasma', bonusMods: 0, title: 'Fichas Plasma Carmesí (T1)', icon: '🔥' },
+    35: { rewardType: 'cosmetic', rewardId: 'board_bp_royal_nebula', bonusMods: 0, title: 'Tablero Nebulosa Real (T1)', icon: '🌌' },
+    40: { rewardType: 'cosmetic', rewardId: 'frame_bp_s1_crown', bonusMods: 500, title: 'Marco Corona Suprema T1 + 500 Mods', icon: '✨' },
+    45: { rewardType: 'cosmetic', rewardId: 'board_bp_singularity', bonusMods: 0, title: 'Tablero Trono de la Singularidad (T1)', icon: '🕳️' },
+    50: { rewardType: 'cosmetic', rewardId: 'power_bp_void_judgment', bonusMods: 1000, title: 'Poder Mítico T1: Juicio del Vacío + 1,000 Mods', icon: '☄️' }
+  };
+
+  const tiers = [];
+  for (let i = 1; i <= 50; i++) {
+    const xpRequired = (i - 1) * 80;
+    const freeMods = i % 5 === 0 ? 20 : (i % 2 === 0 ? 10 : 5);
+    const paidMods = i % 5 === 0 ? 180 : 80;
+    tiers.push({
+      tier: i,
+      xpRequired,
+      free: freeSpecials[i] || { rewardType: 'mods', rewardId: null, bonusMods: freeMods, title: `+${freeMods} Mods`, icon: '🪙' },
+      paid: paidSpecials[i] || { rewardType: 'mods', rewardId: null, bonusMods: paidMods, title: `+${paidMods} Mods Premium`, icon: '💰' }
+    });
+  }
+  return tiers;
+}
+
 export const BATTLE_PASS_S1 = {
   id: 'battle_pass_s1',
   season: 1,
   name: 'Pase de Batalla — Temporada 1',
-  subtitle: 'El Despertar del Chess · Poderes, Skins y Tableros Exclusivos (usable en todos los modos menos Modo Historia)',
+  subtitle: '50 Niveles · Carril Gratuito (skins rústicas, pocos Mods y poder bajo en Nv. 50) + Carril Premium de Paga ($10 USD). Usable en todos los modos menos Modo Historia.',
   priceUsd: 10,
-  priceMods: 5000,
+  paidOnly: true,
+  requiresRealPayment: true,
   currency: 'USD',
-  priceLabel: '$10 USD o 5,000 Mods',
-  tiers: [
-    { tier: 1, xpRequired: 0, rewardType: 'cosmetic', rewardId: 'frame_bp_s1_vanguard', bonusMods: 250, title: 'Marco Vanguardia T1 + 250 Mods', icon: '🎖️' },
-    { tier: 2, xpRequired: 150, rewardType: 'cosmetic', rewardId: 'pieces_bp_diamond', bonusMods: 0, title: 'Fichas Diamante Astral (T1)', icon: '💎' },
-    { tier: 3, xpRequired: 320, rewardType: 'cosmetic', rewardId: 'board_bp_white_gold', bonusMods: 0, title: 'Tablero Templo de Oro Blanco (T1)', icon: '🏛️' },
-    { tier: 4, xpRequired: 520, rewardType: 'cosmetic', rewardId: 'power_bp_thunder', bonusMods: 0, title: 'Poder T1: Relámpago en Cadena', icon: '🌩️' },
-    { tier: 5, xpRequired: 780, rewardType: 'cosmetic', rewardId: 'preset:bp_s1_emperor', bonusMods: 400, title: 'Avatar Emperador T1 + 400 Mods', icon: '👑' },
-    { tier: 6, xpRequired: 1050, rewardType: 'cosmetic', rewardId: 'pieces_bp_crimson_plasma', bonusMods: 0, title: 'Fichas Plasma Carmesí (T1)', icon: '🔥' },
-    { tier: 7, xpRequired: 1350, rewardType: 'cosmetic', rewardId: 'board_bp_royal_nebula', bonusMods: 0, title: 'Tablero Nebulosa Real (T1)', icon: '🌌' },
-    { tier: 8, xpRequired: 1700, rewardType: 'cosmetic', rewardId: 'frame_bp_s1_crown', bonusMods: 750, title: 'Marco Corona Suprema T1 + 750 Mods', icon: '✨' },
-    { tier: 9, xpRequired: 2050, rewardType: 'cosmetic', rewardId: 'board_bp_singularity', bonusMods: 0, title: 'Tablero Trono de la Singularidad (T1)', icon: '🕳️' },
-    { tier: 10, xpRequired: 2400, rewardType: 'cosmetic', rewardId: 'power_bp_void_judgment', bonusMods: 1000, title: 'Poder Mítico T1: Juicio del Vacío + 1,000 Mods', icon: '☄️' }
-  ]
+  priceLabel: '$10.00 USD (Solo de Paga)',
+  maxTier: 50,
+  tiers: buildBattlePassS1Tiers()
 };
 
-export const BATTLE_PASS_S1_IDS = BATTLE_PASS_S1.tiers.map((t) => t.rewardId);
+export const BATTLE_PASS_S1_IDS = BATTLE_PASS_S1.tiers
+  .flatMap((t) => [t.free?.rewardId, t.paid?.rewardId])
+  .filter(Boolean);
 
 export const COSMETIC_AVATARS = [
   { id: 'preset:obsidian_king', name: 'Rey de Obsidiana', minLevel: 1, category: 'avatar' },
@@ -260,6 +292,48 @@ export const COSMETIC_BOARDS = [
     pedestal: 'linear-gradient(145deg, #fb7185 0%, #0a060d 50%, #38bdf8 100%)',
     textureClass: 'texture-void',
     category: 'board'
+  },
+  {
+    id: 'board_free_cardboard',
+    name: 'Cartón Gris (Pase Gratis Nv. 12)',
+    description: 'Tablero rústico de cartón doblado del Pase Gratuito.',
+    minLevel: 99,
+    battlePassSeason: 1,
+    freePass: true,
+    exclusiveReason: 'Pase Gratuito T1 (Nivel 12)',
+    light: '#b8b0a0',
+    dark: '#7d7567',
+    pedestal: 'linear-gradient(145deg, #696256 0%, #2c2924 100%)',
+    textureClass: 'texture-stone',
+    category: 'board'
+  },
+  {
+    id: 'board_free_dirt',
+    name: 'Tierra Suelta (Pase Gratis Nv. 28)',
+    description: 'Casillas opacas de tierra seca y grava del Pase Gratuito.',
+    minLevel: 99,
+    battlePassSeason: 1,
+    freePass: true,
+    exclusiveReason: 'Pase Gratuito T1 (Nivel 28)',
+    light: '#b59d82',
+    dark: '#634d3a',
+    pedestal: 'linear-gradient(145deg, #544030 0%, #211912 100%)',
+    textureClass: 'texture-stone',
+    category: 'board'
+  },
+  {
+    id: 'board_free_old_slate',
+    name: 'Pizarra Vieja (Pase Gratis Nv. 42)',
+    description: 'Pizarra gastada y rayada del Pase Gratuito.',
+    minLevel: 99,
+    battlePassSeason: 1,
+    freePass: true,
+    exclusiveReason: 'Pase Gratuito T1 (Nivel 42)',
+    light: '#9ea3a6',
+    dark: '#4d5257',
+    pedestal: 'linear-gradient(145deg, #43484c 0%, #191b1d 100%)',
+    textureClass: 'texture-slate',
+    category: 'board'
   }
 ];
 
@@ -375,6 +449,45 @@ export const COSMETIC_PIECE_SKINS = [
     sfxProfile: 'magma',
     cssClass: 'piece-skin-magma',
     accent: '#fb7185',
+    category: 'piece_skin'
+  },
+  {
+    id: 'pieces_free_cardboard',
+    name: 'Cartón Mojado (Pase Gratis Nv. 5)',
+    description: 'Skin rústica y opaca de cartón reciclado del Pase Gratuito.',
+    minLevel: 99,
+    battlePassSeason: 1,
+    freePass: true,
+    exclusiveReason: 'Pase Gratuito T1 (Nivel 5)',
+    sfxProfile: 'classic',
+    cssClass: 'piece-skin-ugly-cardboard',
+    accent: '#9c927e',
+    category: 'piece_skin'
+  },
+  {
+    id: 'pieces_free_mud',
+    name: 'Barro Seco (Pase Gratis Nv. 20)',
+    description: 'Skin fea de barro cuarteado del Pase Gratuito.',
+    minLevel: 99,
+    battlePassSeason: 1,
+    freePass: true,
+    exclusiveReason: 'Pase Gratuito T1 (Nivel 20)',
+    sfxProfile: 'classic',
+    cssClass: 'piece-skin-ugly-mud',
+    accent: '#7a5c43',
+    category: 'piece_skin'
+  },
+  {
+    id: 'pieces_free_rust',
+    name: 'Plástico Oxidado (Pase Gratis Nv. 36)',
+    description: 'Skin despintada y oxidada del Pase Gratuito.',
+    minLevel: 99,
+    battlePassSeason: 1,
+    freePass: true,
+    exclusiveReason: 'Pase Gratuito T1 (Nivel 36)',
+    sfxProfile: 'classic',
+    cssClass: 'piece-skin-ugly-rust',
+    accent: '#8a624a',
     category: 'piece_skin'
   }
 ];
@@ -560,6 +673,22 @@ export const COSMETIC_POWERS = [
     sfxType: 'blackySeal',
     color: '#fb7185',
     icon: '☄️',
+    category: 'power'
+  },
+  {
+    id: 'power_free_weak_shove',
+    name: 'Empujón Débil (Pase Gratis Nv. 50)',
+    description: 'Poder Bajo Gratuito (CD 5t): Empuja 1 casilla hacia atrás a un Peón enemigo cercano si la casilla detrás está libre (no destruye ni afecta piezas mayores).',
+    minLevel: 99,
+    priceMods: 0,
+    battlePassSeason: 1,
+    freePass: true,
+    exclusiveReason: 'Pase Gratuito T1 (Nivel 50)',
+    cooldown: 5,
+    effect: 'power_free_weak_shove',
+    sfxType: 'push',
+    color: '#9ca3af',
+    icon: '💨',
     category: 'power'
   },
   {

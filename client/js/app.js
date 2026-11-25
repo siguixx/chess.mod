@@ -118,7 +118,9 @@ class ChessModApp {
     this.googleOAuthConfigured = false;
     this.activeScreen = 'play';
     this.activeCampaignTab = 'maya';
-    this.activeShopTab = 'powers';
+    this.activeShopTab = 'battlepass';
+    this.activeBpRange = '1-10';
+    this.activeInvTab = 'powers';
     this.activeSocialTab = 'clans';
     this.vipBillingStatus = { billingConfigured: false };
     this.savedMods = this.loadSavedMods();
@@ -519,26 +521,18 @@ class ChessModApp {
       }
     });
 
-    // === 3B-2. PASE DE BATALLA TEMPORADA 1 ($10 USD o 5,000 MODS) ===
-    on('btn-bp-buy-mods', 'click', async () => {
-      if (!this.user) {
-        this.openAuthModal('register');
-        showToast('Crea tu cuenta o inicia sesión para comprar el Pase de Batalla Temporada 1.', 'info');
-        return;
-      }
-      try {
-        const res = await api.buyBattlePassMods();
-        this.sound.play('vip_activate');
-        this.setUser(res.user);
-        showToast('🎖️ ¡Pase de Batalla Temporada 1 desbloqueado por 5,000 Mods!', 'success');
-      } catch (err) {
-        showToast(err.message, 'error');
-      }
+    // === 3B-2. PASE DE BATALLA TEMPORADA 1 DENTRO DE LA TIENDA (50 NV GRATIS + PAGA $10 USD) ===
+    document.querySelectorAll('#bp-range-pills [data-bp-range]').forEach((b) => {
+      b.addEventListener('click', () => {
+        this.activeBpRange = b.dataset.bpRange;
+        document.querySelectorAll('#bp-range-pills [data-bp-range]').forEach((x) => x.classList.toggle('active', x === b));
+        this.renderBattlePassScreen();
+      });
     });
     on('btn-bp-buy-usd', 'click', async () => {
       if (!this.user) {
         this.openAuthModal('register');
-        showToast('Inicia sesión para adquirir el Pase de Batalla Temporada 1 ($10 USD).', 'info');
+        showToast('Inicia sesión para comprar el Pase de Batalla Premium ($10.00 USD).', 'info');
         return;
       }
       try {
@@ -550,6 +544,15 @@ class ChessModApp {
       } catch (err) {
         showToast(err.message, 'error');
       }
+    });
+
+    // === 5. INVENTARIO EQUIPABLE (TABS) ===
+    document.querySelectorAll('#inventory-tabs-bar [data-inv-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.activeInvTab = btn.dataset.invTab;
+        document.querySelectorAll('#inventory-tabs-bar [data-inv-tab]').forEach((b) => b.classList.toggle('active', b === btn));
+        document.querySelectorAll('.inv-tab-panel').forEach((p) => p.classList.toggle('hidden', p.id !== `inv-panel-${this.activeInvTab}`));
+      });
     });
 
     // === 2B. SALAS PRIVADAS CON MODS ===
@@ -1470,19 +1473,30 @@ class ChessModApp {
     if (btnSub) btnSub.textContent = isVip ? '👑 Renovar Mod VIP (+30 días · $5 USD)' : '👑 Suscribirse a Mod VIP ($5 USD / mes)';
     if (btnCancel) btnCancel.classList.toggle('hidden', !isVip);
 
+    const bpPanel = document.getElementById('shop-battlepass-panel');
     const grid = document.getElementById('shop-items-grid');
     if (!grid) return;
 
-    const tab = this.activeShopTab || 'powers';
+    const tab = this.activeShopTab || 'battlepass';
+    if (bpPanel) bpPanel.classList.toggle('hidden', tab !== 'battlepass');
+    grid.classList.toggle('hidden', tab === 'battlepass');
+    if (tab === 'battlepass') {
+      this.renderBattlePassScreen();
+      return;
+    }
+
+    // En la Tienda SOLO aparecen artículos a la venta (Mods o Mod VIP), NO artículos exclusivos de Jefes/Pase/Gratis
     let items = [];
-    if (tab === 'powers') items = COSMETIC_POWERS.filter((it) => !it.hiddenUntilUnlocked || unlocked.has(it.id) || u?.isModerator);
-    else if (tab === 'pieceSkins') items = COSMETIC_PIECE_SKINS;
-    else items = COSMETIC_BOARDS;
+    if (tab === 'powers') {
+      items = COSMETIC_POWERS.filter((it) => !it.bossUnlock && !it.battlePassSeason && (it.priceMods > 0 || it.vipOnly));
+    } else if (tab === 'pieceSkins') {
+      items = COSMETIC_PIECE_SKINS.filter((it) => !it.battlePassSeason && (it.priceMods > 0 || it.vipOnly));
+    } else {
+      items = COSMETIC_BOARDS.filter((it) => !it.battlePassSeason && (it.priceMods > 0 || it.vipOnly));
+    }
 
     grid.innerHTML = items.map((item) => {
-      const isOwned = item.vipOnly
-        ? isVip
-        : ((item.bossUnlock || item.battlePassSeason) ? unlocked.has(item.id) : (unlocked.has(item.id) || (item.minLevel && level >= item.minLevel) || item.priceMods === 0));
+      const isOwned = item.vipOnly ? isVip : unlocked.has(item.id);
       const isEquipped = (tab === 'powers' && (u?.equippedPowerId || 'power_none') === item.id)
         || (tab === 'pieceSkins' && (u?.pieceSkinId || 'pieces_classic') === item.id)
         || (tab === 'boards' && (u?.boardThemeId || 'board_classic_maya') === item.id);
@@ -1502,25 +1516,17 @@ class ChessModApp {
 
       const pricePill = item.vipOnly
         ? `<span class="vip-tag">👑 Mod VIP ($5/m)</span>`
-        : (item.battlePassSeason && !isOwned
-          ? `<span class="pill" style="border-color:#38bdf8;color:#7dd3fc;">🎖️ Pase T1</span>`
-          : (item.bossUnlock && !isOwned
-            ? `<span class="pill crimson">⛓️ Recompensa Jefe</span>`
-            : (isOwned
-              ? `<span class="pill jade">✓ En inventario</span>`
-              : `<span class="pill">🪙 ${(item.priceMods || 0).toLocaleString('es-PE')} Mods</span>`)));
+        : (isOwned
+          ? `<span class="pill jade">✓ En tu Inventario</span>`
+          : `<span class="pill">🪙 ${(item.priceMods || 0).toLocaleString('es-PE')} Mods</span>`);
 
       let actionBtn = '';
       if (isEquipped) {
-        actionBtn = `<button class="btn btn-sm btn-gold" disabled>✓ Equipado</button>`;
+        actionBtn = `<button class="btn btn-sm btn-gold" data-goto-inv="${tab}">🎒 Equipado (Ver Inventario)</button>`;
       } else if (isOwned) {
-        actionBtn = `<button class="btn btn-sm btn-primary" data-shop-equip="${item.id}" data-shop-cat="${tab}">Equipar</button>`;
+        actionBtn = `<button class="btn btn-sm btn-primary" data-goto-inv="${tab}">🎒 Equipar en Inventario</button>`;
       } else if (item.vipOnly) {
         actionBtn = `<button class="btn btn-sm btn-gold" data-open-vip="1">👑 Obtener Mod VIP ($5)</button>`;
-      } else if (item.battlePassSeason) {
-        actionBtn = `<button class="btn btn-sm btn-primary" data-goto-bp="1">🎖️ Ver en Pase T1</button>`;
-      } else if (item.bossUnlock) {
-        actionBtn = `<button class="btn btn-sm" data-goto-story="1">📜 Derrota a Free Mittens</button>`;
       } else {
         const canAfford = !u || mods >= (item.priceMods || 0);
         actionBtn = `<button class="btn btn-sm btn-gold" data-shop-buy="${item.id}" ${!canAfford ? 'title="Gana más Mods jugando partidas"' : ''}>🪙 Comprar (${(item.priceMods || 0).toLocaleString('es-PE')})</button>`;
@@ -1550,20 +1556,15 @@ class ChessModApp {
     grid.querySelectorAll('[data-shop-buy]').forEach((b) => {
       b.addEventListener('click', () => this.buyShopItem(b.dataset.shopBuy));
     });
-    grid.querySelectorAll('[data-shop-equip]').forEach((b) => {
+    grid.querySelectorAll('[data-goto-inv]').forEach((b) => {
       b.addEventListener('click', () => {
-        const cat = b.dataset.shopCat;
-        const id = b.dataset.shopEquip;
-        if (cat === 'powers') this.equipCosmetic({ equippedPowerId: id });
-        else if (cat === 'pieceSkins') this.equipCosmetic({ pieceSkinId: id });
-        else this.equipCosmetic({ boardThemeId: id });
+        this.activeInvTab = b.dataset.gotoInv || 'powers';
+        this.switchScreen('customize');
+        document.querySelector(`#inventory-tabs-bar [data-inv-tab="${this.activeInvTab}"]`)?.click();
       });
     });
     grid.querySelectorAll('[data-open-vip]').forEach((b) => {
       b.addEventListener('click', () => document.getElementById('btn-vip-open-modal')?.click());
-    });
-    grid.querySelectorAll('[data-goto-bp]').forEach((b) => {
-      b.addEventListener('click', () => this.switchScreen('battlepass'));
     });
     grid.querySelectorAll('[data-goto-story]').forEach((b) => {
       b.addEventListener('click', () => {
@@ -1590,74 +1591,94 @@ class ChessModApp {
   renderBattlePassScreen() {
     const u = this.user;
     const bp = u?.battlePassS1 || { owned: false, xp: 0, claimedTiers: [] };
-    const owned = Boolean(bp.owned || u?.isModerator);
+    const ownedPaid = Boolean(bp.owned || u?.isModerator);
     const xp = Number(u?.xp || 0);
-    const maxXp = BATTLE_PASS_S1.tiers[BATTLE_PASS_S1.tiers.length - 1]?.xpRequired || 2400;
+    const maxXp = BATTLE_PASS_S1.tiers[BATTLE_PASS_S1.tiers.length - 1]?.xpRequired || 3920;
     const pct = Math.min(100, Math.round((xp / maxXp) * 100));
     const claimedSet = new Set(bp.claimedTiers || []);
 
     const badge = document.getElementById('bp-owned-badge');
     if (badge) {
-      badge.textContent = owned ? '✓ TEMPORADA 1 DESBLOQUEADA' : '🔒 $10 USD o 5,000 Mods';
-      badge.className = `pill ${owned ? 'jade' : 'muted'}`;
+      badge.textContent = ownedPaid ? '✓ PASE PREMIUM ACTIVO + GRATIS' : '🆓 Carril Gratis · Premium $10 USD';
+      badge.className = `pill ${ownedPaid ? 'jade' : 'muted'}`;
     }
     const bar = document.getElementById('bp-xp-bar');
-    if (bar) bar.style.width = `${owned && u?.isModerator ? 100 : pct}%`;
+    if (bar) bar.style.width = `${u?.isModerator ? 100 : pct}%`;
     const lbl = document.getElementById('bp-xp-label');
     if (lbl) lbl.textContent = u?.isModerator
-      ? `👑 Moderador: TODOS los 10 niveles de la Temporada 1 desbloqueados`
-      : `${xp.toLocaleString('es-PE')} / ${maxXp.toLocaleString('es-PE')} XP Temporada 1 (${claimedSet.size}/10 reclamados)`;
+      ? '👑 Moderador: TODOS los 50 niveles (Gratis + Premium) desbloqueados'
+      : `${xp.toLocaleString('es-PE')} / ${maxXp.toLocaleString('es-PE')} XP · Nivel actual: ${Math.min(50, Math.floor(xp / 80) + 1)} / 50`;
 
     const buyBox = document.getElementById('bp-buy-actions');
-    if (buyBox) buyBox.classList.toggle('hidden', owned);
+    if (buyBox) buyBox.classList.toggle('hidden', ownedPaid);
 
     const grid = document.getElementById('bp-tiers-grid');
     if (!grid) return;
 
-    grid.innerHTML = BATTLE_PASS_S1.tiers.map((tier) => {
-      const isClaimed = claimedSet.has(tier.tier) || Boolean(u?.isModerator);
-      const canClaim = owned && !isClaimed && xp >= tier.xpRequired;
-      const cls = isClaimed ? 'claimed' : (canClaim ? 'unlocked' : 'locked');
+    const range = this.activeBpRange || '1-10';
+    let list = BATTLE_PASS_S1.tiers;
+    if (range !== 'all') {
+      const [lo, hi] = range.split('-').map((n) => parseInt(n, 10));
+      list = list.filter((t) => t.tier >= lo && t.tier <= hi);
+    }
 
+    const renderCell = (tier, track, data) => {
+      const isPaid = track === 'paid';
+      const isClaimed = claimedSet.has(`${track}:${tier.tier}`) || Boolean(u?.isModerator);
+      const canClaim = Boolean(u) && !isClaimed && (xp >= tier.xpRequired) && (!isPaid || ownedPaid);
+      const cls = isClaimed ? 'claimed' : (canClaim ? 'unlocked' : 'locked');
       let btnHtml = '';
       if (isClaimed) {
-        btnHtml = `<button class="btn btn-sm btn-primary" data-bp-equip-screen="1">✓ Desbloqueado · Equipar</button>`;
+        btnHtml = data.rewardId
+          ? `<button class="btn btn-sm btn-primary" data-bp-goto-inv="1">✓ En Inventario</button>`
+          : `<button class="btn btn-sm" disabled>✓ Reclamado</button>`;
       } else if (canClaim) {
-        btnHtml = `<button class="btn btn-sm btn-gold" data-bp-claim="${tier.tier}">🎁 Reclamar Recompensa</button>`;
-      } else if (!owned) {
-        btnHtml = `<button class="btn btn-sm" disabled>🔒 Requiere Pase T1</button>`;
+        btnHtml = `<button class="btn btn-sm btn-gold" data-bp-claim="${tier.tier}" data-bp-track="${track}">🎁 Reclamar</button>`;
+      } else if (isPaid && !ownedPaid) {
+        btnHtml = `<button class="btn btn-sm" disabled>🔒 Solo Pase de Paga ($10)</button>`;
+      } else if (!u) {
+        btnHtml = `<button class="btn btn-sm" disabled>Inicia sesión</button>`;
       } else {
         btnHtml = `<button class="btn btn-sm" disabled>Requiere ${tier.xpRequired} XP</button>`;
       }
-
       return `
-        <div class="bp-tier-card ${cls}">
+        <div class="bp-track-cell ${track} ${cls}">
           <div>
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
-              <span class="pill" style="border-color:#38bdf8;color:#7dd3fc;">Nivel ${tier.tier}</span>
-              <span style="font-size:0.72rem;color:var(--text-muted);">${tier.xpRequired} XP</span>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:4px;">
+              <span class="pill ${isPaid ? '' : 'muted'}" style="font-size:0.62rem;${isPaid ? 'border-color:#f472b6;color:#fbcfe8;' : ''}">${isPaid ? '👑 PREMIUM ($10)' : '🆓 GRATIS'}</span>
+              <span style="font-size:1.1rem;">${data.icon}</span>
             </div>
-            <div style="font-size:2rem;margin-bottom:6px;">${tier.icon}</div>
-            <h4 style="font-family:var(--font-display);color:var(--gold-bright);font-size:0.94rem;margin-bottom:4px;">${tier.title}</h4>
-            <p style="font-size:0.74rem;color:var(--text-muted);line-height:1.4;">Usable en Partida Rápida, Vs IA, Modos Caóticos, Online y Salas Privadas (excepto Modo Historia).</p>
+            <strong style="font-size:0.82rem;color:${isPaid ? '#fff4c2' : '#d6d1c7'};display:block;">${data.title}</strong>
           </div>
           ${btnHtml}
         </div>`;
-    }).join('');
+    };
+
+    grid.innerHTML = list.map((tier) => `
+      <div class="bp-tier-row">
+        <div class="bp-tier-num-col">
+          <strong style="font-family:var(--font-display);color:var(--gold-bright);font-size:0.95rem;">Nv. ${tier.tier}</strong>
+          <span style="font-size:0.68rem;color:var(--text-muted);">${tier.xpRequired} XP</span>
+        </div>
+        ${renderCell(tier, 'free', tier.free)}
+        ${renderCell(tier, 'paid', tier.paid)}
+      </div>`).join('');
 
     grid.querySelectorAll('[data-bp-claim]').forEach((b) => {
       b.addEventListener('click', async () => {
         try {
-          const res = await api.claimBattlePassTier(Number(b.dataset.bpClaim));
+          const tierNum = Number(b.dataset.bpClaim);
+          const track = b.dataset.bpTrack || 'free';
+          const res = await api.claimBattlePassTier(tierNum, track);
           this.sound.play('shop_buy');
           this.setUser(res.user);
-          showToast(`🎖️ ¡Nivel ${b.dataset.bpClaim} del Pase T1 reclamado!`, 'success');
+          showToast(`🎖️ ¡Recompensa Nivel ${tierNum} (${track === 'paid' ? 'Premium' : 'Gratis'}) enviada a tu Inventario!`, 'success');
         } catch (err) {
           showToast(err.message, 'error');
         }
       });
     });
-    grid.querySelectorAll('[data-bp-equip-screen]').forEach((b) => {
+    grid.querySelectorAll('[data-bp-goto-inv]').forEach((b) => {
       b.addEventListener('click', () => this.switchScreen('customize'));
     });
   }
@@ -1821,16 +1842,38 @@ class ChessModApp {
     const isVip = Boolean(u?.isVip);
     const unlocked = new Set(u?.unlockedCosmetics || ['preset:obsidian_king', 'preset:jade_guardian', 'frame_stone', 'board_classic_maya', 'pieces_classic', 'power_none']);
 
+    // Resumen rápido de equipamiento activo en la parte superior del Inventario
+    const loadSum = document.getElementById('inventory-loadout-summary');
+    if (loadSum) {
+      const eqPow = COSMETIC_POWERS.find((x) => x.id === (u?.equippedPowerId || 'power_none')) || COSMETIC_POWERS[0];
+      const eqSkin = COSMETIC_PIECE_SKINS.find((x) => x.id === (u?.pieceSkinId || 'pieces_classic')) || COSMETIC_PIECE_SKINS[0];
+      const eqBoard = COSMETIC_BOARDS.find((x) => x.id === (u?.boardThemeId || 'board_classic_maya')) || COSMETIC_BOARDS[0];
+      loadSum.innerHTML = `
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <span class="pill jade">⚡ Poder: <strong>${eqPow.icon} ${eqPow.name}</strong></span>
+          <span class="pill">♟️ Fichas: <strong>${eqSkin.name}</strong></span>
+          <span class="pill">🗺️ Tablero: <strong>${eqBoard.name}</strong></span>
+        </div>
+        <span style="font-size:0.74rem;color:var(--text-muted);">🎒 Solo muestras lo equipable aquí (para comprar más ve a 🛒 Tienda)</span>`;
+    }
+
+    // Mostrar en el Inventario TODOS los artículos que el jugador posee/desbloqueó (y los básicos), ordenando poseídos primero
+    const sortOwnedFirst = (arr, isUnlFn) => [...arr].sort((a, b) => Number(isUnlFn(b)) - Number(isUnlFn(a)));
+
     const avGrid = document.getElementById('cosmetics-avatars-grid');
     if (avGrid) {
-      avGrid.innerHTML = COSMETIC_AVATARS.filter((item) => !item.hiddenUntilUnlocked || unlocked.has(item.id)).map((item) => {
-        const isUnl = unlocked.has(item.id) || level >= item.minLevel;
+      const avItems = sortOwnedFirst(
+        COSMETIC_AVATARS.filter((item) => !item.hiddenUntilUnlocked || unlocked.has(item.id)),
+        (it) => unlocked.has(it.id) || (!it.battlePassSeason && !it.bossUnlock && level >= it.minLevel)
+      );
+      avGrid.innerHTML = avItems.map((item) => {
+        const isUnl = unlocked.has(item.id) || (!item.battlePassSeason && !item.bossUnlock && level >= item.minLevel);
         const isEq = u?.avatar === item.id;
         return `
           <div class="cosmetic-tile ${isEq ? 'equipped' : ''} ${!isUnl ? 'locked' : ''}">
             <div class="avatar-badge ${u?.frameId || 'frame_stone'}" style="width:62px;height:62px;">${renderAvatarMarkup(item.id)}</div>
             <strong style="font-size:0.83rem;">${item.name}</strong>
-            <span class="pill ${isUnl ? 'jade' : 'muted'}">${isUnl ? 'Desbloqueado' : (item.exclusiveReason || `Requiere Nv. ${item.minLevel}`)}</span>
+            <span class="pill ${isUnl ? 'jade' : 'muted'}">${isUnl ? 'En Inventario' : (item.exclusiveReason || `Requiere Nv. ${item.minLevel}`)}</span>
             <button class="btn btn-sm ${isEq ? 'btn-gold' : 'btn-primary'}" data-equip-avatar="${item.id}" ${!isUnl || isEq ? 'disabled' : ''}>
               ${isEq ? '✓ Equipado' : 'Equipar'}
             </button>
@@ -1841,14 +1884,18 @@ class ChessModApp {
 
     const frGrid = document.getElementById('cosmetics-frames-grid');
     if (frGrid) {
-      frGrid.innerHTML = COSMETIC_FRAMES.filter((item) => (!item.hiddenUntilUnlocked || unlocked.has(item.id)) && (!item.vipOnly || isVip)).map((item) => {
-        const isUnl = item.vipOnly ? isVip : (unlocked.has(item.id) || level >= item.minLevel);
+      const frItems = sortOwnedFirst(
+        COSMETIC_FRAMES.filter((item) => (!item.hiddenUntilUnlocked || unlocked.has(item.id)) && (!item.vipOnly || isVip)),
+        (it) => it.vipOnly ? isVip : (unlocked.has(it.id) || (!it.battlePassSeason && !it.bossUnlock && level >= it.minLevel))
+      );
+      frGrid.innerHTML = frItems.map((item) => {
+        const isUnl = item.vipOnly ? isVip : (unlocked.has(item.id) || (!item.battlePassSeason && !item.bossUnlock && level >= item.minLevel));
         const isEq = u?.frameId === item.id;
         return `
           <div class="cosmetic-tile ${isEq ? 'equipped' : ''} ${!isUnl ? 'locked' : ''}">
             <div class="avatar-badge ${item.id}" style="width:62px;height:62px;">${renderAvatarMarkup(u?.avatar || 'preset:obsidian_king')}</div>
             <strong style="font-size:0.83rem;">${item.name}</strong>
-            <span class="pill ${isUnl ? 'jade' : 'muted'}">${isUnl ? 'Desbloqueado' : (item.exclusiveReason || `Requiere Nv. ${item.minLevel}`)}</span>
+            <span class="pill ${isUnl ? 'jade' : 'muted'}">${isUnl ? 'En Inventario' : (item.exclusiveReason || `Requiere Nv. ${item.minLevel}`)}</span>
             <button class="btn btn-sm ${isEq ? 'btn-gold' : 'btn-primary'}" data-equip-frame="${item.id}" ${!isUnl || isEq ? 'disabled' : ''}>
               ${isEq ? '✓ Equipado' : 'Equipar'}
             </button>
@@ -1859,8 +1906,12 @@ class ChessModApp {
 
     const bdGrid = document.getElementById('cosmetics-boards-grid');
     if (bdGrid) {
-      bdGrid.innerHTML = COSMETIC_BOARDS.filter((item) => !item.vipOnly || isVip).map((item) => {
-        const isUnl = item.vipOnly ? isVip : (unlocked.has(item.id) || level >= item.minLevel);
+      const bdItems = sortOwnedFirst(
+        COSMETIC_BOARDS.filter((item) => !item.vipOnly || isVip),
+        (it) => it.vipOnly ? isVip : (unlocked.has(it.id) || (!it.battlePassSeason && level >= (it.minLevel || 99)) || it.priceMods === 0)
+      );
+      bdGrid.innerHTML = bdItems.map((item) => {
+        const isUnl = item.vipOnly ? isVip : (unlocked.has(item.id) || (!item.battlePassSeason && level >= (item.minLevel || 99)) || item.priceMods === 0);
         const isEq = (u?.boardThemeId || 'board_classic_maya') === item.id;
         return `
           <div class="cosmetic-tile ${isEq ? 'equipped' : ''} ${!isUnl ? 'locked' : ''}">
@@ -1869,9 +1920,9 @@ class ChessModApp {
               <div style="background:${item.dark}"></div><div style="background:${item.light}"></div>
             </div>
             <strong style="font-size:0.83rem;">${item.name}</strong>
-            <span class="pill ${isUnl ? 'jade' : 'muted'}">${isUnl ? 'Desbloqueado' : (item.priceMods ? `Tienda · 🪙 ${item.priceMods}` : `Requiere Nv. ${item.minLevel}`)}</span>
+            <span class="pill ${isUnl ? 'jade' : 'muted'}">${isUnl ? 'En Inventario' : (item.exclusiveReason || (item.priceMods ? `Tienda · 🪙 ${item.priceMods}` : `Requiere Nv. ${item.minLevel}`))}</span>
             <button class="btn btn-sm ${isEq ? 'btn-gold' : 'btn-primary'}" data-equip-board="${item.id}" ${!isUnl || isEq ? 'disabled' : ''}>
-              ${isEq ? '✓ Activo' : 'Aplicar'}
+              ${isEq ? '✓ Equipado' : 'Equipar'}
             </button>
           </div>`;
       }).join('');
@@ -1880,17 +1931,21 @@ class ChessModApp {
 
     const pcGrid = document.getElementById('cosmetics-pieces-grid');
     if (pcGrid) {
-      pcGrid.innerHTML = COSMETIC_PIECE_SKINS.filter((item) => !item.vipOnly || isVip).map((item) => {
-        const isUnl = item.vipOnly ? isVip : (unlocked.has(item.id) || item.priceMods === 0);
+      const pcItems = sortOwnedFirst(
+        COSMETIC_PIECE_SKINS.filter((item) => !item.vipOnly || isVip),
+        (it) => it.vipOnly ? isVip : (unlocked.has(it.id) || (!it.battlePassSeason && it.priceMods === 0))
+      );
+      pcGrid.innerHTML = pcItems.map((item) => {
+        const isUnl = item.vipOnly ? isVip : (unlocked.has(item.id) || (!item.battlePassSeason && item.priceMods === 0));
         const isEq = (u?.pieceSkinId || 'pieces_classic') === item.id;
         return `
           <div class="cosmetic-tile ${isEq ? 'equipped' : ''} ${!isUnl ? 'locked' : ''}">
             <div class="shop-card-icon piece-wrap ${item.cssClass || ''}" style="width:58px;height:58px;padding:4px;">${SVGS.wQ}</div>
             <strong style="font-size:0.83rem;">${item.name}</strong>
-            <span class="pill ${isUnl ? 'jade' : 'muted'}">${isUnl ? 'En inventario' : `Tienda · 🪙 ${item.priceMods}`}</span>
+            <span class="pill ${isUnl ? 'jade' : 'muted'}">${isUnl ? 'En Inventario' : (item.exclusiveReason || `Tienda · 🪙 ${item.priceMods}`)}</span>
             <div style="display:flex;gap:6px;">
               <button class="btn btn-sm ${isEq ? 'btn-gold' : 'btn-primary'}" data-equip-pieces="${item.id}" ${!isUnl || isEq ? 'disabled' : ''}>
-                ${isEq ? '✓ Activo' : 'Equipar'}
+                ${isEq ? '✓ Equipado' : 'Equipar'}
               </button>
               <button class="btn btn-sm" data-preview-piece-sfx="${item.id}" title="Escuchar sonido">🔊</button>
             </div>
@@ -1902,14 +1957,18 @@ class ChessModApp {
 
     const pwGrid = document.getElementById('cosmetics-powers-grid');
     if (pwGrid) {
-      pwGrid.innerHTML = COSMETIC_POWERS.filter((item) => !item.vipOnly || isVip).map((item) => {
-        const isUnl = item.vipOnly ? isVip : (item.bossUnlock ? unlocked.has(item.id) : (unlocked.has(item.id) || item.priceMods === 0));
+      const pwItems = sortOwnedFirst(
+        COSMETIC_POWERS.filter((item) => (!item.vipOnly || isVip) && (!item.hiddenUntilUnlocked || unlocked.has(item.id) || u?.isModerator)),
+        (it) => it.vipOnly ? isVip : ((it.bossUnlock || it.battlePassSeason) ? unlocked.has(it.id) : (unlocked.has(it.id) || it.priceMods === 0))
+      );
+      pwGrid.innerHTML = pwItems.map((item) => {
+        const isUnl = item.vipOnly ? isVip : ((item.bossUnlock || item.battlePassSeason) ? unlocked.has(item.id) : (unlocked.has(item.id) || item.priceMods === 0));
         const isEq = (u?.equippedPowerId || 'power_none') === item.id;
         return `
           <div class="cosmetic-tile ${isEq ? 'equipped' : ''} ${!isUnl ? 'locked' : ''}">
             <div class="shop-card-icon" style="width:52px;height:52px;">${item.icon || '⚡'}</div>
             <strong style="font-size:0.83rem;">${item.name}</strong>
-            <span class="pill ${isUnl ? 'jade' : 'muted'}">${isUnl ? 'Disponible' : (item.exclusiveReason || `Tienda · 🪙 ${item.priceMods}`)}</span>
+            <span class="pill ${isUnl ? 'jade' : 'muted'}">${isUnl ? 'En Inventario' : (item.exclusiveReason || `Tienda · 🪙 ${(item.priceMods || 0).toLocaleString('es-PE')}`)}</span>
             <div style="display:flex;gap:6px;">
               <button class="btn btn-sm ${isEq ? 'btn-gold' : 'btn-primary'}" data-equip-power="${item.id}" ${!isUnl || isEq ? 'disabled' : ''}>
                 ${isEq ? '✓ Equipado' : 'Equipar'}
@@ -2260,9 +2319,32 @@ class ChessModApp {
       if (sg) {
         sg.innerHTML = `
           <div class="stat-box"><div class="val">${ov.stats.totalUsers}</div><div class="lbl">Usuarios</div></div>
+          <div class="stat-box"><div class="val" style="color:#ffd859;">${ov.stats.openAntiCheatFlags || 0}</div><div class="lbl">Anti-Cheat</div></div>
           <div class="stat-box"><div class="val" style="color:#ff9b90;">${ov.stats.pendingReports}</div><div class="lbl">Reportes Pend.</div></div>
-          <div class="stat-box"><div class="val" style="color:#ff6b6b;">${ov.stats.bannedUsers}</div><div class="lbl">Baneados</div></div>
-          <div class="stat-box"><div class="val">${ov.stats.totalClans} · ${ov.stats.dbDriver.toUpperCase()}</div><div class="lbl">Clanes / BD</div></div>`;
+          <div class="stat-box"><div class="val" style="color:#ff6b6b;">${ov.stats.bannedUsers}</div><div class="lbl">Baneados</div></div>`;
+      }
+
+      const acList = document.getElementById('mod-anticheat-list');
+      if (acList) {
+        const flags = ov.antiCheatFlags || [];
+        acList.innerHTML = flags.length
+          ? flags.map((f) => `
+            <div class="social-row-card" style="border-left:3px solid ${f.status === 'open' ? '#f59e0b' : '#519674'};">
+              <div style="flex:1;min-width:200px;">
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:3px;">
+                  <span class="pill ${f.status === 'open' ? 'crimson' : 'jade'}">${f.category.toUpperCase()}</span>
+                  <span class="pill muted">Riesgo +${f.score}</span>
+                  <strong>${f.username}</strong>
+                </div>
+                <div style="font-size:0.78rem;color:#ebe3d5;">${f.details}</div>
+              </div>
+              <div class="mod-action-group">
+                <button class="btn btn-sm btn-gold" data-mod-tempban-uid="${f.userId}" data-mod-uname="${f.username}">⏳ Expulsar</button>
+                <button class="btn btn-sm btn-danger" data-mod-ban-uid="${f.userId}" data-mod-ban-reason="[Anti-Cheat] ${f.details.slice(0, 80)}">🔨 Ban</button>
+                ${f.status === 'open' ? `<button class="btn btn-sm btn-primary" data-mod-dismiss-ac="${f.id}">✓ Revisado</button>` : ''}
+              </div>
+            </div>`).join('')
+          : '<p style="font-size:0.8rem;color:var(--text-muted);">🛡️ Sin alertas Anti-Cheat pendientes. El escudo anti-bots y anti-hacks de Mods está vigilando.</p>';
       }
 
       const repList = document.getElementById('mod-reports-list');
@@ -2392,6 +2474,15 @@ class ChessModApp {
           try {
             await api.modResolveReport(b.dataset.modResRep, b.dataset.modResSt, 'Revisado por Moderador');
             showToast('Reporte actualizado.', 'success');
+            this.loadModerationScreen();
+          } catch (err) { showToast(err.message, 'error'); }
+        });
+      });
+      document.querySelectorAll('[data-mod-dismiss-ac]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          try {
+            await api.modDismissAntiCheatFlag(b.dataset.modDismissAc);
+            showToast('Alerta Anti-Cheat marcada como revisada.', 'success');
             this.loadModerationScreen();
           } catch (err) { showToast(err.message, 'error'); }
         });

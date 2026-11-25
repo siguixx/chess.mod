@@ -61,7 +61,35 @@ function chessVisorEyes(eyeColor = '#efd083', angryColor = '#ff5b49', uid = 'v')
   `;
 }
 
+let _portraitUidSeq = 0;
+
+/**
+ * Aisla TODOS los IDs internos de <defs> (gradientes, patrones, clipPaths, filtros)
+ * en cada instancia SVG para que jamás colisionen con miniaturas ocultas (#app-shell.hidden).
+ */
+function scopeSvgIds(svgMarkup) {
+  const suffix = `_u${++_portraitUidSeq}`;
+  const ids = new Set();
+  const idRegex = /\bid="([^"]+)"/g;
+  let m;
+  while ((m = idRegex.exec(svgMarkup)) !== null) {
+    ids.add(m[1]);
+  }
+  let out = svgMarkup;
+  for (const id of ids) {
+    const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    out = out.replace(new RegExp(`id="${escaped}"`, 'g'), `id="${id}${suffix}"`);
+    out = out.replace(new RegExp(`url\\(#${escaped}\\)`, 'g'), `url(#${id}${suffix})`);
+    out = out.replace(new RegExp(`href="#${escaped}"`, 'g'), `href="#${id}${suffix}"`);
+  }
+  return out;
+}
+
 export function getBossPortraitSVG(bossId) {
+  return scopeSvgIds(buildBossPortraitSVG(bossId));
+}
+
+function buildBossPortraitSVG(bossId) {
   // === ENTRENADOR 1: YAM — GATO SIAMÉS (PELUJE CON VOLUMEN, OJOS ZAFIRO MULTICAPA, COLLAR DORADO) ===
   if (bossId === 'trainer_yam') {
     return `
@@ -362,31 +390,34 @@ export function getBossPortraitSVG(bossId) {
     return `
       <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Hombre Peón">
         <defs>
-          <radialGradient id="hpBg" cx="50%" cy="32%" r="72%"><stop offset="0%" stop-color="#352e25"/><stop offset="100%" stop-color="#12100d"/></radialGradient>
-          <radialGradient id="hpSphere" cx="38%" cy="30%" r="68%"><stop offset="0%" stop-color="#6d6253"/><stop offset="45%" stop-color="#332d26"/><stop offset="100%" stop-color="#14110e"/></radialGradient>
-          <linearGradient id="hpGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fff0ae"/><stop offset="50%" stop-color="#cfa64c"/><stop offset="100%" stop-color="#6b4e16"/></linearGradient>
+          <radialGradient id="hpBg" cx="50%" cy="32%" r="72%"><stop offset="0%" stop-color="#4e4132"/><stop offset="62%" stop-color="#221c15"/><stop offset="100%" stop-color="#110e0b"/></radialGradient>
+          <radialGradient id="hpSphere" cx="35%" cy="28%" r="68%"><stop offset="0%" stop-color="#a6957c"/><stop offset="42%" stop-color="#584d3f"/><stop offset="78%" stop-color="#2a241d"/><stop offset="100%" stop-color="#14110e"/></radialGradient>
+          <linearGradient id="hpGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fff4be"/><stop offset="50%" stop-color="#d8ae52"/><stop offset="100%" stop-color="#7a5818"/></linearGradient>
         </defs>
         <rect width="240" height="240" fill="url(#hpBg)"/>
-        <circle class="portrait-aura-ring" cx="120" cy="120" r="94" fill="none" stroke="rgba(239,208,131,0.28)" stroke-width="2" stroke-dasharray="10 6"/>
-        <!-- Hombreras de peones esculpidos con luz especular -->
-        <g stroke="url(#hpGold)" stroke-width="2">
-          <circle cx="46" cy="150" r="19" fill="url(#hpSphere)"/>
-          <path d="M22 240 C26 196 36 172 46 172 C56 172 66 196 70 240 Z" fill="url(#hpSphere)"/>
-          <circle cx="194" cy="150" r="19" fill="url(#hpSphere)"/>
-          <path d="M170 240 C174 196 184 172 194 172 C204 172 214 196 218 240 Z" fill="url(#hpSphere)"/>
-          <path d="M64 240 C70 182 90 160 120 160 C150 160 170 182 176 240 Z" fill="url(#hpSphere)"/>
-          <rect x="78" y="154" width="84" height="14" rx="5" fill="url(#hpGold)" stroke="#2b1e0a" stroke-width="1.6"/>
-          <path d="M96 184 L120 206 L144 184" fill="none" stroke="url(#hpGold)" stroke-width="2.2"/>
+        <circle class="portrait-aura-ring" cx="120" cy="120" r="94" fill="none" stroke="rgba(239,208,131,0.34)" stroke-width="2" stroke-dasharray="10 6"/>
+        <!-- Hombreras y torso de peones esculpidos con luz especular clara -->
+        <g stroke="url(#hpGold)" stroke-width="2.2">
+          <circle cx="44" cy="150" r="20" fill="url(#hpSphere)"/>
+          <ellipse cx="38" cy="142" rx="7" ry="4" fill="#ffffff" opacity="0.22" stroke="none"/>
+          <path d="M20 240 C24 194 34 170 44 170 C54 170 64 194 68 240 Z" fill="url(#hpSphere)"/>
+          <circle cx="196" cy="150" r="20" fill="url(#hpSphere)"/>
+          <ellipse cx="190" cy="142" rx="7" ry="4" fill="#ffffff" opacity="0.22" stroke="none"/>
+          <path d="M172 240 C176 194 186 170 196 170 C206 170 216 194 220 240 Z" fill="url(#hpSphere)"/>
+          <path d="M62 240 C68 180 88 158 120 158 C152 158 172 180 178 240 Z" fill="url(#hpSphere)"/>
+          <rect x="76" y="152" width="88" height="15" rx="6" fill="url(#hpGold)" stroke="#2b1e0a" stroke-width="1.8"/>
+          <path d="M94 182 L120 208 L146 182" fill="none" stroke="url(#hpGold)" stroke-width="2.6"/>
+          <circle cx="120" cy="196" r="6" fill="url(#hpGold)" stroke="#261a08" stroke-width="1.4"/>
         </g>
         <!-- Yelmo esférico de Peón puro con reflejo metálico y ranura visor -->
         <g class="portrait-float-part">
-          <circle cx="120" cy="110" r="48" fill="url(#hpSphere)" stroke="url(#hpGold)" stroke-width="2.8"/>
-          <ellipse cx="104" cy="84" rx="22" ry="10" fill="#ffffff" opacity="0.16" transform="rotate(-18 104 84)"/>
-          <path d="M80 96 Q120 74 160 96" fill="none" stroke="url(#hpGold)" stroke-width="2.4"/>
-          <rect x="86" y="136" width="68" height="8" rx="4" fill="#171410" stroke="#cfa64c" stroke-width="1.4"/>
-          <path d="M98 140 H142" stroke="#efd083" stroke-width="1.8" stroke-dasharray="6 4"/>
+          <circle cx="120" cy="108" r="50" fill="url(#hpSphere)" stroke="url(#hpGold)" stroke-width="3"/>
+          <ellipse cx="102" cy="80" rx="22" ry="10" fill="#ffffff" opacity="0.24" transform="rotate(-18 102 80)"/>
+          <path d="M78 96 Q120 72 162 96" fill="none" stroke="url(#hpGold)" stroke-width="2.6"/>
+          <rect x="84" y="135" width="72" height="9" rx="4.5" fill="#171410" stroke="#e4bc63" stroke-width="1.6"/>
+          <path d="M96 139.5 H144" stroke="#fff0b5" stroke-width="2" stroke-dasharray="6 4"/>
         </g>
-        ${chessVisorEyes('#efd083', '#ff5b49', 'hpeon')}
+        ${chessVisorEyes('#ffe399', '#ff5b49', 'hpeon')}
       </svg>`;
   }
 

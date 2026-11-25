@@ -339,6 +339,21 @@ export function computePowerTargets(engine, powerState, side, powerDef, sourcePo
     return targets;
   }
 
+  // 4B. Empujón Débil (Poder bajo del Pase Gratuito Nv. 50): solo empuja 1 Peón rival 1 casilla atrás si está libre
+  if (eff === 'power_free_weak_shove') {
+    const pushDir = side === 'w' ? -1 : 1;
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        const p = engine.board[r]?.[c];
+        const nr = r + pushDir;
+        if (p && p.color === enemy && p.type === 'P' && inBounds(nr, c, N) && !engine.board[nr]?.[c] && !isSquareBlockedByModState(powerState, nr, c)) {
+          targets.push({ tr: r, tc: c, pushR: nr, pushC: c, effect: eff });
+        }
+      }
+    }
+    return targets;
+  }
+
   // 5. Invocación de pieza personalizada (summon_piece)
   if (eff === 'summon_piece') {
     const minR = side === 'w' ? Math.floor(N / 2) - 1 : 0;
@@ -815,6 +830,17 @@ export function executeBattlePowerAction(engine, powerState, side, powerDef, act
     sfx = 'blackySeal';
     engine.lastMoveSquares = [[chosen.tr, chosen.tc]];
     logText = `☄️ JUICIO DEL VACÍO (T1): Destruye ${destroyedCnt} enemigo(s), congela ${frozenCnt} piezas pesadas y sella ${toAlg(chosen.tr, chosen.tc, N)} (${dur}t)!`;
+  }
+
+  // === 16. PODER BAJO PASE GRATUITO NV. 50: EMPUJÓN DÉBIL ===
+  else if (eff === 'power_free_weak_shove') {
+    const N = engine.boardSize || engine.board?.length || 8;
+    const pawn = engine.board[chosen.tr][chosen.tc];
+    engine.board[chosen.pushR][chosen.pushC] = pawn;
+    engine.board[chosen.tr][chosen.tc] = null;
+    sfx = 'push';
+    engine.lastMoveSquares = [[chosen.tr, chosen.tc], [chosen.pushR, chosen.pushC]];
+    logText = `💨 EMPUJÓN DÉBIL (Pase Gratis Nv. 50): Empuja suavemente al Peón rival de ${toAlg(chosen.tr, chosen.tc, N)} a ${toAlg(chosen.pushR, chosen.pushC, N)}.`;
   }
 
   powerState.cooldowns[side] = powerDef.cooldown || 3;

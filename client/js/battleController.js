@@ -882,7 +882,8 @@ export class BattleController {
     this.phase = 'PLAYER_TURN';
     this.render();
     const launch = () => {
-      this.sound.startBossMusic('maya_campaign', playIntro);
+      // Música exclusiva para Jefes Finales (Nivel 5), NO para los niveles 1-4 anteriores
+      this.sound.stopBossMusic();
       if (playIntro) {
         this.playBossCinematicIntro({
           themeClass: 'theme-maya',
@@ -973,7 +974,8 @@ export class BattleController {
     this.render();
 
     const launch = () => {
-      this.sound.startBossMusic('galaxy', playIntro);
+      if (levelCfg.id === 5) this.sound.startBossMusic('galaxy', playIntro);
+      else this.sound.stopBossMusic();
       if (playIntro) {
         this.playBossCinematicIntro({
           themeClass: 'theme-galaxy',
@@ -1018,7 +1020,8 @@ export class BattleController {
     this.render();
 
     const launch = () => {
-      this.sound.startBossMusic('glitch', playIntro);
+      if (levelCfg.id === 5) this.sound.startBossMusic('glitch', playIntro);
+      else this.sound.stopBossMusic();
       if (playIntro) {
         this.playBossCinematicIntro({
           themeClass: 'theme-glitch',
@@ -1063,7 +1066,8 @@ export class BattleController {
     this.render();
 
     const launch = () => {
-      this.sound.startBossMusic('chess', playIntro);
+      if (levelCfg.id === 5) this.sound.startBossMusic('chess', playIntro);
+      else this.sound.stopBossMusic();
       if (playIntro) {
         this.playBossCinematicIntro({
           themeClass: 'theme-chess',

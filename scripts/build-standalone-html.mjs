@@ -275,27 +275,24 @@ class StandaloneApiClient {
   async modResolveReport() { throw new Error('Requiere servidor online.'); }
   async modGrantAll() { throw new Error('Requiere servidor online.'); }
   async modAdjustMods() { throw new Error('Requiere servidor online.'); }
-  async buyBattlePassMods() {
-    const s = loadStore();
-    if (!s.user) await this.me();
-    const st = loadStore();
-    if ((st.user.mods || 0) < BATTLE_PASS_S1.priceMods) throw new Error('Necesitas 5,000 Mods para desbloquear el Pase de Batalla T1.');
-    st.user.mods -= BATTLE_PASS_S1.priceMods;
-    st.user.battlePassS1 = true;
-    saveStore(st);
-    return { ok: true, user: hydrateUser(st.user, st.matches) };
-  }
+  async modDismissAntiCheatFlag() { throw new Error('Requiere servidor online.'); }
+  async buyBattlePassMods() { throw new Error('El Pase Premium Temporada 1 es únicamente de paga ($10 USD).'); }
   async startBattlePassCheckout() { throw new Error('El cobro con $10 USD requiere la versión web online.'); }
   async verifyBattlePassPayment() { throw new Error('Requiere versión web online.'); }
-  async claimBattlePassTier(tier) {
+  async claimBattlePassTier(tier, track = 'free') {
     const st = loadStore();
+    if (!st.user) await this.me();
+    const s = loadStore();
     const tDef = BATTLE_PASS_S1.tiers.find((t) => t.tier === Number(tier));
-    if (!st.user?.battlePassS1 || !tDef) throw new Error('Pase de Batalla T1 requerido.');
-    st.user.bpClaimed = [...new Set([...(st.user.bpClaimed || []), tDef.tier])];
-    st.user.unlockedCosmetics = [...new Set([...(st.user.unlockedCosmetics || []), tDef.rewardId])];
-    if (tDef.bonusMods) st.user.mods = (st.user.mods || 0) + tDef.bonusMods;
-    saveStore(st);
-    return { ok: true, user: hydrateUser(st.user, st.matches) };
+    if (!tDef) throw new Error('Nivel inválido.');
+    if (track === 'paid' && !s.user.battlePassS1) throw new Error('El carril Premium es solo de paga ($10 USD).');
+    const rew = track === 'paid' ? tDef.paid : tDef.free;
+    const key = \`\${track}:\${tDef.tier}\`;
+    s.user.bpClaimed = [...new Set([...(s.user.bpClaimed || []), key])];
+    if (rew?.rewardId) s.user.unlockedCosmetics = [...new Set([...(s.user.unlockedCosmetics || []), rew.rewardId])];
+    if (rew?.bonusMods) s.user.mods = (s.user.mods || 0) + rew.bonusMods;
+    saveStore(s);
+    return { ok: true, user: hydrateUser(s.user, s.matches) };
   }
 
   async cancelModVip() {

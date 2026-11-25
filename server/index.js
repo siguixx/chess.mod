@@ -12,6 +12,7 @@ import { createGameRouter } from './routes/game.js';
 import { createLeaderboardRouter } from './routes/leaderboard.js';
 import { createSocialRouter } from './routes/social.js';
 import { MultiplayerManager } from './multiplayer/matchmaking.js';
+import { AntiCheatEngine } from './security/antiCheat.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,8 +34,9 @@ export function createChessServer({
   });
 
   const db = new ChessDatabase(dbPath);
+  const antiCheat = new AntiCheatEngine(db);
   const authMiddleware = createAuthMiddleware(db);
-  const multiplayer = new MultiplayerManager(io, db);
+  const multiplayer = new MultiplayerManager(io, db, antiCheat);
 
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
@@ -62,10 +64,10 @@ export function createChessServer({
   });
 
   // API routes
-  app.use('/api/auth', createAuthRouter(db, authMiddleware));
-  app.use('/api', createProfileRouter(db, authMiddleware));
-  app.use('/api', createSocialRouter(db, authMiddleware, multiplayer));
-  app.use('/api/game', createGameRouter(db, authMiddleware));
+  app.use('/api/auth', createAuthRouter(db, authMiddleware, antiCheat));
+  app.use('/api', createProfileRouter(db, authMiddleware, antiCheat));
+  app.use('/api', createSocialRouter(db, authMiddleware, multiplayer, antiCheat));
+  app.use('/api/game', createGameRouter(db, authMiddleware, antiCheat));
   app.use('/api/leaderboard', createLeaderboardRouter(db));
 
   // Static hosting (mismo origen para web + WebSockets HTTPS/WSS)
@@ -87,6 +89,7 @@ export function createChessServer({
     httpServer,
     io,
     db,
+    antiCheat,
     multiplayer,
     start: async () => {
       await db.init();
