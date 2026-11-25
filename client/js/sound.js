@@ -279,7 +279,63 @@ export class SoundEngine {
       case 'galaxyTeleport': tone(280, 880, 0.28, 'sine', 0.22); tone(620, 1240, 0.24, 'triangle', 0.14, 0.06); break;
       case 'glitchTear': noise(0.26, 2600, 0.28, 0, 'bandpass'); tone(140, 52, 0.25, 'sawtooth', 0.22); break;
       case 'chainBreak': noise(0.28, 1900, 0.3, 0, 'highpass'); tone(480, 140, 0.32, 'sawtooth', 0.2); break;
+      // Efectos de sonido exclusivos por Skin de Fichas
+      case 'skin_jade_move':
+        tone(680, 920, 0.11, 'sine', 0.18); tone(1020, 1360, 0.14, 'triangle', 0.11, 0.03); break;
+      case 'skin_jade_capture':
+        tone(780, 520, 0.18, 'triangle', 0.26); tone(1280, 960, 0.22, 'sine', 0.18, 0.04); noise(0.08, 2200, 0.14, 0, 'bandpass'); break;
+      case 'skin_obsidian_move':
+        tone(145, 76, 0.14, 'triangle', 0.3); noise(0.08, 620, 0.16, 0, 'lowpass'); break;
+      case 'skin_obsidian_capture':
+        tone(170, 52, 0.24, 'sawtooth', 0.22); tone(98, 42, 0.26, 'sine', 0.34, 0.02); noise(0.18, 950, 0.22, 0, 'lowpass'); break;
+      case 'skin_cosmic_move':
+        tone(440, 740, 0.15, 'sine', 0.18); tone(880, 1180, 0.18, 'sine', 0.1, 0.04); break;
+      case 'skin_cosmic_capture':
+        tone(520, 980, 0.18, 'triangle', 0.22); tone(1040, 620, 0.26, 'sine', 0.18, 0.05); noise(0.12, 2600, 0.14, 0, 'bandpass'); break;
+      case 'skin_vip_gold_move':
+        tone(880, 1320, 0.13, 'sine', 0.19); tone(1320, 1760, 0.18, 'triangle', 0.12, 0.03); break;
+      case 'skin_vip_gold_capture':
+        tone(659.25, 1318.5, 0.16, 'triangle', 0.24); tone(987.77, 1975.5, 0.24, 'sine', 0.18, 0.04); noise(0.1, 3100, 0.15, 0, 'highpass'); break;
+      // Efectos de sonido de Poderes de Tienda y Mod VIP
+      case 'power_golden_freeze':
+        tone(1046.5, 1567.98, 0.22, 'sine', 0.24, 0);
+        tone(1318.5, 2093, 0.32, 'triangle', 0.2, 0.05);
+        tone(523.25, 392, 0.38, 'sine', 0.22, 0.12);
+        noise(0.28, 3600, 0.2, 0.02, 'highpass');
+        break;
+      case 'power_solar_shield':
+        tone(392, 587.33, 0.24, 'triangle', 0.24, 0);
+        tone(587.33, 783.99, 0.34, 'sine', 0.22, 0.08);
+        break;
+      case 'power_wind_pulse':
+        noise(0.32, 1650, 0.28, 0, 'bandpass');
+        tone(320, 140, 0.24, 'sine', 0.24, 0.04);
+        break;
+      case 'power_shadow_step':
+        tone(240, 620, 0.18, 'sine', 0.22, 0);
+        tone(620, 290, 0.22, 'triangle', 0.18, 0.08);
+        break;
+      case 'vip_activate':
+        tone(523.25, 523.25, 0.24, 'triangle', 0.24, 0);
+        tone(659.25, 659.25, 0.24, 'triangle', 0.24, 0.1);
+        tone(783.99, 783.99, 0.28, 'triangle', 0.24, 0.2);
+        tone(1046.5, 1046.5, 0.55, 'sine', 0.28, 0.32);
+        break;
+      case 'shop_buy':
+        tone(587.33, 880, 0.14, 'sine', 0.22, 0);
+        tone(880, 1174.66, 0.22, 'triangle', 0.22, 0.09);
+        break;
       default: break;
     }
+  }
+
+  playPieceAction(skinId = 'pieces_classic', isCapture = false) {
+    const map = {
+      pieces_jade: isCapture ? 'skin_jade_capture' : 'skin_jade_move',
+      pieces_obsidian: isCapture ? 'skin_obsidian_capture' : 'skin_obsidian_move',
+      pieces_cosmic: isCapture ? 'skin_cosmic_capture' : 'skin_cosmic_move',
+      pieces_vip_gold: isCapture ? 'skin_vip_gold_capture' : 'skin_vip_gold_move'
+    };
+    this.play(map[skinId] || (isCapture ? 'capture' : 'move'));
   }
 }

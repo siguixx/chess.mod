@@ -4,8 +4,8 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import pg from 'pg';
-import { computeLevelFromXp, INITIAL_ELO, HINT_XP_COST } from '../../shared/config/constants.js';
-import { getAllCosmetics, isCosmeticUnlocked } from '../../shared/config/cosmetics.js';
+import { computeLevelFromXp, INITIAL_ELO, INITIAL_MODS, HINT_XP_COST } from '../../shared/config/constants.js';
+import { getAllCosmetics, findShopItem, isCosmeticUnlocked, VIP_EXCLUSIVE_IDS, MOD_VIP_PLAN } from '../../shared/config/cosmetics.js';
 import { CHAPTER_ORDER, isChapterUnlocked, isCampaignLevelUnlocked } from '../../shared/config/campaigns.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -37,8 +37,18 @@ export class ChessDatabase {
         ssl: needsSsl ? { rejectUnauthorized: false } : false
       });
       await this.pgPool.query(schemaSql);
-      // Migración suave por si la tabla ya existía sin columna title
-      await this.pgPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT ''").catch(() => {});
+      // Migraciones suaves para bases existentes sin perder ninguna cuenta vinculada
+      const pgMigrations = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS mods INTEGER NOT NULL DEFAULT 100",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS piece_skin_id TEXT NOT NULL DEFAULT 'pieces_classic'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS equipped_power_id TEXT NOT NULL DEFAULT 'power_none'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS vip_active INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS vip_expires_at TEXT"
+      ];
+      for (const sql of pgMigrations) {
+        await this.pgPool.query(sql).catch(() => {});
+      }
     } else {
       if (this.dbPath !== ':memory:') {
         fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
@@ -47,10 +57,16 @@ export class ChessDatabase {
       this.sqlite.exec('PRAGMA foreign_keys = ON;');
       this.sqlite.exec('PRAGMA journal_mode = WAL;');
       this.sqlite.exec(schemaSql);
-      try {
-        this.sqlite.exec("ALTER TABLE users ADD COLUMN title TEXT NOT NULL DEFAULT ''");
-      } catch {
-        // Columna ya existe
+      const sqliteMigrations = [
+        "ALTER TABLE users ADD COLUMN title TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN mods INTEGER NOT NULL DEFAULT 100",
+        "ALTER TABLE users ADD COLUMN piece_skin_id TEXT NOT NULL DEFAULT 'pieces_classic'",
+        "ALTER TABLE users ADD COLUMN equipped_power_id TEXT NOT NULL DEFAULT 'power_none'",
+        "ALTER TABLE users ADD COLUMN vip_active INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN vip_expires_at TEXT"
+      ];
+      for (const sql of sqliteMigrations) {
+        try { this.sqlite.exec(sql); } catch {}
       }
     }
     this.initialized = true;
@@ -89,15 +105,71 @@ export class ChessDatabase {
     if (this.sqlite) this.sqlite.close();
   }
 
+  isVipRowActive(row) {
+    if (!row || !Number(row.vip_active)) return false;
+    if (!row.vip_expires_at) return false;
+    const exp = Date.parse(row.vip_expires_at);
+    return Number.isFinite(exp) && exp > Date.now();
+  }
+
+  /**
+   * Si la suscripción Mod VIP venció o fue cancelada, quita TODOS los artículos VIP
+   * del inventario y revierte cualquier ítem VIP equipado a valores estándar.
+   */
+  async stripVipItemsFromUser(userId, row = null) {
+    const u = row || (await this.findUserById(userId));
+    if (!u) return null;
+    const now = new Date().toISOString();
+    const nextFrame = VIP_EXCLUSIVE_IDS.includes(u.frame_id) ? 'frame_stone' : u.frame_id;
+    const nextBoard = VIP_EXCLUSIVE_IDS.includes(u.board_theme_id) ? 'board_classic_maya' : u.board_theme_id;
+    const nextPieces = VIP_EXCLUSIVE_IDS.includes(u.piece_skin_id) ? 'pieces_classic' : (u.piece_skin_id || 'pieces_classic');
+    const nextPower = VIP_EXCLUSIVE_IDS.includes(u.equipped_power_id) ? 'power_none' : (u.equipped_power_id || 'power_none');
+
+    await this.execSql(`
+      UPDATE users
+      SET vip_active = 0,
+          vip_expires_at = NULL,
+          frame_id = ?,
+          board_theme_id = ?,
+          piece_skin_id = ?,
+          equipped_power_id = ?,
+          updated_at = ?
+      WHERE id = ?
+    `, [nextFrame, nextBoard, nextPieces, nextPower, now, userId]);
+
+    for (const vipId of VIP_EXCLUSIVE_IDS) {
+      await this.execSql('DELETE FROM user_unlocks WHERE user_id = ? AND cosmetic_id = ?', [userId, vipId]);
+    }
+    return this.findUserById(userId);
+  }
+
+  async ensureFreshVipState(row) {
+    if (!row) return null;
+    if (Number(row.vip_active) && !this.isVipRowActive(row)) {
+      return this.stripVipItemsFromUser(row.id, row);
+    }
+    return row;
+  }
+
   formatPublicUser(row) {
     if (!row) return null;
     const lvlInfo = computeLevelFromXp(row.xp);
+    const isVip = this.isVipRowActive(row);
+    const frameId = (!isVip && VIP_EXCLUSIVE_IDS.includes(row.frame_id)) ? 'frame_stone' : (row.frame_id || 'frame_stone');
+    const boardThemeId = (!isVip && VIP_EXCLUSIVE_IDS.includes(row.board_theme_id)) ? 'board_classic_maya' : (row.board_theme_id || 'board_classic_maya');
+    const pieceSkinId = (!isVip && VIP_EXCLUSIVE_IDS.includes(row.piece_skin_id)) ? 'pieces_classic' : (row.piece_skin_id || 'pieces_classic');
+    const equippedPowerId = (!isVip && VIP_EXCLUSIVE_IDS.includes(row.equipped_power_id)) ? 'power_none' : (row.equipped_power_id || 'power_none');
     return {
       id: row.id,
       username: row.username,
       avatar: row.avatar,
-      frameId: row.frame_id,
-      boardThemeId: row.board_theme_id,
+      frameId,
+      boardThemeId,
+      pieceSkinId,
+      equippedPowerId,
+      isVip,
+      vipExpiresAt: isVip ? row.vip_expires_at : null,
+      mods: Number(row.mods ?? INITIAL_MODS) || 0,
       title: row.title || '',
       elo: Number(row.elo) || 0,
       xp: Number(row.xp) || 0,
@@ -156,8 +228,9 @@ export class ChessDatabase {
   }
 
   async getFullUserProfile(userId) {
-    const row = await this.queryOne('SELECT * FROM users WHERE id = ?', [userId]);
-    if (!row) return null;
+    const rawRow = await this.queryOne('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!rawRow) return null;
+    const row = await this.ensureFreshVipState(rawRow);
 
     const base = this.formatPublicUser(row);
     const campaigns = await this.getCampaignsProgress(userId);
@@ -169,9 +242,11 @@ export class ChessDatabase {
     const unlockedCosmetics = [
       ...allCosmetics.avatars,
       ...allCosmetics.frames,
-      ...allCosmetics.boards
+      ...allCosmetics.boards,
+      ...allCosmetics.pieceSkins,
+      ...allCosmetics.powers
     ]
-      .filter((c) => isCosmeticUnlocked(c.id, base.level, explicitUnlocks))
+      .filter((c) => isCosmeticUnlocked(c.id, base.level, explicitUnlocks, base.isVip))
       .map((c) => c.id);
 
     const recentMatches = await this.getUserMatches(userId, 20);
@@ -195,10 +270,11 @@ export class ChessDatabase {
     await this.execSql(`
       INSERT INTO users (
         id, username, username_lower, email, password_hash, password_salt, google_id,
-        avatar, frame_id, board_theme_id, title, elo, xp, level,
+        avatar, frame_id, board_theme_id, piece_skin_id, equipped_power_id, title,
+        elo, xp, mods, vip_active, vip_expires_at, level,
         wins, losses, draws, games_played, bases_destroyed, hints_used, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'frame_stone', 'board_classic_maya', '', ?, ?, ?, 0, 0, 0, 0, 0, 0, ?, ?)
-    `, [id, username, username.toLowerCase(), email.toLowerCase(), passwordHash, passwordSalt, googleId, avatar, INITIAL_ELO, initialXp, lvl, now, now]);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'frame_stone', 'board_classic_maya', 'pieces_classic', 'power_none', '', ?, ?, ?, 0, NULL, ?, 0, 0, 0, 0, 0, 0, ?, ?)
+    `, [id, username, username.toLowerCase(), email.toLowerCase(), passwordHash, passwordSalt, googleId, avatar, INITIAL_ELO, initialXp, INITIAL_MODS, lvl, now, now]);
 
     return this.getFullUserProfile(id);
   }
@@ -231,7 +307,7 @@ export class ChessDatabase {
     return this.getFullUserProfile(userId);
   }
 
-  async updateCosmetics(userId, { avatar, frameId, boardThemeId }) {
+  async updateCosmetics(userId, { avatar, frameId, boardThemeId, pieceSkinId, equippedPowerId }) {
     const profile = await this.getFullUserProfile(userId);
     if (!profile) throw new Error('Usuario no encontrado.');
 
@@ -242,10 +318,16 @@ export class ChessDatabase {
       }
     }
     if (frameId !== undefined && !profile.unlockedCosmetics.includes(frameId)) {
-      throw new Error('Marco bloqueado: sube de nivel o completa el logro requerido.');
+      throw new Error('Marco bloqueado: requiere nivel, logro o Mod VIP.');
     }
     if (boardThemeId !== undefined && !profile.unlockedCosmetics.includes(boardThemeId)) {
-      throw new Error('Estilo de tablero bloqueado: sube de nivel para desbloquearlo.');
+      throw new Error('Tablero bloqueado: cómpralo en la Tienda con Mods o activa Mod VIP.');
+    }
+    if (pieceSkinId !== undefined && !profile.unlockedCosmetics.includes(pieceSkinId)) {
+      throw new Error('Skin de fichas bloqueada: cómprala en la Tienda con Mods o activa Mod VIP.');
+    }
+    if (equippedPowerId !== undefined && !profile.unlockedCosmetics.includes(equippedPowerId)) {
+      throw new Error('Poder bloqueado: cómpralo en la Tienda con Mods o activa Mod VIP.');
     }
 
     const now = new Date().toISOString();
@@ -254,11 +336,91 @@ export class ChessDatabase {
       SET avatar = COALESCE(?, avatar),
           frame_id = COALESCE(?, frame_id),
           board_theme_id = COALESCE(?, board_theme_id),
+          piece_skin_id = COALESCE(?, piece_skin_id),
+          equipped_power_id = COALESCE(?, equipped_power_id),
           updated_at = ?
       WHERE id = ?
-    `, [avatar ?? null, frameId ?? null, boardThemeId ?? null, now, userId]);
+    `, [avatar ?? null, frameId ?? null, boardThemeId ?? null, pieceSkinId ?? null, equippedPowerId ?? null, now, userId]);
 
     return this.getFullUserProfile(userId);
+  }
+
+  async addMods(userId, delta) {
+    const row = await this.findUserById(userId);
+    if (!row) throw new Error('Usuario no encontrado.');
+    const nextMods = Math.max(0, (Number(row.mods) || 0) + Math.round(delta));
+    const now = new Date().toISOString();
+    await this.execSql('UPDATE users SET mods = ?, updated_at = ? WHERE id = ?', [nextMods, now, userId]);
+    return nextMods;
+  }
+
+  async buyShopItem(userId, itemId) {
+    const profile = await this.getFullUserProfile(userId);
+    if (!profile) throw new Error('Usuario no encontrado.');
+    const item = findShopItem(itemId);
+    if (!item) throw new Error('Artículo no encontrado en la tienda.');
+    if (item.vipOnly) {
+      throw new Error('Este artículo es exclusivo de la suscripción mensual Mod VIP (S/ 15 / mes).');
+    }
+    if (profile.unlockedCosmetics.includes(item.id)) {
+      throw new Error('Ya tienes este artículo en tu inventario.');
+    }
+    const price = Number(item.priceMods) || 0;
+    if (price <= 0) throw new Error('Este artículo no está a la venta por Mods.');
+    if (profile.mods < price) {
+      const err = new Error(`Necesitas ${price} Mods (tienes ${profile.mods} Mods). Juega partidas para ganar más Mods.`);
+      err.status = 400;
+      err.code = 'INSUFFICIENT_MODS';
+      throw err;
+    }
+
+    await this.addMods(userId, -price);
+    await this.grantExclusiveUnlock(userId, item.id);
+
+    // Equipar automáticamente al comprar
+    const patch = {};
+    if (item.category === 'board') patch.boardThemeId = item.id;
+    if (item.category === 'piece_skin') patch.pieceSkinId = item.id;
+    if (item.category === 'power') patch.equippedPowerId = item.id;
+    const updated = Object.keys(patch).length
+      ? await this.updateCosmetics(userId, patch)
+      : await this.getFullUserProfile(userId);
+
+    return { ok: true, item, pricePaid: price, user: updated };
+  }
+
+  async activateModVip(userId, { durationDays = MOD_VIP_PLAN.durationDays } = {}) {
+    const row = await this.findUserById(userId);
+    if (!row) throw new Error('Usuario no encontrado.');
+    const nowMs = Date.now();
+    const baseMs = this.isVipRowActive(row) ? Date.parse(row.vip_expires_at) : nowMs;
+    const expiresAt = new Date(baseMs + Math.max(1, Number(durationDays) || 30) * 24 * 60 * 60 * 1000).toISOString();
+    const now = new Date().toISOString();
+
+    await this.execSql(`
+      UPDATE users
+      SET vip_active = 1,
+          vip_expires_at = ?,
+          frame_id = 'frame_vip_gold',
+          board_theme_id = 'board_vip_gold_black',
+          piece_skin_id = 'pieces_vip_gold',
+          equipped_power_id = 'power_vip_golden_freeze',
+          updated_at = ?
+      WHERE id = ?
+    `, [expiresAt, now, userId]);
+
+    for (const vipId of VIP_EXCLUSIVE_IDS) {
+      await this.grantExclusiveUnlock(userId, vipId);
+    }
+
+    return { ok: true, vipExpiresAt: expiresAt, user: await this.getFullUserProfile(userId) };
+  }
+
+  async cancelModVip(userId) {
+    const row = await this.findUserById(userId);
+    if (!row) throw new Error('Usuario no encontrado.');
+    await this.stripVipItemsFromUser(userId, row);
+    return { ok: true, user: await this.getFullUserProfile(userId) };
   }
 
   async grantExclusiveUnlock(userId, cosmeticId) {
@@ -414,10 +576,15 @@ export class ChessDatabase {
       ? blackyBonusXp
       : (isWin ? (firstTimeClear && xpReward > 0 ? xpReward : Math.max(45, Math.round(xpReward * 0.35))) : (isDraw ? 25 : 20));
     const xpResult = await this.addXp(userId, baseXp, `${mode}: ${isWin ? 'Victoria' : (isDraw ? 'Tablas' : 'Participación')} vs ${opponentName || 'IA'}`);
+    const modsGained = isWin
+      ? (mode === 'blacky' ? 300 : (firstTimeClear && Number(levelId) === 5 ? 95 : 45))
+      : (isDraw ? 20 : 12);
+    await this.addMods(userId, modsGained);
 
     return {
       matchId,
       xpGained: baseXp,
+      modsGained,
       firstTimeClear,
       unlockedExclusive,
       leveledUp: xpResult.leveledUp,
@@ -470,15 +637,21 @@ export class ChessDatabase {
 
     const wXp = wWin ? 75 : (isDraw ? 40 : 25);
     const bXp = bWin ? 75 : (isDraw ? 40 : 25);
+    const wMods = wWin ? 75 : (isDraw ? 30 : 15);
+    const bMods = bWin ? 75 : (isDraw ? 30 : 15);
     await this.addXp(whiteUserId, wXp, `Online vs ${bRow.username}`);
     await this.addXp(blackUserId, bXp, `Online vs ${wRow.username}`);
+    await this.addMods(whiteUserId, wMods);
+    await this.addMods(blackUserId, bMods);
 
     return {
       matchId,
       whiteProfile: await this.getFullUserProfile(whiteUserId),
       blackProfile: await this.getFullUserProfile(blackUserId),
       whiteXpGained: wXp,
-      blackXpGained: bXp
+      blackXpGained: bXp,
+      whiteModsGained: wMods,
+      blackModsGained: bMods
     };
   }
 
@@ -518,26 +691,33 @@ export class ChessDatabase {
 
   async getLeaderboard(limit = 50) {
     const rows = await this.queryAll(`
-      SELECT id, username, avatar, frame_id, title, elo, xp, level, wins, losses, draws, games_played
+      SELECT id, username, avatar, frame_id, title, elo, xp, level, wins, losses, draws, games_played, vip_active, vip_expires_at
       FROM users
       ORDER BY elo DESC, wins DESC, xp DESC
       LIMIT ?
     `, [limit]);
 
-    return rows.map((r, idx) => ({
-      rank: idx + 1,
-      id: r.id,
-      username: r.username,
-      avatar: r.avatar,
-      frameId: r.frame_id,
-      title: r.title || '',
-      elo: Number(r.elo) || 0,
-      level: computeLevelFromXp(r.xp).level,
-      xp: Number(r.xp) || 0,
-      wins: Number(r.wins) || 0,
-      losses: Number(r.losses) || 0,
-      draws: Number(r.draws) || 0,
-      gamesPlayed: Number(r.games_played) || 0
-    }));
+    const result = [];
+    for (let idx = 0; idx < rows.length; idx++) {
+      const r = await this.ensureFreshVipState(rows[idx]);
+      const isVip = this.isVipRowActive(r);
+      result.push({
+        rank: idx + 1,
+        id: r.id,
+        username: r.username,
+        avatar: r.avatar,
+        frameId: (!isVip && VIP_EXCLUSIVE_IDS.includes(r.frame_id)) ? 'frame_stone' : r.frame_id,
+        isVip,
+        title: r.title || '',
+        elo: Number(r.elo) || 0,
+        level: computeLevelFromXp(r.xp).level,
+        xp: Number(r.xp) || 0,
+        wins: Number(r.wins) || 0,
+        losses: Number(r.losses) || 0,
+        draws: Number(r.draws) || 0,
+        gamesPlayed: Number(r.games_played) || 0
+      });
+    }
+    return result;
   }
 }

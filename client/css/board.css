@@ -802,46 +802,155 @@
   filter: drop-shadow(0 0 26px rgba(201, 75, 60, 0.45));
 }
 
-/* ================= RESPONSIVE PC + CELULAR ================= */
+/* ================= SKINS DE FICHAS Y PODERES DE TIENDA / MOD VIP ================= */
+.piece-wrap.piece-skin-jade .piece-svg {
+  filter: drop-shadow(0 0 5px rgba(84, 219, 152, 0.75)) hue-rotate(82deg) saturate(1.35);
+}
+.piece-wrap.piece-skin-obsidian .piece-svg {
+  filter: drop-shadow(0 0 6px rgba(255, 134, 64, 0.8)) contrast(1.18) sepia(0.32) saturate(1.4);
+}
+.piece-wrap.piece-skin-cosmic .piece-svg {
+  filter: drop-shadow(0 0 7px rgba(170, 146, 255, 0.9)) hue-rotate(235deg) saturate(1.55);
+}
+.piece-wrap.piece-skin-vip-gold .piece-svg {
+  filter: sepia(1) saturate(3.2) hue-rotate(8deg) brightness(1.08) contrast(1.12) drop-shadow(0 0 7px rgba(255, 215, 64, 0.95));
+}
+
+/* Congelación Dorada (Poder Mod VIP: 3 turnos en color dorado) */
+.square.golden-frozen {
+  background-image: radial-gradient(circle, rgba(255, 224, 92, 0.56) 0%, rgba(214, 158, 28, 0.28) 72%, rgba(255, 215, 64, 0.14) 100%) !important;
+  box-shadow: inset 0 0 0 3px #ffd94a, inset 0 0 20px rgba(255, 215, 64, 0.72) !important;
+}
+.piece-wrap.piece-golden-frozen .piece-svg {
+  filter: sepia(1) saturate(4) hue-rotate(10deg) brightness(1.22) drop-shadow(0 0 10px rgba(255, 225, 84, 1)) !important;
+  animation: goldenFreezePulse 1.6s ease-in-out infinite;
+}
+@keyframes goldenFreezePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+.golden-freeze-badge {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  z-index: 9;
+  padding: 1px 4px;
+  border-radius: 5px;
+  font-size: 0.56rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #fff1a8 0%, #d49617 100%);
+  color: #1c1404;
+  border: 1px solid #fff7cc;
+  box-shadow: 0 0 8px rgba(255, 215, 64, 0.9);
+  pointer-events: none;
+}
+.square.golden-freeze-target {
+  box-shadow: inset 0 0 0 3.5px #ffe169, inset 0 0 18px rgba(255, 215, 64, 0.58) !important;
+  background-image: radial-gradient(circle, rgba(255, 225, 105, 0.42) 0%, transparent 72%);
+  cursor: crosshair !important;
+}
+.square.solar-shielded {
+  box-shadow: inset 0 0 0 3px #ffd966, inset 0 0 16px rgba(255, 217, 102, 0.44);
+}
+.solar-shield-badge {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  z-index: 8;
+  font-size: 0.6rem;
+  pointer-events: none;
+  filter: drop-shadow(0 0 5px rgba(255, 217, 102, 0.9));
+}
+
+/* ================= RESPONSIVE PC + CELULAR (MODO VERTICAL / JUGAR PARADO) ================= */
 .board-grid, .square, .btn {
   touch-action: manipulation;
 }
 
 @media (max-width: 960px) {
+  #view-battle {
+    min-height: 100dvh;
+    justify-content: flex-start;
+  }
+  /* ARREGLO CRÍTICO: Globo de diálogo centrado y completo en celular, jamás cortado a la mitad */
+  .boss-speech-wrap {
+    position: fixed !important;
+    top: auto !important;
+    bottom: 12px !important;
+    left: 10px !important;
+    right: 10px !important;
+    width: auto !important;
+    max-width: calc(100vw - 20px) !important;
+    margin: 0 auto !important;
+    transform: translateY(14px) !important;
+    z-index: 80 !important;
+  }
+  .boss-speech-wrap.visible {
+    opacity: 1 !important;
+    transform: translateY(0) !important;
+  }
+  .boss-speech-bubble {
+    width: 100%;
+    font-size: 0.82rem;
+    padding: 10px 13px;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+  }
+
   .arena-main {
     display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
-    gap: 12px !important;
-    padding: 8px !important;
-    overflow-y: auto !important;
+    gap: 10px !important;
+    padding: 8px 8px 72px !important;
+    overflow-y: visible !important;
+  }
+  /* En celular parado, el tablero y relojes van PRIMERO arriba */
+  .board-column {
+    order: -1 !important;
+    width: 100% !important;
+    max-width: min(96vw, 540px) !important;
+    gap: 6px !important;
   }
   .hud-col {
     width: 100% !important;
-    max-width: 560px !important;
+    max-width: min(96vw, 540px) !important;
     flex-direction: row !important;
     flex-wrap: wrap !important;
     gap: 8px !important;
   }
   .hud-col .hud-card {
-    flex: 1 1 220px !important;
-  }
-  .board-column {
-    width: 100% !important;
-    max-width: min(94vw, 540px) !important;
+    flex: 1 1 200px !important;
+    padding: 10px !important;
   }
   .board-pedestal {
-    width: min(94vw, 520px) !important;
-    height: min(94vw, 520px) !important;
+    width: min(95vw, 520px) !important;
+    height: min(95vw, 520px) !important;
+    max-width: min(95vw, 520px) !important;
+  }
+  .clocks-bar {
+    max-width: min(95vw, 520px) !important;
+  }
+  .board-legend {
+    border-radius: 12px !important;
+    padding: 6px 10px !important;
+    gap: 7px !important;
+    font-size: 0.68rem !important;
+    max-width: 100% !important;
   }
   .boss-portrait-frame {
-    max-width: 136px !important;
+    max-width: 112px !important;
     margin: 0 auto !important;
   }
   .hud-topbar {
     flex-wrap: wrap !important;
+    justify-content: space-between !important;
     gap: 6px !important;
-    padding: 8px 10px !important;
+    padding: 7px 9px !important;
+  }
+  .mayan-boss-stage {
+    margin-top: 22px;
+    opacity: 0.45;
   }
 }
 
@@ -849,17 +958,44 @@
   .board-pedestal {
     width: 96vw !important;
     height: 96vw !important;
-    padding: 6px !important;
+    padding: 5px !important;
   }
   .clocks-bar {
     gap: 6px !important;
   }
   .clock-pill {
     padding: 5px 8px !important;
-    font-size: 0.78rem !important;
+    font-size: 0.75rem !important;
+    min-width: 0;
+    flex: 1;
+    justify-content: space-between;
   }
-  .hud-right .btn {
+  .clock-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 110px;
+  }
+  .hud-left, .hud-right {
+    gap: 5px !important;
+  }
+  .hud-logo-img {
+    height: 24px !important;
+  }
+  .turn-banner {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    padding: 5px 10px !important;
+    font-size: 0.72rem !important;
+  }
+  .hud-right .btn,
+  .hud-left .btn {
     padding: 5px 8px !important;
-    font-size: 0.74rem !important;
+    font-size: 0.72rem !important;
+  }
+  .hint-banner {
+    font-size: 0.74rem;
+    padding: 7px 10px;
   }
 }

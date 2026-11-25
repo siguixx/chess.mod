@@ -516,6 +516,203 @@
   margin-bottom: 4px;
 }
 
+/* ================= TIENDA, ECONOMÍA MODS Y MOD VIP ================= */
+.vip-hero-card {
+  position: relative;
+  border-radius: 16px;
+  padding: 22px;
+  margin-bottom: 20px;
+  background: linear-gradient(135deg, rgba(46, 36, 15, 0.95) 0%, rgba(18, 15, 10, 0.98) 55%, rgba(58, 43, 14, 0.94) 100%);
+  border: 1.5px solid #ffd859;
+  box-shadow: 0 0 28px rgba(255, 210, 64, 0.22), 0 18px 42px rgba(0, 0, 0, 0.62);
+}
+.vip-hero-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.vip-hero-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.2rem, 2.6vw, 1.55rem);
+  color: #fff4d2;
+  margin-bottom: 4px;
+}
+.vip-hero-sub {
+  font-size: 0.81rem;
+  color: #d7ccb6;
+  line-height: 1.45;
+}
+.vip-price-box {
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgba(14, 12, 8, 0.88);
+  border: 1px solid #ffd859;
+  text-align: center;
+  min-width: 108px;
+}
+.vip-price-amount {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #ffe27a;
+  line-height: 1.1;
+}
+.vip-price-period {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.vip-benefit-list {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px 14px;
+  margin-bottom: 16px;
+  font-size: 0.81rem;
+  color: #f0e6d2;
+  line-height: 1.45;
+}
+.vip-benefit-list li {
+  background: rgba(12, 10, 7, 0.56);
+  border: 1px solid rgba(255, 216, 89, 0.22);
+  border-radius: 9px;
+  padding: 8px 11px;
+}
+.vip-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.vip-pay-methods {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.vip-pay-pill {
+  flex: 1;
+  min-width: 90px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--border-stone);
+  background: rgba(18, 16, 13, 0.9);
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+.vip-pay-pill.active {
+  border-color: #ffd859;
+  background: rgba(255, 216, 89, 0.18);
+  color: #ffe78f;
+}
+
+.shop-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.shop-tab-btn {
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--border-stone);
+  background: rgba(22, 20, 17, 0.88);
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+.shop-tab-btn.active {
+  background: linear-gradient(180deg, rgba(207, 166, 76, 0.28) 0%, rgba(38, 84, 61, 0.2) 100%);
+  border-color: var(--gold-bright);
+  color: var(--gold-bright);
+}
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(245px, 1fr));
+  gap: 14px;
+}
+.shop-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 13px;
+  background: rgba(18, 16, 13, 0.94);
+  border: 1px solid var(--border-stone);
+  transition: all 0.18s ease;
+}
+.shop-card:hover {
+  border-color: var(--gold-bright);
+  transform: translateY(-2px);
+}
+.shop-card.vip-exclusive {
+  border-color: rgba(255, 216, 89, 0.72);
+  background: linear-gradient(180deg, rgba(44, 34, 14, 0.9) 0%, rgba(16, 14, 10, 0.96) 100%);
+}
+.shop-card.owned {
+  border-color: rgba(81, 150, 116, 0.62);
+}
+.shop-card.equipped {
+  border-color: #ffd859;
+  box-shadow: 0 0 18px rgba(255, 216, 89, 0.18);
+}
+.shop-card-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.shop-card-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.7rem;
+  background: rgba(12, 11, 9, 0.85);
+  border: 1px solid var(--border-stone);
+}
+.shop-card-actions {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Modal guía previa a cada partida */
+.prematch-rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 46dvh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.prematch-rule-item {
+  background: rgba(12, 11, 9, 0.86);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--gold);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #ebe3d5;
+}
+.prematch-rule-item strong {
+  color: var(--gold-bright);
+}
+
 @media (max-width: 900px) {
   #app-shell { grid-template-columns: 1fr; }
   .menu-sidebar {
@@ -524,9 +721,11 @@
     border-right: none;
     border-bottom: 1px solid var(--border-stone);
   }
-  .main-nav { flex-direction: row; flex-wrap: wrap; }
-  .nav-btn { width: auto; flex: 1 1 130px; }
-  .menu-content { max-height: none; padding: 18px 16px; }
+  .main-nav { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; }
+  .nav-btn { width: auto; flex: 0 0 auto; }
+  .menu-content { max-height: none; padding: 14px 12px 28px; }
   .matchmaking-hero { grid-template-columns: 1fr; }
   .campaign-level-card { grid-template-columns: 56px 1fr; }
+  .vip-hero-card { padding: 16px 14px; }
+  .vip-benefit-list { grid-template-columns: 1fr; }
 }

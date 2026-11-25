@@ -39,6 +39,7 @@
           <button class="nav-btn active" data-screen="play"><span class="nav-ico">⚔️</span><span>Jugar</span></button>
           <button class="nav-btn" data-screen="multiplayer"><span class="nav-ico">🌐</span><span>Multijugador</span></button>
           <button class="nav-btn" data-screen="story"><span class="nav-ico">📜</span><span>Modo Historia</span></button>
+          <button class="nav-btn" data-screen="shop"><span class="nav-ico">🛒</span><span>Tienda</span></button>
           <button class="nav-btn" data-screen="profile"><span class="nav-ico">👤</span><span>Perfil</span></button>
           <button class="nav-btn" data-screen="customize"><span class="nav-ico">🎨</span><span>Personalización</span></button>
           <button class="nav-btn" data-screen="ranking"><span class="nav-ico">🏆</span><span>Ranking Global</span></button>
@@ -55,6 +56,7 @@
             <div class="sidebar-user-meta">
               <span id="sidebar-elo">Elo 0</span>
               <span id="sidebar-xp">0 XP</span>
+              <span id="sidebar-mods">🪙 100</span>
             </div>
           </div>
         </div>
@@ -194,6 +196,57 @@
         <div id="campaign-levels-container" class="campaign-level-list"></div>
       </section>
 
+      <!-- 3B. TIENDA & MOD VIP -->
+      <section id="screen-shop" class="screen-section">
+        <div class="screen-header">
+          <div>
+            <div class="screen-kicker">ECONOMÍA DEL JUEGO · MODS Y SUSCRIPCIÓN</div>
+            <h1 class="screen-title">TIENDA CHESS.MOD</h1>
+            <p class="screen-subtitle">Gana 🪙 Mods jugando partidas y desbloquea poderes balanceados, fichas con sonido propio y tableros exclusivos.</p>
+          </div>
+          <span class="pill" style="font-size:0.88rem;padding:6px 14px;">🪙 <strong id="shop-mods-balance">100</strong> Mods</span>
+        </div>
+
+        <!-- BANNER SUSCRIPCIÓN MENSUAL MOD VIP -->
+        <div class="vip-hero-card" id="vip-banner-card">
+          <div class="vip-hero-top">
+            <div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+                <span class="vip-tag">👑 Mod VIP</span>
+                <span id="vip-status-badge" class="pill muted">Inactivo</span>
+              </div>
+              <h2 class="vip-hero-title">Suscripción Mensual <span class="vip-name">Mod VIP</span></h2>
+              <div id="vip-expires-text" class="vip-hero-sub">S/ 15 / mes · Renovable mensualmente. Si dejas de pagar o cancelas, todo el inventario VIP se retira automáticamente.</div>
+            </div>
+            <div class="vip-price-box">
+              <div class="vip-price-amount">S/ 15</div>
+              <div class="vip-price-period">por mes</div>
+            </div>
+          </div>
+
+          <ul class="vip-benefit-list">
+            <li>✨ <strong>Aurora dorada y nombre dorado</strong> visibles para otros jugadores en Ranking Global y partidas Online.</li>
+            <li>❄️ <strong>Poder VIP — Congelación Dorada:</strong> tus peones congelan a distancia (hasta 4 casillas) en color dorado por 3 turnos a cualquier ficha rival (no Rey).</li>
+            <li>♟️ <strong>Fichas Doradas exclusivas</strong> con efecto de sonido metálico dorado al mover y capturar.</li>
+            <li>🏁 <strong>Tablero Dorado y Negro</strong> de lujo + Marco Aurora Dorada.</li>
+          </ul>
+
+          <div class="vip-hero-actions">
+            <button id="btn-vip-open-modal" class="btn btn-gold">👑 Suscribirse a Mod VIP (S/ 15 / mes)</button>
+            <button id="btn-vip-cancel" class="btn btn-danger btn-sm hidden">Cancelar suscripción (retirar inventario VIP)</button>
+          </div>
+        </div>
+
+        <!-- TABS DE TIENDA POR MODS -->
+        <div class="shop-tabs" id="shop-tabs-bar">
+          <button class="shop-tab-btn active" data-shop-tab="powers">⚡ Poderes</button>
+          <button class="shop-tab-btn" data-shop-tab="pieceSkins">♟️ Fichas</button>
+          <button class="shop-tab-btn" data-shop-tab="boards">🏁 Tableros</button>
+        </div>
+
+        <div id="shop-items-grid" class="shop-grid"></div>
+      </section>
+
       <!-- 4. PERFIL -->
       <section id="screen-profile" class="screen-section">
         <div class="screen-header">
@@ -219,6 +272,8 @@
                 <span class="pill">🏆 Elo: <strong id="profile-elo-val">0</strong></span>
                 <span id="profile-level-val" class="pill jade">Nv. 1</span>
                 <span id="profile-xp-val" class="pill muted">50 XP</span>
+                <span class="pill">🪙 <strong id="profile-mods-val">100</strong> Mods</span>
+                <span id="profile-vip-pill" class="vip-tag hidden">👑 Mod VIP</span>
               </div>
               <div class="xp-mini-track" style="height:8px;margin-top:10px;"><div id="profile-xp-bar" class="xp-mini-fill"></div></div>
             </div>
@@ -261,9 +316,17 @@
           <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;">Marcos de Retrato</h3>
           <div id="cosmetics-frames-grid" class="cosmetics-grid"></div>
         </div>
-        <div class="panel-card">
+        <div class="panel-card" style="margin-bottom:16px;">
           <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;">Estilos de Tablero</h3>
           <div id="cosmetics-boards-grid" class="cosmetics-grid"></div>
+        </div>
+        <div class="panel-card" style="margin-bottom:16px;">
+          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;">Fichas (Skins y Sonidos)</h3>
+          <div id="cosmetics-pieces-grid" class="cosmetics-grid"></div>
+        </div>
+        <div class="panel-card">
+          <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;">Poder Equipado en Batalla</h3>
+          <div id="cosmetics-powers-grid" class="cosmetics-grid"></div>
         </div>
       </section>
 
@@ -278,7 +341,7 @@
           <button id="btn-refresh-ranking" class="btn btn-sm">↻ Actualizar</button>
         </div>
 
-        <div class="panel-card" style="padding:0;overflow:hidden;">
+        <div class="panel-card" style="padding:0;overflow-x:auto;">
           <table class="ranking-table">
             <thead>
               <tr>
@@ -590,6 +653,12 @@
           <button id="btn-player-teleport" class="btn btn-sm btn-gold" style="width:100%;">✦ Activar Teletransporte</button>
         </div>
 
+        <div class="hud-card hidden" id="shop-power-controls-card">
+          <div class="hud-card-header"><span>⚡ Poder Equipado</span></div>
+          <p id="shop-power-hud-desc" style="font-size:0.74rem;color:var(--text-muted);line-height:1.42;margin-bottom:8px;"></p>
+          <button id="btn-shop-power" class="btn btn-sm btn-gold" style="width:100%;">⚡ Activar Poder</button>
+        </div>
+
         <div class="hud-card hidden" id="online-controls-card">
           <div class="hud-card-header"><span>Acciones Online</span></div>
           <div style="display:flex;gap:8px;">
@@ -632,7 +701,10 @@
         </div>
         <div>
           <label for="login-password">Contraseña</label>
-          <input id="login-password" class="input-field" type="password" required minlength="6" placeholder="••••••••">
+          <div class="password-input-wrap">
+            <input id="login-password" class="input-field" type="password" required minlength="6" placeholder="••••••••">
+            <button type="button" class="password-eye-btn" data-toggle-pw="login-password" aria-label="Mostrar u ocultar contraseña" title="Mostrar/ocultar contraseña">👁️</button>
+          </div>
         </div>
         <button type="submit" class="btn btn-primary" style="width:100%;margin-top:4px;">Entrar</button>
       </form>
@@ -648,10 +720,53 @@
         </div>
         <div>
           <label for="reg-password">Contraseña (mín. 6 caracteres)</label>
-          <input id="reg-password" class="input-field" type="password" required minlength="6" placeholder="Mínimo 6 caracteres">
+          <div class="password-input-wrap">
+            <input id="reg-password" class="input-field" type="password" required minlength="6" placeholder="Mínimo 6 caracteres">
+            <button type="button" class="password-eye-btn" data-toggle-pw="reg-password" aria-label="Mostrar u ocultar contraseña" title="Mostrar/ocultar contraseña">👁️</button>
+          </div>
         </div>
-        <button type="submit" class="btn btn-gold" style="width:100%;margin-top:4px;">Crear cuenta (0 Elo · 50 XP)</button>
+        <button type="submit" class="btn btn-gold" style="width:100%;margin-top:4px;">Crear cuenta (0 Elo · 50 XP · 100 Mods)</button>
       </form>
+    </div>
+  </div>
+
+  <!-- GUÍA PREVIA A CADA PARTIDA (MOVIMIENTOS Y REGLAS DEL NIVEL) -->
+  <div id="modal-prematch" class="modal-backdrop">
+    <div class="modal-box" style="max-width:540px;text-align:left;">
+      <div id="prematch-kicker" style="font-size:0.72rem;letter-spacing:0.2em;color:var(--gold);font-family:var(--font-display);margin-bottom:4px;text-transform:uppercase;">GUÍA DE MOVIMIENTOS</div>
+      <h2 id="prematch-title" style="text-align:left;margin-bottom:4px;">Antes de comenzar</h2>
+      <p id="prematch-subtitle" style="text-align:left;margin-bottom:12px;">Revisa cómo se mueven tus piezas y las reglas especiales de esta partida.</p>
+      <div id="prematch-rules-body" class="prematch-rules-list"></div>
+      <div class="modal-actions" style="margin-top:16px;">
+        <button id="btn-prematch-start" class="btn btn-gold" style="width:100%;padding:11px 18px;font-size:0.92rem;">⚔️ ¡Entendido, empezar partida!</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE SUSCRIPCIÓN MENSUAL MOD VIP (S/ 15 / MES) -->
+  <div id="modal-vip-checkout" class="modal-backdrop">
+    <div class="modal-box" style="max-width:470px;text-align:left;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <span class="vip-tag">👑 SUSCRIPCIÓN MENSUAL</span>
+        <button id="btn-close-vip-modal" class="btn btn-sm btn-icon">✕</button>
+      </div>
+      <h2 style="text-align:left;margin-bottom:4px;">Activar <span class="vip-name">Mod VIP</span></h2>
+      <p style="text-align:left;margin-bottom:12px;">Plan mensual de <strong>S/ 15 / mes</strong> (30 días). Tu cuenta vinculada recibe inmediatamente todo el paquete VIP:</p>
+      <ul class="vip-benefit-list" style="margin-bottom:14px;">
+        <li>✨ Aurora dorada y nombre dorado visibles para otros jugadores</li>
+        <li>❄️ Poder VIP: Peones congelan a distancia por 3 turnos en dorado</li>
+        <li>♟️ Fichas Doradas con sonido exclusivo + Tablero Dorado y Negro</li>
+      </ul>
+      <div style="font-size:0.74rem;color:var(--gold);text-transform:uppercase;letter-spacing:0.08em;font-weight:700;margin-bottom:8px;">Método de pago (S/ 15.00 PEN / mes)</div>
+      <div class="vip-pay-methods" id="vip-pay-methods">
+        <button type="button" class="vip-pay-pill active" data-pay="yape">📱 Yape</button>
+        <button type="button" class="vip-pay-pill" data-pay="plin">📲 Plin</button>
+        <button type="button" class="vip-pay-pill" data-pay="card">💳 Tarjeta</button>
+      </div>
+      <div style="font-size:0.74rem;color:var(--text-muted);background:rgba(201,75,60,0.12);border:1px solid rgba(201,75,60,0.35);border-radius:8px;padding:9px 11px;margin:12px 0 16px;line-height:1.45;">
+        ⚠️ <strong>Política Mod VIP:</strong> Si la suscripción vence o se cancela, todos los objetos VIP (aurora, nombre dorado, poder, fichas doradas y tablero dorado/negro) se retiran automáticamente de tu inventario.
+      </div>
+      <button id="btn-confirm-vip-sub" class="btn btn-gold" style="width:100%;padding:12px 16px;font-size:0.92rem;">👑 Confirmar Mod VIP — S/ 15 / mes</button>
     </div>
   </div>
 

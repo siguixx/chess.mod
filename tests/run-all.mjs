@@ -716,6 +716,112 @@ try {
     sAlice.disconnect();
     sBob.disconnect();
   });
+
+  await test('Economía Mods, Tienda (Poderes/Fichas/Tableros), Sesión Vinculada por Cookie y Mod VIP (S/15) con revocación total', async () => {
+    // 1. Crear cuenta nueva -> 100 Mods iniciales + cookie persistente
+    const reg = await fetch(`${url}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'VipTester', email: 'viptester@chessmod.test', password: 'Password123' })
+    });
+    assert.equal(reg.status, 201);
+    const setCookie = reg.headers.get('set-cookie') || '';
+    const sessionCookie = setCookie.split(';')[0];
+    assert.ok(sessionCookie.includes('chess_mod_token='), 'Debe emitir cookie persistente de sesión');
+    const regData = await reg.json();
+    const vipToken = regData.token;
+    assert.equal(regData.user.mods, 100, 'Usuario nuevo inicia con 100 Mods');
+    assert.equal(regData.user.isVip, false);
+    assert.equal(regData.user.pieceSkinId, 'pieces_classic');
+    assert.equal(regData.user.equippedPowerId, 'power_none');
+
+    // 2. Cuenta siempre vinculada: GET /api/auth/me SOLO con cookie (sin Authorization) restaura cuenta y devuelve token
+    const meCookie = await fetch(`${url}/api/auth/me`, { headers: { Cookie: sessionCookie } });
+    assert.equal(meCookie.status, 200);
+    const meData = await meCookie.json();
+    assert.equal(meData.authenticated, true);
+    assert.equal(meData.user.username, 'VipTester');
+    assert.ok(meData.token, 'GET /api/auth/me debe rehidratar el token de sesión');
+
+    // 3. Comprar ficha Jade (100 Mods) -> descuenta a 0, desbloquea y equipa; comprar sin saldo devuelve 400 INSUFFICIENT_MODS
+    const authH = { Authorization: `Bearer ${vipToken}`, 'Content-Type': 'application/json' };
+    const buyJade = await fetch(`${url}/api/shop/buy`, {
+      method: 'POST',
+      headers: authH,
+      body: JSON.stringify({ itemId: 'pieces_jade' })
+    });
+    assert.equal(buyJade.status, 200);
+    const buyJadeData = await buyJade.json();
+    assert.equal(buyJadeData.user.mods, 0);
+    assert.equal(buyJadeData.user.pieceSkinId, 'pieces_jade');
+    assert.ok(buyJadeData.user.unlockedCosmetics.includes('pieces_jade'));
+
+    const buyNoFunds = await fetch(`${url}/api/shop/buy`, {
+      method: 'POST',
+      headers: authH,
+      body: JSON.stringify({ itemId: 'power_solar_shield' })
+    });
+    assert.equal(buyNoFunds.status, 400);
+    assert.equal((await buyNoFunds.json()).code, 'INSUFFICIENT_MODS');
+
+    // 4. Ganar una partida otorga Mods reales
+    const winRep = await fetch(`${url}/api/game/report`, {
+      method: 'POST',
+      headers: authH,
+      body: JSON.stringify({ mode: 'classic', opponentName: 'IA Nv.2', winner: 'w', turns: 18 })
+    });
+    assert.equal(winRep.status, 200);
+    const winData = await winRep.json();
+    assert.ok(winData.modsGained > 0, 'Ganar partida debe otorgar Mods');
+    assert.equal(winData.profile.mods, winData.modsGained);
+
+    // 5. Activar suscripción mensual Mod VIP (S/ 15 / mes) -> equipa aurora dorada, tablero dorado/negro, fichas doradas y poder VIP
+    const sub = await fetch(`${url}/api/vip/subscribe`, {
+      method: 'POST',
+      headers: authH,
+      body: JSON.stringify({ paymentMethod: 'yape' })
+    });
+    assert.equal(sub.status, 200);
+    const subData = await sub.json();
+    assert.equal(subData.user.isVip, true);
+    assert.equal(subData.user.frameId, 'frame_vip_gold');
+    assert.equal(subData.user.boardThemeId, 'board_vip_gold_black');
+    assert.equal(subData.user.pieceSkinId, 'pieces_vip_gold');
+    assert.equal(subData.user.equippedPowerId, 'power_vip_golden_freeze');
+
+    // Ranking Global muestra isVip=true a otros jugadores
+    const lbVip = await (await fetch(`${url}/api/leaderboard`)).json();
+    const vipEntry = lbVip.players.find((p) => p.username === 'VipTester');
+    assert.ok(vipEntry && vipEntry.isVip === true, 'Mod VIP debe ser visible para otros jugadores en Ranking Global');
+
+    // 6. Cancelar Mod VIP -> QUITA TODO el inventario VIP y revierte equipados a defecto
+    const cancel = await fetch(`${url}/api/vip/cancel`, { method: 'POST', headers: authH, body: '{}' });
+    assert.equal(cancel.status, 200);
+    const cancelData = await cancel.json();
+    assert.equal(cancelData.user.isVip, false);
+    assert.equal(cancelData.user.frameId, 'frame_stone');
+    assert.equal(cancelData.user.boardThemeId, 'board_classic_maya');
+    assert.equal(cancelData.user.pieceSkinId, 'pieces_classic');
+    assert.equal(cancelData.user.equippedPowerId, 'power_none');
+    for (const vipId of ['frame_vip_gold', 'board_vip_gold_black', 'pieces_vip_gold', 'power_vip_golden_freeze']) {
+      assert.equal(cancelData.user.unlockedCosmetics.includes(vipId), false, `${vipId} debe ser eliminado del inventario al cancelar VIP`);
+    }
+    // Conserva sus compras normales con Mods (pieces_jade)
+    assert.equal(cancelData.user.unlockedCosmetics.includes('pieces_jade'), true, 'Las compras normales con Mods se conservan');
+
+    // 7. Vencimiento automático de Mod VIP: si vip_expires_at ya pasó, GET /api/auth/me limpia todo el inventario VIP
+    await fetch(`${url}/api/vip/subscribe`, { method: 'POST', headers: authH, body: JSON.stringify({ paymentMethod: 'card' }) });
+    await server.db.execSql(
+      'UPDATE users SET vip_expires_at = ? WHERE username = ?',
+      [new Date(Date.now() - 60_000).toISOString(), 'VipTester']
+    );
+    const afterExp = await (await fetch(`${url}/api/auth/me`, { headers: authH })).json();
+    assert.equal(afterExp.user.isVip, false, 'VIP vencido debe desactivarse automáticamente');
+    assert.equal(afterExp.user.pieceSkinId, 'pieces_classic');
+    assert.equal(afterExp.user.boardThemeId, 'board_classic_maya');
+    assert.equal(afterExp.user.equippedPowerId, 'power_none');
+    assert.equal(afterExp.user.unlockedCosmetics.includes('power_vip_golden_freeze'), false, 'Poder VIP expirado debe borrarse del inventario');
+  });
 } finally {
   await server.stop();
   try { fs.unlinkSync(tmpDb); } catch {}

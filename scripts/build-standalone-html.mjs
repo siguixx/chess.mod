@@ -42,9 +42,18 @@ const combinedCss = `${cssMain}\n\n${cssMenu}\n\n${cssBoard}\n\n${cssPortraits}`
 
 // 3. Adaptador API offline en localStorage (para que registro, perfil, 5 campañas, XP, pistas 25 XP, cosméticos y ranking funcionen 100% en file://)
 const standaloneApiSource = `
-import { INITIAL_ELO, HINT_XP_COST, computeLevelFromXp } from '../../shared/config/constants.js';
+import { INITIAL_ELO, INITIAL_MODS, HINT_XP_COST, computeLevelFromXp } from '../../shared/config/constants.js';
 const INITIAL_XP = 50;
-import { COSMETIC_AVATARS, COSMETIC_FRAMES, COSMETIC_BOARDS } from '../../shared/config/cosmetics.js';
+import {
+  COSMETIC_AVATARS,
+  COSMETIC_FRAMES,
+  COSMETIC_BOARDS,
+  COSMETIC_PIECE_SKINS,
+  COSMETIC_POWERS,
+  MOD_VIP_PLAN,
+  VIP_EXCLUSIVE_IDS,
+  findShopItem
+} from '../../shared/config/cosmetics.js';
 import { CHAPTER_ORDER, getCampaignLevel, isCampaignLevelUnlocked, getCampaignUnlockReason } from '../../shared/config/campaigns.js';
 
 const STORE_KEY = 'chess_mod_standalone_v2';
@@ -68,29 +77,50 @@ function saveStore(store) {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch {}
 }
 
+function checkVipActive(u) {
+  if (!u || !u.vipActive || !u.vipExpiresAt) return false;
+  return Date.parse(u.vipExpiresAt) > Date.now();
+}
+
+function stripVipOffline(u) {
+  if (!u) return;
+  u.vipActive = false;
+  u.vipExpiresAt = null;
+  if (VIP_EXCLUSIVE_IDS.includes(u.frameId)) u.frameId = 'frame_stone';
+  if (VIP_EXCLUSIVE_IDS.includes(u.boardThemeId)) u.boardThemeId = 'board_classic_maya';
+  if (VIP_EXCLUSIVE_IDS.includes(u.pieceSkinId)) u.pieceSkinId = 'pieces_classic';
+  if (VIP_EXCLUSIVE_IDS.includes(u.equippedPowerId)) u.equippedPowerId = 'power_none';
+  u.unlockedCosmetics = (u.unlockedCosmetics || []).filter((id) => !VIP_EXCLUSIVE_IDS.includes(id));
+}
+
 function hydrateUser(u, matches = []) {
   if (!u) return null;
+  if (u.vipActive && !checkVipActive(u)) stripVipOffline(u);
+  const isVip = checkVipActive(u);
   const lvInfo = computeLevelFromXp(u.xp || 0);
   const campaigns = { ...defaultCampaigns(), ...(u.campaigns || {}) };
-  const unlockedCosmetics = new Set(u.unlockedCosmetics || ['obsidian_king', 'frame_stone', 'board_classic_maya']);
-  for (const item of [...COSMETIC_AVATARS, ...COSMETIC_FRAMES, ...COSMETIC_BOARDS]) {
-    if (!item.exclusive && (item.unlockLevel || 1) <= lvInfo.level) unlockedCosmetics.add(item.id);
+  const unlockedCosmetics = new Set(u.unlockedCosmetics || ['preset:obsidian_king', 'preset:jade_guardian', 'frame_stone', 'board_classic_maya', 'pieces_classic', 'power_none']);
+  for (const item of [...COSMETIC_AVATARS, ...COSMETIC_FRAMES, ...COSMETIC_BOARDS, ...COSMETIC_PIECE_SKINS, ...COSMETIC_POWERS]) {
+    if (item.vipOnly) {
+      if (isVip) unlockedCosmetics.add(item.id);
+      else unlockedCosmetics.delete(item.id);
+    } else if ((item.minLevel || 1) <= lvInfo.level) {
+      unlockedCosmetics.add(item.id);
+    }
   }
-  const bossKills = {
-    maya: (campaigns.maya?.completedLevels || []).includes(5) ? 1 : 0,
-    mittens: (campaigns.mittens?.completedLevels || []).includes(5) ? 1 : 0,
-    galaxy: (campaigns.galaxy?.completedLevels || []).includes(5) ? 1 : 0,
-    glitch: (campaigns.glitch?.completedLevels || []).includes(5) ? 1 : 0,
-    chess: (campaigns.chess?.completedLevels || []).includes(5) ? 1 : 0
-  };
   return {
     ...u,
+    isVip,
+    vipExpiresAt: isVip ? u.vipExpiresAt : null,
+    mods: Number(u.mods ?? INITIAL_MODS) || 0,
+    pieceSkinId: (!isVip && VIP_EXCLUSIVE_IDS.includes(u.pieceSkinId)) ? 'pieces_classic' : (u.pieceSkinId || 'pieces_classic'),
+    equippedPowerId: (!isVip && VIP_EXCLUSIVE_IDS.includes(u.equippedPowerId)) ? 'power_none' : (u.equippedPowerId || 'power_none'),
     level: lvInfo.level,
-    title: u.customTitle || lvInfo.title,
+    levelTitle: u.customTitle || lvInfo.title,
+    title: u.customTitle || '',
     levelProgressPct: lvInfo.progressPct,
     campaigns,
     unlockedCosmetics: [...unlockedCosmetics],
-    bossKills,
     recentMatches: matches.slice(0, 20)
   };
 }
@@ -109,28 +139,33 @@ class StandaloneApiClient {
   async me() {
     const store = loadStore();
     if (!store.user) {
-      // Crear perfil local inicial automáticamente con 0 Elo y 50 XP para jugar sin fricción
       store.user = {
         id: 'local_player',
         username: 'Estratega',
         email: 'local@chess.mod',
         elo: INITIAL_ELO,
         xp: INITIAL_XP,
+        mods: INITIAL_MODS,
+        vipActive: false,
+        vipExpiresAt: null,
         avatar: 'preset:obsidian_king',
         frameId: 'frame_stone',
         boardThemeId: 'board_classic_maya',
+        pieceSkinId: 'pieces_classic',
+        equippedPowerId: 'power_none',
         wins: 0,
         losses: 0,
         draws: 0,
+        gamesPlayed: 0,
         basesDestroyed: 0,
         campaigns: defaultCampaigns(),
-        unlockedCosmetics: ['obsidian_king', 'frame_stone', 'board_classic_maya'],
+        unlockedCosmetics: ['preset:obsidian_king', 'preset:jade_guardian', 'frame_stone', 'board_classic_maya', 'pieces_classic', 'power_none'],
         customTitle: null
       };
       saveStore(store);
       this.setToken('standalone-local-token');
     }
-    return { authenticated: true, user: hydrateUser(store.user, store.matches), googleOAuthConfigured: false };
+    return { authenticated: true, token: 'standalone-local-token', user: hydrateUser(store.user, store.matches), googleOAuthConfigured: false };
   }
 
   async register({ username, email }) {
@@ -141,15 +176,21 @@ class StandaloneApiClient {
       email: String(email || 'local@chess.mod').trim(),
       elo: INITIAL_ELO,
       xp: INITIAL_XP,
+      mods: INITIAL_MODS,
+      vipActive: false,
+      vipExpiresAt: null,
       avatar: 'preset:obsidian_king',
       frameId: 'frame_stone',
       boardThemeId: 'board_classic_maya',
+      pieceSkinId: 'pieces_classic',
+      equippedPowerId: 'power_none',
       wins: 0,
       losses: 0,
       draws: 0,
+      gamesPlayed: 0,
       basesDestroyed: 0,
       campaigns: defaultCampaigns(),
-      unlockedCosmetics: ['obsidian_king', 'frame_stone', 'board_classic_maya'],
+      unlockedCosmetics: ['preset:obsidian_king', 'preset:jade_guardian', 'frame_stone', 'board_classic_maya', 'pieces_classic', 'power_none'],
       customTitle: null
     };
     store.matches = [];
@@ -171,7 +212,51 @@ class StandaloneApiClient {
   }
 
   async getCosmetics() {
-    return { avatars: COSMETIC_AVATARS, frames: COSMETIC_FRAMES, boards: COSMETIC_BOARDS };
+    return { avatars: COSMETIC_AVATARS, frames: COSMETIC_FRAMES, boards: COSMETIC_BOARDS, pieceSkins: COSMETIC_PIECE_SKINS, powers: COSMETIC_POWERS, vipPlan: MOD_VIP_PLAN };
+  }
+  async getShop() { return this.getCosmetics(); }
+
+  async buyShopItem(itemId) {
+    const store = loadStore();
+    if (!store.user) await this.me();
+    const s = loadStore();
+    const item = findShopItem(itemId);
+    if (!item) throw new Error('Artículo no encontrado.');
+    if (item.vipOnly) throw new Error('Exclusivo de Mod VIP (S/ 15 / mes).');
+    const price = Number(item.priceMods) || 0;
+    if ((s.user.mods || 0) < price) throw new Error(\`Necesitas \${price} Mods (tienes \${s.user.mods || 0} Mods).\`);
+    s.user.mods = (s.user.mods || 0) - price;
+    const set = new Set(s.user.unlockedCosmetics || []);
+    set.add(item.id);
+    s.user.unlockedCosmetics = [...set];
+    if (item.category === 'board') s.user.boardThemeId = item.id;
+    if (item.category === 'piece_skin') s.user.pieceSkinId = item.id;
+    if (item.category === 'power') s.user.equippedPowerId = item.id;
+    saveStore(s);
+    return { ok: true, item, pricePaid: price, user: hydrateUser(s.user, s.matches) };
+  }
+
+  async subscribeModVip() {
+    const store = loadStore();
+    if (!store.user) await this.me();
+    const s = loadStore();
+    s.user.vipActive = true;
+    s.user.vipExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    s.user.frameId = 'frame_vip_gold';
+    s.user.boardThemeId = 'board_vip_gold_black';
+    s.user.pieceSkinId = 'pieces_vip_gold';
+    s.user.equippedPowerId = 'power_vip_golden_freeze';
+    saveStore(s);
+    return { ok: true, vipExpiresAt: s.user.vipExpiresAt, user: hydrateUser(s.user, s.matches) };
+  }
+
+  async cancelModVip() {
+    const store = loadStore();
+    if (store.user) {
+      stripVipOffline(store.user);
+      saveStore(store);
+    }
+    return { ok: true, user: hydrateUser(store.user, store.matches) };
   }
 
   async updateUsername(username) {
@@ -192,11 +277,14 @@ class StandaloneApiClient {
     return { user: hydrateUser(store.user, store.matches) };
   }
 
-  async updateCosmetics({ frameId, boardThemeId }) {
+  async updateCosmetics({ avatar, frameId, boardThemeId, pieceSkinId, equippedPowerId }) {
     const store = loadStore();
     if (store.user) {
+      if (avatar) store.user.avatar = avatar;
       if (frameId) store.user.frameId = frameId;
       if (boardThemeId) store.user.boardThemeId = boardThemeId;
+      if (pieceSkinId) store.user.pieceSkinId = pieceSkinId;
+      if (equippedPowerId) store.user.equippedPowerId = equippedPowerId;
       saveStore(store);
     }
     return { user: hydrateUser(store.user, store.matches) };
@@ -211,6 +299,7 @@ class StandaloneApiClient {
       username: u.username,
       avatar: u.avatar,
       frameId: u.frameId,
+      isVip: u.isVip,
       elo: u.elo,
       level: u.level,
       wins: u.wins,
@@ -242,7 +331,7 @@ class StandaloneApiClient {
     }
     s.user.xp -= HINT_XP_COST;
     saveStore(s);
-    return { ok: true, xp: s.user.xp, user: hydrateUser(s.user, s.matches) };
+    return { ok: true, xp: s.user.xp, profile: hydrateUser(s.user, s.matches) };
   }
 
   async reportMatch({ mode, opponentName, winner, resultReason, turns, basesDestroyed, campaignId, levelId }) {
@@ -253,6 +342,7 @@ class StandaloneApiClient {
     u.campaigns = { ...defaultCampaigns(), ...(u.campaigns || {}) };
 
     let xpGained = winner === 'w' ? 65 : (winner === 'draw' ? 25 : 15);
+    const modsGained = winner === 'w' ? (Number(levelId) === 5 ? 95 : 45) : (winner === 'draw' ? 20 : 12);
     if (campaignId && levelId) {
       const lvl = getCampaignLevel(campaignId, levelId);
       if (lvl) xpGained = winner === 'w' ? lvl.xpReward : 20;
@@ -264,7 +354,7 @@ class StandaloneApiClient {
           u.customTitle = 'Vencedor de Chess';
           const unl = new Set(u.unlockedCosmetics || []);
           unl.add('frame_chess_victor');
-          unl.add('chess_origin');
+          unl.add('preset:chess_origin');
           u.unlockedCosmetics = [...unl];
         }
       }
@@ -273,21 +363,23 @@ class StandaloneApiClient {
     if (winner === 'w') u.wins = (u.wins || 0) + 1;
     else if (winner === 'b') u.losses = (u.losses || 0) + 1;
     else u.draws = (u.draws || 0) + 1;
+    u.gamesPlayed = (u.gamesPlayed || 0) + 1;
     u.basesDestroyed = (u.basesDestroyed || 0) + (Number(basesDestroyed) || 0);
     u.xp = (u.xp || 0) + xpGained;
+    u.mods = (u.mods || INITIAL_MODS) + modsGained;
 
     s.matches.unshift({
       mode,
-      opponentName,
-      result: winner === 'w' ? 'win' : (winner === 'b' ? 'loss' : 'draw'),
-      resultReason,
+      opponent: opponentName,
+      outcome: winner === 'w' ? 'win' : (winner === 'b' ? 'loss' : 'draw'),
+      reason: resultReason,
       turns,
       xpGained,
       createdAt: new Date().toISOString()
     });
     s.matches = s.matches.slice(0, 40);
     saveStore(s);
-    return { ok: true, xpGained, user: hydrateUser(u, s.matches) };
+    return { ok: true, xpGained, modsGained, profile: hydrateUser(u, s.matches) };
   }
 }
 

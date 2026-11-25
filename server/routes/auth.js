@@ -86,7 +86,10 @@ export function createAuthRouter(db, authMiddleware) {
         return res.json({ authenticated: false, user: null, googleOAuthConfigured: google.configured });
       }
       const profile = await db.getFullUserProfile(req.userId);
-      return res.json({ authenticated: true, user: profile, googleOAuthConfigured: google.configured });
+      // Refrescar cookie + devolver token sincronizado para que la cuenta siga siempre vinculada al abrir cualquier link o recargar
+      const freshToken = signToken({ uid: profile.id, username: profile.username });
+      setSessionCookie(res, freshToken);
+      return res.json({ authenticated: true, token: freshToken, user: profile, googleOAuthConfigured: google.configured });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }

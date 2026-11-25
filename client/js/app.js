@@ -5,11 +5,18 @@ import {
   isCampaignLevelUnlocked,
   getCampaignUnlockReason
 } from '/shared/config/campaigns.js';
-import { COSMETIC_AVATARS, COSMETIC_FRAMES, COSMETIC_BOARDS } from '/shared/config/cosmetics.js';
+import {
+  COSMETIC_AVATARS,
+  COSMETIC_FRAMES,
+  COSMETIC_BOARDS,
+  COSMETIC_PIECE_SKINS,
+  COSMETIC_POWERS,
+  MOD_VIP_PLAN
+} from '/shared/config/cosmetics.js';
 import { SoundEngine } from './sound.js';
 import { VFXEngine } from './vfx.js';
 import { BattleController } from './battleController.js';
-import { renderAvatarMarkup } from './svgs.js';
+import { renderAvatarMarkup, SVGS } from './svgs.js';
 import { getBossPortraitSVG } from './portraits.js';
 import { api } from './api.js';
 import { mpSocket } from './socket.js';
@@ -58,6 +65,8 @@ class ChessModApp {
     this.googleOAuthConfigured = false;
     this.activeScreen = 'play';
     this.activeCampaignTab = 'maya';
+    this.activeShopTab = 'powers';
+    this.selectedVipPayment = 'yape';
     this.selectedAiDifficulty = 3;
     this.selectedTimedMinutes = 3;
     this.inQueue = false;
@@ -117,7 +126,6 @@ class ChessModApp {
   }
 
   async refreshCurrentUser() {
-    if (!api.getToken()) return;
     try {
       const res = await api.me();
       if (res.authenticated && res.user) this.setUser(res.user);
@@ -126,6 +134,7 @@ class ChessModApp {
 
   setUser(user) {
     this.user = user;
+    this.battle.setUserProfile(user);
     this.applyEquippedBoardTheme();
     this.renderAllScreens();
   }
@@ -150,6 +159,7 @@ class ChessModApp {
 
     if (screenName === 'ranking') this.loadLeaderboard();
     if (screenName === 'story') this.renderCampaignScreen();
+    if (screenName === 'shop') this.renderShopScreen();
     if (screenName === 'customize') this.renderCosmeticsScreen();
     if (screenName === 'profile') this.renderProfileScreen();
     if (screenName === 'stats') this.renderStatsScreen();
@@ -228,6 +238,66 @@ class ChessModApp {
     document.querySelectorAll('.auth-tab').forEach((tab) => {
       tab.addEventListener('click', () => this.switchAuthTab(tab.dataset.tab));
     });
+
+    // Botón ojito para ver/ocultar contraseña al iniciar o crear cuenta
+    document.querySelectorAll('[data-toggle-pw]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const targetId = btn.dataset.togglePw;
+        const input = document.getElementById(targetId);
+        if (!input) return;
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        btn.classList.toggle('showing', show);
+        btn.textContent = show ? '🙈' : '👁️';
+      });
+    });
+
+    // === 3B. TIENDA & MOD VIP ===
+    document.querySelectorAll('#shop-tabs-bar [data-shop-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.activeShopTab = btn.dataset.shopTab;
+        document.querySelectorAll('#shop-tabs-bar [data-shop-tab]').forEach((b) => b.classList.toggle('active', b === btn));
+        this.renderShopScreen();
+      });
+    });
+
+    on('btn-vip-open-modal', 'click', () => {
+      if (!this.user) {
+        this.openAuthModal('login');
+        showToast('Inicia sesión o crea una cuenta para vincular tu suscripción Mod VIP.', 'info');
+        return;
+      }
+      document.getElementById('modal-vip-checkout')?.classList.add('open');
+    });
+    on('btn-close-vip-modal', 'click', () => document.getElementById('modal-vip-checkout')?.classList.remove('open'));
+    document.querySelectorAll('#vip-pay-methods [data-pay]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.selectedVipPayment = btn.dataset.pay;
+        document.querySelectorAll('#vip-pay-methods [data-pay]').forEach((b) => b.classList.toggle('active', b === btn));
+      });
+    });
+    on('btn-confirm-vip-sub', 'click', async () => {
+      if (!this.user) return this.openAuthModal('login');
+      try {
+        const res = await api.subscribeModVip(this.selectedVipPayment);
+        this.sound.play('vip_activate');
+        this.setUser(res.user);
+        document.getElementById('modal-vip-checkout')?.classList.remove('open');
+        showToast(res.message || '👑 ¡Mod VIP activado por 30 días!', 'success');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+    on('btn-vip-cancel', 'click', async () => {
+      if (!this.user) return;
+      try {
+        const res = await api.cancelModVip();
+        this.setUser(res.user);
+        showToast(res.message || 'Suscripción Mod VIP cancelada. Todo el inventario VIP fue retirado.', 'info');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
     on('form-login', 'submit', async (e) => {
       e.preventDefault();
       try {
@@ -252,7 +322,7 @@ class ChessModApp {
         this.setUser(res.user);
         mpSocket.connect();
         document.getElementById('modal-auth')?.classList.remove('open');
-        showToast(`Cuenta creada: ${res.user.username} (0 Elo · 50 XP)`, 'success');
+        showToast(`Cuenta creada y vinculada: ${res.user.username} (0 Elo · 50 XP · ${res.user.mods ?? 100} Mods)`, 'success');
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -353,6 +423,7 @@ class ChessModApp {
     mpSocket.disconnect();
     await api.logout();
     this.user = null;
+    this.battle.setUserProfile(null);
     this.applyEquippedBoardTheme();
     this.renderAllScreens();
     showToast('Sesión cerrada correctamente.', 'info');
@@ -405,6 +476,7 @@ class ChessModApp {
     this.renderSidebarUser();
     this.renderMultiplayerScreen();
     this.renderCampaignScreen();
+    this.renderShopScreen();
     this.renderProfileScreen();
     this.renderCosmeticsScreen();
     this.renderStatsScreen();
@@ -416,17 +488,22 @@ class ChessModApp {
     const nameEl = document.getElementById('sidebar-username');
     const eloEl = document.getElementById('sidebar-elo');
     const xpEl = document.getElementById('sidebar-xp');
+    const modsEl = document.getElementById('sidebar-mods');
     const barEl = document.getElementById('sidebar-xp-bar');
     const btnEl = document.getElementById('btn-sidebar-auth');
 
     if (u) {
       if (avatarEl) {
-        avatarEl.className = `avatar-badge ${u.frameId || 'frame_stone'}`;
+        avatarEl.className = `avatar-badge ${u.frameId || 'frame_stone'}${u.isVip ? ' vip-aura' : ''}`;
         avatarEl.innerHTML = renderAvatarMarkup(u.avatar);
       }
-      if (nameEl) nameEl.textContent = u.username;
+      if (nameEl) {
+        nameEl.className = `sidebar-user-name${u.isVip ? ' vip-name' : ''}`;
+        nameEl.textContent = u.isVip ? `👑 ${u.username}` : u.username;
+      }
       if (eloEl) eloEl.textContent = `Elo ${u.elo}`;
       if (xpEl) xpEl.textContent = `Nv.${u.level} · ${u.xp} XP`;
+      if (modsEl) modsEl.textContent = `🪙 ${u.mods ?? 100}`;
       if (barEl) barEl.style.width = `${u.levelProgressPct || 0}%`;
       if (btnEl) btnEl.textContent = 'Ver Perfil';
     } else {
@@ -434,12 +511,160 @@ class ChessModApp {
         avatarEl.className = 'avatar-badge frame_stone';
         avatarEl.innerHTML = renderAvatarMarkup('preset:obsidian_king');
       }
-      if (nameEl) nameEl.textContent = 'Invitado';
+      if (nameEl) {
+        nameEl.className = 'sidebar-user-name';
+        nameEl.textContent = 'Invitado';
+      }
       if (eloEl) eloEl.textContent = 'Elo 0';
       if (xpEl) xpEl.textContent = '0 XP';
+      if (modsEl) modsEl.textContent = '🪙 100';
       if (barEl) barEl.style.width = '0%';
       if (btnEl) btnEl.textContent = 'Iniciar sesión / Registro';
     }
+  }
+
+  async buyShopItem(itemId) {
+    if (!this.user) {
+      this.openAuthModal('login');
+      showToast('Inicia sesión para comprar y guardar tus objetos permanentemente.', 'info');
+      return;
+    }
+    try {
+      const res = await api.buyShopItem(itemId);
+      this.sound.play('shop_buy');
+      this.setUser(res.user);
+      showToast(`¡Comprado y equipado: ${res.item?.name || itemId}!`, 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  renderShopScreen() {
+    const u = this.user;
+    const mods = u ? (u.mods ?? 0) : 100;
+    const isVip = Boolean(u?.isVip);
+    const level = u?.level || 1;
+    const unlocked = new Set(u?.unlockedCosmetics || ['preset:obsidian_king', 'preset:jade_guardian', 'frame_stone', 'board_classic_maya', 'pieces_classic', 'power_none']);
+
+    const balEl = document.getElementById('shop-mods-balance');
+    if (balEl) balEl.textContent = String(mods);
+
+    // Estado del banner Mod VIP
+    const badge = document.getElementById('vip-status-badge');
+    const expTxt = document.getElementById('vip-expires-text');
+    const btnSub = document.getElementById('btn-vip-open-modal');
+    const btnCancel = document.getElementById('btn-vip-cancel');
+    if (badge) {
+      badge.textContent = isVip ? '✓ ACTIVO' : 'Inactivo';
+      badge.className = `pill ${isVip ? 'jade' : 'muted'}`;
+    }
+    if (expTxt) {
+      if (isVip && u?.vipExpiresAt) {
+        const dt = new Date(u.vipExpiresAt);
+        const dateLabel = Number.isNaN(dt.getTime()) ? '' : dt.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' });
+        expTxt.textContent = `Mod VIP activo (${MOD_VIP_PLAN.priceLabel}) · Renovación el ${dateLabel}. Si dejas de pagar o cancelas, todo el inventario VIP se retira automáticamente.`;
+      } else {
+        expTxt.textContent = `${MOD_VIP_PLAN.priceLabel} · Renovable mensualmente. Si dejas de pagar o cancelas, todo el inventario VIP se retira automáticamente.`;
+      }
+    }
+    if (btnSub) btnSub.textContent = isVip ? '👑 Renovar Mod VIP (+30 días · S/ 15)' : '👑 Suscribirse a Mod VIP (S/ 15 / mes)';
+    if (btnCancel) btnCancel.classList.toggle('hidden', !isVip);
+
+    const grid = document.getElementById('shop-items-grid');
+    if (!grid) return;
+
+    const tab = this.activeShopTab || 'powers';
+    let items = [];
+    if (tab === 'powers') items = COSMETIC_POWERS;
+    else if (tab === 'pieceSkins') items = COSMETIC_PIECE_SKINS;
+    else items = COSMETIC_BOARDS;
+
+    grid.innerHTML = items.map((item) => {
+      const isOwned = item.vipOnly ? isVip : (unlocked.has(item.id) || (item.minLevel && level >= item.minLevel) || item.priceMods === 0);
+      const isEquipped = (tab === 'powers' && (u?.equippedPowerId || 'power_none') === item.id)
+        || (tab === 'pieceSkins' && (u?.pieceSkinId || 'pieces_classic') === item.id)
+        || (tab === 'boards' && (u?.boardThemeId || 'board_classic_maya') === item.id);
+
+      let previewHtml = '';
+      if (tab === 'powers') {
+        previewHtml = `<div class="shop-card-icon">${item.icon || '⚡'}</div>`;
+      } else if (tab === 'pieceSkins') {
+        previewHtml = `<div class="shop-card-icon piece-wrap ${item.cssClass || ''}" style="width:54px;height:54px;padding:4px;">${SVGS.wN}</div>`;
+      } else {
+        previewHtml = `
+          <div class="board-preview-mini" style="width:54px;height:54px;">
+            <div style="background:${item.light}"></div><div style="background:${item.dark}"></div>
+            <div style="background:${item.dark}"></div><div style="background:${item.light}"></div>
+          </div>`;
+      }
+
+      const pricePill = item.vipOnly
+        ? `<span class="vip-tag">👑 Mod VIP</span>`
+        : (isOwned
+          ? `<span class="pill jade">✓ En inventario</span>`
+          : `<span class="pill">🪙 ${item.priceMods} Mods</span>`);
+
+      let actionBtn = '';
+      if (isEquipped) {
+        actionBtn = `<button class="btn btn-sm btn-gold" disabled>✓ Equipado</button>`;
+      } else if (isOwned) {
+        actionBtn = `<button class="btn btn-sm btn-primary" data-shop-equip="${item.id}" data-shop-cat="${tab}">Equipar</button>`;
+      } else if (item.vipOnly) {
+        actionBtn = `<button class="btn btn-sm btn-gold" data-open-vip="1">👑 Obtener Mod VIP</button>`;
+      } else {
+        const canAfford = !u || mods >= (item.priceMods || 0);
+        actionBtn = `<button class="btn btn-sm btn-gold" data-shop-buy="${item.id}" ${!canAfford ? 'title="Gana más Mods jugando partidas"' : ''}>🪙 Comprar (${item.priceMods})</button>`;
+      }
+
+      const sfxBtn = (tab === 'powers' || tab === 'pieceSkins')
+        ? `<button class="btn btn-sm" data-shop-sfx="${item.id}" data-shop-cat="${tab}" title="Escuchar efecto de sonido">🔊 SFX</button>`
+        : '';
+
+      return `
+        <div class="shop-card ${item.vipOnly ? 'vip-exclusive' : ''} ${isOwned ? 'owned' : ''} ${isEquipped ? 'equipped' : ''}">
+          <div>
+            <div class="shop-card-preview">
+              ${previewHtml}
+              ${pricePill}
+            </div>
+            <h3 style="font-family:var(--font-display);font-size:0.98rem;color:${item.vipOnly ? '#ffe27a' : 'var(--gold-bright)'};margin:10px 0 4px;">${item.name}</h3>
+            <p style="font-size:0.78rem;color:var(--text-muted);line-height:1.45;">${item.description || 'Estilo exclusivo de tablero para tus partidas.'}</p>
+          </div>
+          <div class="shop-card-actions">
+            ${actionBtn}
+            ${sfxBtn}
+          </div>
+        </div>`;
+    }).join('');
+
+    grid.querySelectorAll('[data-shop-buy]').forEach((b) => {
+      b.addEventListener('click', () => this.buyShopItem(b.dataset.shopBuy));
+    });
+    grid.querySelectorAll('[data-shop-equip]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const cat = b.dataset.shopCat;
+        const id = b.dataset.shopEquip;
+        if (cat === 'powers') this.equipCosmetic({ equippedPowerId: id });
+        else if (cat === 'pieceSkins') this.equipCosmetic({ pieceSkinId: id });
+        else this.equipCosmetic({ boardThemeId: id });
+      });
+    });
+    grid.querySelectorAll('[data-open-vip]').forEach((b) => {
+      b.addEventListener('click', () => document.getElementById('btn-vip-open-modal')?.click());
+    });
+    grid.querySelectorAll('[data-shop-sfx]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const cat = b.dataset.shopCat;
+        const id = b.dataset.shopSfx;
+        if (cat === 'powers') {
+          const pw = COSMETIC_POWERS.find((p) => p.id === id);
+          this.sound.play(pw?.sfxType || 'select');
+        } else {
+          this.sound.playPieceAction(id, false);
+          setTimeout(() => this.sound.playPieceAction(id, true), 260);
+        }
+      });
+    });
   }
 
   renderMultiplayerScreen() {
@@ -555,14 +780,21 @@ class ChessModApp {
 
     const av = document.getElementById('profile-avatar-large');
     if (av) {
-      av.className = `avatar-badge ${u.frameId || 'frame_stone'}`;
+      av.className = `avatar-badge ${u.frameId || 'frame_stone'}${u.isVip ? ' vip-aura' : ''}`;
       av.innerHTML = renderAvatarMarkup(u.avatar);
     }
-    document.getElementById('profile-name-h').textContent = u.title ? `${u.username} · «${u.title}»` : u.username;
+    const nameHeading = document.getElementById('profile-name-h');
+    if (nameHeading) {
+      nameHeading.className = u.isVip ? 'vip-name' : '';
+      nameHeading.textContent = u.title ? `${u.username} · «${u.title}»` : u.username;
+    }
     document.getElementById('profile-id-txt').textContent = `ID único: ${u.id} · ${u.email}`;
     document.getElementById('profile-elo-val').textContent = String(u.elo);
     document.getElementById('profile-level-val').textContent = `Nv. ${u.level} · ${u.levelTitle}`;
     document.getElementById('profile-xp-val').textContent = u.nextLevelXp ? `${u.xp} / ${u.nextLevelXp} XP` : `${u.xp} XP (Máximo)`;
+    const modsValEl = document.getElementById('profile-mods-val');
+    if (modsValEl) modsValEl.textContent = String(u.mods ?? 100);
+    document.getElementById('profile-vip-pill')?.classList.toggle('hidden', !u.isVip);
     document.getElementById('profile-xp-bar').style.width = `${u.levelProgressPct || 0}%`;
 
     const inputName = document.getElementById('input-edit-username');
@@ -572,7 +804,8 @@ class ChessModApp {
   renderCosmeticsScreen() {
     const u = this.user;
     const level = u?.level || 1;
-    const unlocked = new Set(u?.unlockedCosmetics || ['preset:obsidian_king', 'preset:jade_guardian', 'frame_stone', 'board_classic_maya']);
+    const isVip = Boolean(u?.isVip);
+    const unlocked = new Set(u?.unlockedCosmetics || ['preset:obsidian_king', 'preset:jade_guardian', 'frame_stone', 'board_classic_maya', 'pieces_classic', 'power_none']);
 
     const avGrid = document.getElementById('cosmetics-avatars-grid');
     if (avGrid) {
@@ -594,8 +827,8 @@ class ChessModApp {
 
     const frGrid = document.getElementById('cosmetics-frames-grid');
     if (frGrid) {
-      frGrid.innerHTML = COSMETIC_FRAMES.filter((item) => !item.hiddenUntilUnlocked || unlocked.has(item.id)).map((item) => {
-        const isUnl = unlocked.has(item.id) || level >= item.minLevel;
+      frGrid.innerHTML = COSMETIC_FRAMES.filter((item) => (!item.hiddenUntilUnlocked || unlocked.has(item.id)) && (!item.vipOnly || isVip)).map((item) => {
+        const isUnl = item.vipOnly ? isVip : (unlocked.has(item.id) || level >= item.minLevel);
         const isEq = u?.frameId === item.id;
         return `
           <div class="cosmetic-tile ${isEq ? 'equipped' : ''} ${!isUnl ? 'locked' : ''}">
@@ -612,8 +845,8 @@ class ChessModApp {
 
     const bdGrid = document.getElementById('cosmetics-boards-grid');
     if (bdGrid) {
-      bdGrid.innerHTML = COSMETIC_BOARDS.map((item) => {
-        const isUnl = unlocked.has(item.id) || level >= item.minLevel;
+      bdGrid.innerHTML = COSMETIC_BOARDS.filter((item) => !item.vipOnly || isVip).map((item) => {
+        const isUnl = item.vipOnly ? isVip : (unlocked.has(item.id) || level >= item.minLevel);
         const isEq = (u?.boardThemeId || 'board_classic_maya') === item.id;
         return `
           <div class="cosmetic-tile ${isEq ? 'equipped' : ''} ${!isUnl ? 'locked' : ''}">
@@ -622,13 +855,57 @@ class ChessModApp {
               <div style="background:${item.dark}"></div><div style="background:${item.light}"></div>
             </div>
             <strong style="font-size:0.83rem;">${item.name}</strong>
-            <span class="pill ${isUnl ? 'jade' : 'muted'}">${isUnl ? 'Desbloqueado' : `Requiere Nv. ${item.minLevel}`}</span>
+            <span class="pill ${isUnl ? 'jade' : 'muted'}">${isUnl ? 'Desbloqueado' : (item.priceMods ? `Tienda · 🪙 ${item.priceMods}` : `Requiere Nv. ${item.minLevel}`)}</span>
             <button class="btn btn-sm ${isEq ? 'btn-gold' : 'btn-primary'}" data-equip-board="${item.id}" ${!isUnl || isEq ? 'disabled' : ''}>
               ${isEq ? '✓ Activo' : 'Aplicar'}
             </button>
           </div>`;
       }).join('');
       bdGrid.querySelectorAll('[data-equip-board]').forEach((b) => b.addEventListener('click', () => this.equipCosmetic({ boardThemeId: b.dataset.equipBoard })));
+    }
+
+    const pcGrid = document.getElementById('cosmetics-pieces-grid');
+    if (pcGrid) {
+      pcGrid.innerHTML = COSMETIC_PIECE_SKINS.filter((item) => !item.vipOnly || isVip).map((item) => {
+        const isUnl = item.vipOnly ? isVip : (unlocked.has(item.id) || item.priceMods === 0);
+        const isEq = (u?.pieceSkinId || 'pieces_classic') === item.id;
+        return `
+          <div class="cosmetic-tile ${isEq ? 'equipped' : ''} ${!isUnl ? 'locked' : ''}">
+            <div class="shop-card-icon piece-wrap ${item.cssClass || ''}" style="width:58px;height:58px;padding:4px;">${SVGS.wQ}</div>
+            <strong style="font-size:0.83rem;">${item.name}</strong>
+            <span class="pill ${isUnl ? 'jade' : 'muted'}">${isUnl ? 'En inventario' : `Tienda · 🪙 ${item.priceMods}`}</span>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-sm ${isEq ? 'btn-gold' : 'btn-primary'}" data-equip-pieces="${item.id}" ${!isUnl || isEq ? 'disabled' : ''}>
+                ${isEq ? '✓ Activo' : 'Equipar'}
+              </button>
+              <button class="btn btn-sm" data-preview-piece-sfx="${item.id}" title="Escuchar sonido">🔊</button>
+            </div>
+          </div>`;
+      }).join('');
+      pcGrid.querySelectorAll('[data-equip-pieces]').forEach((b) => b.addEventListener('click', () => this.equipCosmetic({ pieceSkinId: b.dataset.equipPieces })));
+      pcGrid.querySelectorAll('[data-preview-piece-sfx]').forEach((b) => b.addEventListener('click', () => this.sound.playPieceAction(b.dataset.previewPieceSfx, false)));
+    }
+
+    const pwGrid = document.getElementById('cosmetics-powers-grid');
+    if (pwGrid) {
+      pwGrid.innerHTML = COSMETIC_POWERS.filter((item) => !item.vipOnly || isVip).map((item) => {
+        const isUnl = item.vipOnly ? isVip : (unlocked.has(item.id) || item.priceMods === 0);
+        const isEq = (u?.equippedPowerId || 'power_none') === item.id;
+        return `
+          <div class="cosmetic-tile ${isEq ? 'equipped' : ''} ${!isUnl ? 'locked' : ''}">
+            <div class="shop-card-icon" style="width:52px;height:52px;">${item.icon || '⚡'}</div>
+            <strong style="font-size:0.83rem;">${item.name}</strong>
+            <span class="pill ${isUnl ? 'jade' : 'muted'}">${isUnl ? 'Disponible' : `Tienda · 🪙 ${item.priceMods}`}</span>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-sm ${isEq ? 'btn-gold' : 'btn-primary'}" data-equip-power="${item.id}" ${!isUnl || isEq ? 'disabled' : ''}>
+                ${isEq ? '✓ Equipado' : 'Equipar'}
+              </button>
+              <button class="btn btn-sm" data-preview-power-sfx="${item.sfxType || 'select'}" title="Escuchar sonido">🔊</button>
+            </div>
+          </div>`;
+      }).join('');
+      pwGrid.querySelectorAll('[data-equip-power]').forEach((b) => b.addEventListener('click', () => this.equipCosmetic({ equippedPowerId: b.dataset.equipPower })));
+      pwGrid.querySelectorAll('[data-preview-power-sfx]').forEach((b) => b.addEventListener('click', () => this.sound.play(b.dataset.previewPowerSfx)));
     }
   }
 
@@ -645,14 +922,19 @@ class ChessModApp {
       tbody.innerHTML = players.map((p) => {
         const isMe = this.user && p.id === this.user.id;
         const rankCls = p.rank <= 3 ? `top${p.rank}` : '';
+        const vipAuraCls = p.isVip ? ' vip-aura' : '';
+        const nameCls = p.isVip ? 'vip-name' : '';
+        const vipBadge = p.isVip ? ' <span class="vip-tag">👑 Mod VIP</span>' : '';
         return `
           <tr class="${isMe ? 'is-me' : ''}">
             <td><span class="rank-num ${rankCls}">#${p.rank}</span></td>
             <td>
               <div style="display:flex;align-items:center;gap:10px;">
-                <span class="avatar-badge ${p.frameId || 'frame_stone'}" style="width:34px;height:34px;">${renderAvatarMarkup(p.avatar)}</span>
+                <span class="avatar-badge ${p.frameId || 'frame_stone'}${vipAuraCls}" style="width:34px;height:34px;">${renderAvatarMarkup(p.avatar)}</span>
                 <div>
-                  <strong style="color:${isMe ? 'var(--gold-bright)' : 'var(--text-main)'};">${p.username}${isMe ? ' (Tú)' : ''}</strong>
+                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                    <strong class="${nameCls}" style="color:${isMe ? 'var(--gold-bright)' : 'var(--text-main)'};">${p.username}${isMe ? ' (Tú)' : ''}</strong>${vipBadge}
+                  </div>
                   <div style="font-size:0.7rem;color:var(--text-muted);">Nivel ${p.level}${p.title ? ` · «${p.title}»` : ''}</div>
                 </div>
               </div>

@@ -1,5 +1,6 @@
-import { FILES, PIECE_NAMES, HINT_XP_COST, toAlg, formatClock } from '/shared/config/constants.js';
+import { FILES, PIECE_NAMES, HINT_XP_COST, toAlg, formatClock, inBounds } from '/shared/config/constants.js';
 import { CAMPAIGN_MAP } from '/shared/config/campaigns.js';
+import { COSMETIC_PIECE_SKINS, COSMETIC_POWERS } from '/shared/config/cosmetics.js';
 import { MayaBossEngine } from '/shared/rules/mayaEngine.js';
 import { MayaCampaignEngine } from '/shared/rules/mayaCampaignEngine.js';
 import { FreeMittensEngine } from '/shared/rules/mittensEngine.js';
@@ -124,6 +125,16 @@ export class BattleController {
     this.hintSquares = null;
     this.pendingPromoMove = null;
     this.pendingChessLevelCfg = null;
+    this.pendingPreMatchStart = null;
+
+    // Perfil del jugador (skins de fichas, poder equipado y Mod VIP)
+    this.userProfile = null;
+    this.shopPowerCooldown = 0;
+    this.shopPowerActive = false;
+    this.shopPowerSource = null;
+    this.shopPowerTargets = [];
+    this.frozenPieces = {};
+    this.solarShields = {};
 
     this.speechTimer = null;
     this.moodTimer = null;
@@ -222,6 +233,17 @@ export class BattleController {
       document.getElementById('modal-chess-power')?.classList.remove('open');
     });
 
+    // Ventana previa a cada partida (explicación de movimientos y reglas)
+    on('btn-prematch-start', 'click', () => {
+      document.getElementById('modal-prematch')?.classList.remove('open');
+      const fn = this.pendingPreMatchStart;
+      this.pendingPreMatchStart = null;
+      if (typeof fn === 'function') fn();
+    });
+
+    // Botón de Poder equipado de Tienda / Mod VIP en batalla
+    on('btn-shop-power', 'click', () => this.toggleShopPowerMode());
+
     // Online buttons
     on('btn-online-resign', 'click', () => {
       if (this.mode === 'online' && this.onlineMeta?.matchId) mpSocket.emit('match:resign', { matchId: this.onlineMeta.matchId });
@@ -308,6 +330,7 @@ export class BattleController {
       const myProfile = myColor === 'w' ? payload.whiteProfile : payload.blackProfile;
       const myDelta = myColor === 'w' ? payload.eloUpdate.whiteDelta : payload.eloUpdate.blackDelta;
       const myXp = myColor === 'w' ? payload.whiteXpGained : payload.blackXpGained;
+      const myMods = myColor === 'w' ? (payload.whiteModsGained || 0) : (payload.blackModsGained || 0);
       if (myProfile) this.onUserUpdated(myProfile);
 
       const isWin = payload.winner === myColor;
@@ -324,12 +347,315 @@ export class BattleController {
             <span>Elo competitivo:</span>
             <strong style="color:${myDelta >= 0 ? '#9ce0be' : '#ffaca3'};">${myProfile?.elo ?? 0} (${eloSign})</strong>
           </div>
-          <div style="display:flex; justify-content:space-between;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
             <span>Experiencia ganada:</span>
             <strong style="color:var(--gold-bright);">+${myXp} XP</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between;">
+            <span>Monedas ganadas:</span>
+            <strong style="color:#ffd859;">🪙 +${myMods} Mods</strong>
           </div>`
       });
     });
+  }
+
+  setUserProfile(user) {
+    this.userProfile = user || null;
+    if (!document.getElementById('view-battle')?.classList.contains('hidden')) {
+      this.configureBattlePanels();
+      this.render();
+    }
+  }
+
+  getActivePieceSkin() {
+    const id = this.userProfile?.pieceSkinId || 'pieces_classic';
+    return COSMETIC_PIECE_SKINS.find((s) => s.id === id) || COSMETIC_PIECE_SKINS[0];
+  }
+
+  getEquippedShopPower() {
+    if (this.mode === 'online' || this.mode === 'chess_final') return null; // Cap. 5 CHESS limpio y Online clásico
+    const id = this.userProfile?.equippedPowerId || 'power_none';
+    if (!id || id === 'power_none') return null;
+    const p = COSMETIC_POWERS.find((x) => x.id === id);
+    if (!p) return null;
+    if (p.vipOnly && !this.userProfile?.isVip) return null;
+    return p;
+  }
+
+  resetShopPowerMatchState() {
+    this.shopPowerCooldown = 0;
+    this.shopPowerActive = false;
+    this.shopPowerSource = null;
+    this.shopPowerTargets = [];
+    this.frozenPieces = {};
+    this.solarShields = {};
+  }
+
+  toggleShopPowerMode() {
+    const power = this.getEquippedShopPower();
+    if (!power || this.paused || this.phase !== 'PLAYER_TURN' || this.engine.winner) return;
+    if (this.shopPowerCooldown > 0) {
+      this.toast(`${power.name} en enfriamiento (${this.shopPowerCooldown} turnos).`, 'info');
+      return;
+    }
+    this.shopPowerActive = !this.shopPowerActive;
+    this.shopPowerSource = null;
+    this.shopPowerTargets = [];
+    this.selected = null;
+    this.legalMoves = [];
+    if (this.shopPowerActive) {
+      if (power.id === 'power_vip_golden_freeze') {
+        this.toast('❄️ Congelación Dorada activa: toca uno de tus PEONES para apuntar a cualquier rival a distancia (3 turnos congelado).', 'info');
+      } else if (power.id === 'power_solar_shield') {
+        this.toast('🛡️ Escudo Solar activo: toca una pieza tuya (no Rey) para protegerla 2 turnos.', 'info');
+      } else if (power.id === 'power_wind_pulse') {
+        this.shopPowerTargets = this.computeWindPulseTargets();
+        if (!this.shopPowerTargets.length) {
+          this.shopPowerActive = false;
+          this.toast('No hay piezas enemigas con casilla trasera libre para empujar ahora.', 'info');
+        } else {
+          this.toast('💨 Pulso de Viento: toca una pieza enemiga resaltada para empujarla 1 casilla atrás.', 'info');
+        }
+      } else if (power.id === 'power_shadow_step') {
+        this.toast('✨ Paso Fantasma activo: toca un Peón o Caballo tuyo para moverlo hasta 2 casillas.', 'info');
+      }
+    }
+    this.render();
+  }
+
+  computeGoldenFreezeTargets(pr, pc) {
+    const targets = [];
+    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]]) {
+      for (let step = 1; step <= 4; step++) {
+        const nr = pr + dr * step;
+        const nc = pc + dc * step;
+        if (!inBounds(nr, nc)) break;
+        const occ = this.engine.board[nr]?.[nc];
+        if (!occ) continue;
+        if (occ.color === 'b' && occ.type !== 'K' && !this.frozenPieces[occ.id]) {
+          targets.push({ fr: pr, fc: pc, tr: nr, tc: nc, kind: 'golden_freeze' });
+        }
+        break;
+      }
+    }
+    return targets;
+  }
+
+  computeWindPulseTargets() {
+    const targets = [];
+    for (let r = 1; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const occ = this.engine.board[r]?.[c];
+        if (!occ || occ.color !== 'b' || occ.type === 'K') continue;
+        if (this.engine.board[r - 1][c]) continue;
+        if (this.mode === 'glitch' && this.engine.isRift?.(r - 1, c)) continue;
+        if (this.mode === 'mittens' && this.engine.isSprinkler?.(r - 1, c)) continue;
+        if (this.mode === 'maya' && this.engine.isSquareInPyramid?.(r - 1, c)) continue;
+        if (this.mode === 'galaxy' && this.engine.isSquareInGalaxyMan?.(r - 1, c)) continue;
+        targets.push({ fr: r, fc: c, tr: r, tc: c, pushR: r - 1, pushC: c, kind: 'wind_pulse' });
+      }
+    }
+    return targets;
+  }
+
+  computeShadowStepTargets(fr, fc) {
+    const targets = [];
+    for (let tr = 0; tr < 8; tr++) {
+      for (let tc = 0; tc < 8; tc++) {
+        const dist = Math.abs(tr - fr) + Math.abs(tc - fc);
+        if (dist < 1 || dist > 2) continue;
+        if (this.engine.board[tr][tc]) continue;
+        if (this.mode === 'glitch' && this.engine.isRift?.(tr, tc)) continue;
+        if (this.mode === 'mittens' && this.engine.isSprinkler?.(tr, tc)) continue;
+        if (this.mode === 'maya' && this.engine.isSquareInPyramid?.(tr, tc)) continue;
+        if (this.mode === 'galaxy' && this.engine.isSquareInGalaxyMan?.(tr, tc)) continue;
+        if (this.mode === 'blacky' && this.engine.isSealed?.(tr, tc)) continue;
+        const m = { fr, fc, tr, tc, kind: 'shadow_step' };
+        if (!this.engine.isMoveSafeForKing || this.engine.isMoveSafeForKing('w', m)) targets.push(m);
+      }
+    }
+    return targets;
+  }
+
+  handleShopPowerSquareClick(r, c) {
+    const power = this.getEquippedShopPower();
+    if (!power || !this.shopPowerActive) return false;
+
+    const chosenTarget = this.shopPowerTargets.find((t) => t.tr === r && t.tc === c);
+    if (chosenTarget) {
+      this.executeShopPower(power, chosenTarget);
+      return true;
+    }
+
+    const clicked = this.engine.board[r]?.[c];
+    if (power.id === 'power_vip_golden_freeze') {
+      if (clicked && clicked.color === 'w' && clicked.type === 'P') {
+        const tgts = this.computeGoldenFreezeTargets(r, c);
+        if (!tgts.length) {
+          this.toast('Ese peón no tiene enemigos en línea de visión (hasta 4 casillas). Prueba otro peón.', 'info');
+          return true;
+        }
+        this.shopPowerSource = { r, c };
+        this.shopPowerTargets = tgts;
+        this.sound.play('select');
+        this.render();
+        return true;
+      }
+      this.toast('Selecciona uno de tus PEONES blancos para lanzar Congelación Dorada.', 'info');
+      return true;
+    }
+
+    if (power.id === 'power_solar_shield') {
+      if (clicked && clicked.color === 'w' && clicked.type !== 'K' && clicked.type !== 'H' && clicked.type !== 'U') {
+        this.executeShopPower(power, { tr: r, tc: c, kind: 'solar_shield' });
+        return true;
+      }
+      this.toast('Selecciona una pieza blanca (no Rey) para proteger con Escudo Solar.', 'info');
+      return true;
+    }
+
+    if (power.id === 'power_shadow_step') {
+      if (clicked && clicked.color === 'w' && (clicked.type === 'P' || clicked.type === 'N')) {
+        const tgts = this.computeShadowStepTargets(r, c);
+        if (!tgts.length) {
+          this.toast('No hay casillas vacías seguras a 2 pasos de esa pieza.', 'info');
+          return true;
+        }
+        this.shopPowerSource = { r, c };
+        this.shopPowerTargets = tgts;
+        this.sound.play('select');
+        this.render();
+        return true;
+      }
+      this.toast('Selecciona un Peón o Caballo blanco para usar Paso Fantasma.', 'info');
+      return true;
+    }
+
+    return true;
+  }
+
+  executeShopPower(power, target) {
+    this.stopIdleTauntTimer();
+    this.shopPowerActive = false;
+    this.shopPowerSource = null;
+    this.shopPowerTargets = [];
+    this.shopPowerCooldown = power.cooldown || 4;
+    if (this.engine.pushHistory) this.engine.pushHistory();
+
+    if (target.kind === 'golden_freeze') {
+      const victim = this.engine.board[target.tr]?.[target.tc];
+      if (!victim) return;
+      this.frozenPieces[victim.id] = 3;
+      this.sound.play('power_golden_freeze');
+      this.vfx.spawnShockwave(target.fr, target.fc, '#ffd859', 36);
+      this.vfx.spawnSquareBurst(target.tr, target.tc, '#ffd859', 26, 3.2);
+      this.engine.lastMoveSquares = [[target.fr, target.fc], [target.tr, target.tc]];
+      this.engine.logs.unshift({
+        turn: this.engine.turnNumber,
+        type: 'special',
+        text: `❄️ CONGELACIÓN DORADA (Mod VIP): Peón (${toAlg(target.fr, target.fc)}) congela en oro a ${PIECE_NAMES[victim.type]} (${toAlg(target.tr, target.tc)}) durante 3 turnos.`
+      });
+      this.setTempBossMood('mood-surprised', 1400);
+      this.showBossSpeech('¡¿Qué?! ¡Esa pieza quedó congelada en oro puro!');
+    } else if (target.kind === 'solar_shield') {
+      const ally = this.engine.board[target.tr]?.[target.tc];
+      if (!ally) return;
+      this.solarShields[ally.id] = 2;
+      this.sound.play('power_solar_shield');
+      this.vfx.spawnShieldPulse(target.tr, target.tc);
+      this.engine.lastMoveSquares = [[target.tr, target.tc]];
+      this.engine.logs.unshift({
+        turn: this.engine.turnNumber,
+        type: 'special',
+        text: `🛡️ ESCUDO SOLAR: ${PIECE_NAMES[ally.type]} (${toAlg(target.tr, target.tc)}) queda invulnerable a capturas por 2 turnos.`
+      });
+    } else if (target.kind === 'wind_pulse') {
+      const victim = this.engine.board[target.tr]?.[target.tc];
+      if (!victim) return;
+      this.engine.board[target.pushR][target.pushC] = victim;
+      this.engine.board[target.tr][target.tc] = null;
+      this.sound.play('power_wind_pulse');
+      this.vfx.spawnSquareBurst(target.pushR, target.pushC, '#8adfff', 18, 2.4);
+      this.engine.lastMoveSquares = [[target.tr, target.tc], [target.pushR, target.pushC]];
+      this.engine.logs.unshift({
+        turn: this.engine.turnNumber,
+        type: 'special',
+        text: `💨 PULSO DE VIENTO: ${PIECE_NAMES[victim.type]} repelido de ${toAlg(target.tr, target.tc)} a ${toAlg(target.pushR, target.pushC)}.`
+      });
+    } else if (target.kind === 'shadow_step') {
+      const ally = this.engine.board[target.fr]?.[target.fc];
+      if (!ally) return;
+      this.engine.board[target.tr][target.tc] = ally;
+      this.engine.board[target.fr][target.fc] = null;
+      ally.hasMoved = true;
+      this.sound.play('power_shadow_step');
+      this.vfx.spawnGalaxyPortal(target.fr, target.fc);
+      this.vfx.spawnGalaxyPortal(target.tr, target.tc);
+      this.engine.lastMoveSquares = [[target.fr, target.fc], [target.tr, target.tc]];
+      this.engine.logs.unshift({
+        turn: this.engine.turnNumber,
+        type: 'special',
+        text: `✨ PASO FANTASMA: ${PIECE_NAMES[ally.type]} se desplaza de ${toAlg(target.fr, target.fc)} a ${toAlg(target.tr, target.tc)}.`
+      });
+    }
+
+    this.engine.turn = 'b';
+    this.render();
+    this.runAITurn();
+  }
+
+  tickBattlePowerStatesAfterEnemyTurn() {
+    if (this.shopPowerCooldown > 0) this.shopPowerCooldown--;
+    for (const id of Object.keys(this.frozenPieces)) {
+      this.frozenPieces[id]--;
+      if (this.frozenPieces[id] <= 0) delete this.frozenPieces[id];
+    }
+    for (const id of Object.keys(this.solarShields)) {
+      this.solarShields[id]--;
+      if (this.solarShields[id] <= 0) delete this.solarShields[id];
+    }
+  }
+
+  isAiMoveBlockedByShopPowers(move) {
+    if (!move) return false;
+    if (move.fr !== undefined && move.fc !== undefined) {
+      const mover = this.engine.board[move.fr]?.[move.fc];
+      if (mover && this.frozenPieces[mover.id] > 0) return true;
+    }
+    if (move.tr !== undefined && move.tc !== undefined) {
+      const target = this.engine.board[move.tr]?.[move.tc];
+      if (target && target.color === 'w' && this.solarShields[target.id] > 0) return true;
+    }
+    return false;
+  }
+
+  showPreMatchGuide({ title, subtitle, modeTag, rulesHtml, onStart }) {
+    const modal = document.getElementById('modal-prematch');
+    if (!modal) {
+      if (typeof onStart === 'function') onStart();
+      return;
+    }
+    this.paused = true;
+    this.pendingPreMatchStart = onStart;
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('prematch-kicker', modeTag || 'GUÍA DE MOVIMIENTOS');
+    set('prematch-title', title || 'Preparado para la Batalla');
+    set('prematch-subtitle', subtitle || 'Revisa tus movimientos y defensas antes de comenzar.');
+    const body = document.getElementById('prematch-rules-body');
+    const power = this.getEquippedShopPower();
+    const powerNote = power
+      ? `<li><strong>${power.icon} Tu Poder Equipado (${power.name}):</strong> ${power.description}</li>`
+      : '';
+    if (body) {
+      body.innerHTML = `
+        <ul class="prematch-rules-list">
+          <li><strong>♟️ Movimientos básicos:</strong> Toca cualquier pieza blanca para ver los puntos de movimiento (y anillos rojos para capturar). Luego toca la casilla destino.</li>
+          <li><strong>👑 Enroque y Coronación:</strong> Mueve tu Rey 2 casillas hacia una Torre sin mover para enrocar; al llegar un Peón al final del tablero podrás coronarlo en Dama, Torre, Alfil o Caballo.</li>
+          ${rulesHtml || ''}
+          ${powerNote}
+        </ul>`;
+    }
+    modal.classList.add('open');
   }
 
   /* ================= INICIADORES POR CAPÍTULO Y MODO ================= */
@@ -337,12 +663,14 @@ export class BattleController {
     document.getElementById('app-shell')?.classList.add('hidden');
     document.getElementById('view-battle')?.classList.remove('hidden');
     document.getElementById('modal-gameover')?.classList.remove('open');
+    document.getElementById('modal-prematch')?.classList.remove('open');
     document.getElementById('hint-banner')?.classList.remove('visible');
     this.selected = null;
     this.legalMoves = [];
     this.soldierMode = null;
     this.playerTeleportMode = false;
     this.hintSquares = null;
+    this.resetShopPowerMatchState();
     this.vfx.resize();
   }
 
@@ -398,23 +726,35 @@ export class BattleController {
     this.configureBattlePanels();
     this.phase = 'PLAYER_TURN';
     this.render();
-    // Música oficial Ultimate Battle.mp3 en loop automático
-    this.sound.startBossMusic('maya', playIntro);
+    const launch = () => {
+      this.sound.startBossMusic('maya', playIntro);
+      if (playIntro) {
+        this.playBossCinematicIntro({
+          themeClass: 'theme-maya',
+          kicker: 'CAPÍTULO 01 · BOSS FIGHT',
+          title: 'DIOS MAYA',
+          subtitle: 'DESTRUYE LAS 4 BASES O DA JAQUE MATE AL REY NEGRO',
+          bossId: 'rey_maya',
+          openingSpeech: campaignMeta?.levelCfg?.openingLine || 'Has profanado el santuario. Destruye mis 4 Bases si te atreves.',
+          sfx: 'introBoom'
+        });
+      } else {
+        this.paused = false;
+        this.showBossSpeech(campaignMeta?.levelCfg?.openingLine || '¿Otra vez intentas desafiar el santuario?');
+        this.resetIdleTauntTimer();
+      }
+    };
     if (playIntro) {
-      this.playBossCinematicIntro({
-        themeClass: 'theme-maya',
-        kicker: 'CAPÍTULO 01 · BOSS FIGHT',
-        title: 'DIOS MAYA',
-        subtitle: 'DESTRUYE LAS 4 BASES O DA JAQUE MATE AL REY NEGRO',
-        bossId: 'rey_maya',
-        openingSpeech: campaignMeta?.levelCfg?.openingLine || 'Has profanado el santuario. Destruye mis 4 Bases si te atreves.',
-        sfx: 'introBoom'
+      this.showPreMatchGuide({
+        modeTag: 'CAPÍTULO 01 · JEFE FINAL',
+        title: 'DIOS MAYA — Cómo Jugar',
+        subtitle: 'Destruye las 4 Bases Sagradas o da Jaque Mate al Rey negro.',
+        rulesHtml: `
+          <li><strong>🏛️ Pirámide 2×2:</strong> Se mueve en diagonal 1–2 pasos y aplasta piezas sin escudo. Al destruir una Base (Torres/Alfiles marcados), queda inactiva 3 turnos.</li>
+          <li><strong>🏠 Tus 2 Casas Inmortales (c3, f3):</strong> Muévelas 1 casilla ortogonal (arriba/abajo/lados). Protegen a tus piezas adyacentes contra la Pirámide.</li>`,
+        onStart: launch
       });
-    } else {
-      this.paused = false;
-      this.showBossSpeech(campaignMeta?.levelCfg?.openingLine || '¿Otra vez intentas desafiar el santuario?');
-      this.resetIdleTauntTimer();
-    }
+    } else launch();
   }
 
   startMayaCampaignLevel(levelCfg, minutes = this.selectedMinutes, { playIntro = true } = {}) {
@@ -425,164 +765,223 @@ export class BattleController {
     this.campaignMeta = { campaignId: 'maya', levelId: levelCfg.id, levelCfg };
     this.onlineMeta = null;
     this.engine = new MayaCampaignEngine(levelCfg.id, minutes);
-    this.sound.startBossMusic('maya_campaign', playIntro);
 
     this.showBattleScreen();
     this.configureBattlePanels();
     this.phase = 'PLAYER_TURN';
     this.render();
+    const launch = () => {
+      this.sound.startBossMusic('maya_campaign', playIntro);
+      if (playIntro) {
+        this.playBossCinematicIntro({
+          themeClass: 'theme-maya',
+          kicker: `CAPÍTULO 01 · NIVEL ${levelCfg.id}`,
+          title: levelCfg.name.toUpperCase(),
+          subtitle: (levelCfg.unitIntroduced || 'GUARDIÁN DEL SANTUARIO').toUpperCase(),
+          bossId: levelCfg.bossId,
+          openingSpeech: levelCfg.openingLine,
+          sfx: 'introBoom'
+        });
+      } else {
+        this.paused = false;
+        this.showBossSpeech(levelCfg.openingLine);
+        this.resetIdleTauntTimer();
+      }
+    };
     if (playIntro) {
-      this.playBossCinematicIntro({
-        themeClass: 'theme-maya',
-        kicker: `CAPÍTULO 01 · NIVEL ${levelCfg.id}`,
-        title: levelCfg.name.toUpperCase(),
-        subtitle: (levelCfg.unitIntroduced || 'GUARDIÁN DEL SANTUARIO').toUpperCase(),
-        bossId: levelCfg.bossId,
-        openingSpeech: levelCfg.openingLine,
-        sfx: 'introBoom'
+      this.showPreMatchGuide({
+        modeTag: `CAPÍTULO 01 · NIVEL ${levelCfg.id}`,
+        title: levelCfg.name,
+        subtitle: levelCfg.unitIntroduced || 'Guardián del Santuario',
+        rulesHtml: `
+          <li><strong>⚔️ Mecánica del Nivel:</strong> ${levelCfg.briefing}</li>
+          <li><strong>🏠 Casa Blanca Inmortal:</strong> Mueve tu Casa 1 casilla ortogonal; las piezas adyacentes quedan protegidas contra flechas, saltos de Jaguar y empujes solares.</li>`,
+        onStart: launch
       });
-    } else {
-      this.paused = false;
-      this.showBossSpeech(levelCfg.openingLine);
-      this.resetIdleTauntTimer();
-    }
+    } else launch();
   }
 
   startMittensLevel(levelCfg, minutes = this.selectedMinutes, { playIntro = true } = {}) {
     this.mode = 'mittens';
     this.bossId = levelCfg.bossId;
     this.bossName = levelCfg.name;
-    this.aiDifficulty = levelCfg.aiDifficulty || 4;
+    this.aiDifficulty = levelCfg.aiDifficulty || 3;
     this.campaignMeta = { campaignId: 'mittens', levelId: levelCfg.id, levelCfg };
     this.onlineMeta = null;
     this.engine = new FreeMittensEngine(levelCfg.bossId, minutes);
-
-    if (levelCfg.id === 5) {
-      // Música oficial de Free Mittens en loop automático
-      this.sound.startBossMusic('mittens', playIntro);
-    } else {
-      this.sound.stopBossMusic();
-    }
 
     this.showBattleScreen();
     this.configureBattlePanels();
     this.phase = 'PLAYER_TURN';
     this.render();
 
+    const launch = () => {
+      if (levelCfg.id === 5) this.sound.startBossMusic('mittens', playIntro);
+      else this.sound.stopBossMusic();
+      if (playIntro) {
+        this.playBossCinematicIntro({
+          themeClass: 'theme-mittens',
+          kicker: levelCfg.id === 5 ? 'CAPÍTULO 02 · BOSS FIGHT' : `CAPÍTULO 02 · NIVEL ${levelCfg.id}`,
+          title: levelCfg.name.toUpperCase(),
+          subtitle: levelCfg.id === 5 ? 'SABIO ANCESTRAL DE LA GALAXIA · CADENAS ROTAS' : (levelCfg.unitIntroduced || 'CONVERSIÓN EXACTA').toUpperCase(),
+          bossId: levelCfg.bossId,
+          openingSpeech: levelCfg.openingLine,
+          sfx: levelCfg.id === 5 ? 'chainBreak' : 'introBoom'
+        });
+      } else {
+        this.paused = false;
+        this.showBossSpeech(levelCfg.openingLine);
+        this.resetIdleTauntTimer();
+      }
+    };
     if (playIntro) {
-      this.playBossCinematicIntro({
-        themeClass: 'theme-mittens',
-        kicker: levelCfg.id === 5 ? 'CAPÍTULO 02 · BOSS FIGHT' : `CAPÍTULO 02 · NIVEL ${levelCfg.id}`,
-        title: levelCfg.name.toUpperCase(),
-        subtitle: levelCfg.id === 5 ? 'SABIO ANCESTRAL DE LA GALAXIA · CADENAS ROTAS' : (levelCfg.unitIntroduced || 'CONVERSIÓN EXACTA').toUpperCase(),
-        bossId: levelCfg.bossId,
-        openingSpeech: levelCfg.openingLine,
-        sfx: levelCfg.id === 5 ? 'chainBreak' : 'introBoom'
+      this.showPreMatchGuide({
+        modeTag: `CAPÍTULO 02 · NIVEL ${levelCfg.id}`,
+        title: levelCfg.name,
+        subtitle: levelCfg.unitIntroduced || 'Conversión 1:1',
+        rulesHtml: `
+          <li><strong>⛓️ Regla del Rival:</strong> ${levelCfg.briefing}</li>
+          <li><strong>🔫 Soldados de Agua:</strong> <strong>1 clic</strong> en un Soldado apunta para disparar agua y repeler enemigos sin moverte; <strong>doble clic</strong> lo mueve como peón normal.</li>`,
+        onStart: launch
       });
-    } else {
-      this.paused = false;
-      this.showBossSpeech(levelCfg.openingLine);
-      this.resetIdleTauntTimer();
-    }
+    } else launch();
   }
 
   startGalaxyLevel(levelCfg, minutes = this.selectedMinutes, { playIntro = true } = {}) {
     this.mode = 'galaxy';
     this.bossId = levelCfg.bossId;
     this.bossName = levelCfg.name;
-    this.aiDifficulty = levelCfg.aiDifficulty || 4;
+    this.aiDifficulty = levelCfg.aiDifficulty || 3;
     this.campaignMeta = { campaignId: 'galaxy', levelId: levelCfg.id, levelCfg };
     this.onlineMeta = null;
     this.engine = new GalaxyEngine(levelCfg.id, minutes);
-    this.sound.startBossMusic('galaxy', playIntro);
 
     this.showBattleScreen();
     this.configureBattlePanels();
     this.phase = 'PLAYER_TURN';
     this.render();
 
+    const launch = () => {
+      this.sound.startBossMusic('galaxy', playIntro);
+      if (playIntro) {
+        this.playBossCinematicIntro({
+          themeClass: 'theme-galaxy',
+          kicker: levelCfg.id === 5 ? 'CAPÍTULO 03 · BOSS FIGHT' : `CAPÍTULO 03 · NIVEL ${levelCfg.id}`,
+          title: levelCfg.name.toUpperCase(),
+          subtitle: levelCfg.id === 5 ? 'ELIMINA TODOS LOS ALFILES Y CABALLOS PARA QUEBRAR EL NÚCLEO 2×2' : (levelCfg.unitIntroduced || 'ORDEN CÓSMICO').toUpperCase(),
+          bossId: levelCfg.bossId,
+          openingSpeech: levelCfg.openingLine,
+          sfx: 'galaxyTeleport'
+        });
+      } else {
+        this.paused = false;
+        this.showBossSpeech(levelCfg.openingLine);
+        this.resetIdleTauntTimer();
+      }
+    };
     if (playIntro) {
-      this.playBossCinematicIntro({
-        themeClass: 'theme-galaxy',
-        kicker: levelCfg.id === 5 ? 'CAPÍTULO 03 · BOSS FIGHT' : `CAPÍTULO 03 · NIVEL ${levelCfg.id}`,
-        title: levelCfg.name.toUpperCase(),
-        subtitle: levelCfg.id === 5 ? 'ELIMINA TODOS LOS ALFILES Y CABALLOS PARA QUEBRAR EL NÚCLEO 2×2' : (levelCfg.unitIntroduced || 'ORDEN CÓSMICO').toUpperCase(),
-        bossId: levelCfg.bossId,
-        openingSpeech: levelCfg.openingLine,
-        sfx: 'galaxyTeleport'
+      this.showPreMatchGuide({
+        modeTag: `CAPÍTULO 03 · NIVEL ${levelCfg.id}`,
+        title: levelCfg.name,
+        subtitle: levelCfg.unitIntroduced || 'Entidad Galáctica',
+        rulesHtml: `
+          <li><strong>🌌 Poder Cósmico:</strong> ${levelCfg.briefing}</li>
+          <li><strong>🔷 Barreras Universales (c3, f3):</strong> Se mueven 1 casilla ortogonal, son inmortales, impiden teletransportes adyacentes y escudan contra el Hombre Galaxia 2×2.</li>`,
+        onStart: launch
       });
-    } else {
-      this.paused = false;
-      this.showBossSpeech(levelCfg.openingLine);
-      this.resetIdleTauntTimer();
-    }
+    } else launch();
   }
 
   startGlitchLevel(levelCfg, minutes = this.selectedMinutes, { playIntro = true } = {}) {
     this.mode = 'glitch';
     this.bossId = levelCfg.bossId;
     this.bossName = levelCfg.name;
-    this.aiDifficulty = levelCfg.aiDifficulty || 5;
+    this.aiDifficulty = levelCfg.aiDifficulty || 3;
     this.campaignMeta = { campaignId: 'glitch', levelId: levelCfg.id, levelCfg };
     this.onlineMeta = null;
     this.engine = new GlitchEngine(levelCfg.id, minutes);
-    this.sound.startBossMusic('glitch', playIntro);
 
     this.showBattleScreen();
     this.configureBattlePanels();
     this.phase = 'PLAYER_TURN';
     this.render();
 
+    const launch = () => {
+      this.sound.startBossMusic('glitch', playIntro);
+      if (playIntro) {
+        this.playBossCinematicIntro({
+          themeClass: 'theme-glitch',
+          kicker: levelCfg.id === 5 ? 'CAPÍTULO 04 · BOSS GLITCH' : `CAPÍTULO 04 · NIVEL ${levelCfg.id}`,
+          title: levelCfg.name.toUpperCase(),
+          subtitle: levelCfg.id === 5 ? 'ERR_FATAL:: CHESS.MOD SE HA CORROMPIDO' : (levelCfg.unitIntroduced || 'ANOMALÍA DETECTADA').toUpperCase(),
+          bossId: levelCfg.bossId,
+          openingSpeech: levelCfg.openingLine,
+          sfx: 'glitchTear'
+        });
+      } else {
+        this.paused = false;
+        this.showBossSpeech(levelCfg.openingLine);
+        this.resetIdleTauntTimer();
+      }
+    };
     if (playIntro) {
-      this.playBossCinematicIntro({
-        themeClass: 'theme-glitch',
-        kicker: levelCfg.id === 5 ? 'CAPÍTULO 04 · SÚPER DIFÍCIL' : `CAPÍTULO 04 · NIVEL ${levelCfg.id}`,
-        title: levelCfg.name.toUpperCase(),
-        subtitle: levelCfg.id === 5 ? 'ERR_FATAL:: CHESS.MOD SE HA CORROMPIDO' : (levelCfg.unitIntroduced || 'ANOMALÍA DETECTADA').toUpperCase(),
-        bossId: levelCfg.bossId,
-        openingSpeech: levelCfg.openingLine,
-        sfx: 'glitchTear'
+      this.showPreMatchGuide({
+        modeTag: `CAPÍTULO 04 · NIVEL ${levelCfg.id}`,
+        title: levelCfg.name,
+        subtitle: levelCfg.unitIntroduced || 'Corrupción Glitch',
+        rulesHtml: `
+          <li><strong>💥 Corrupción:</strong> ${levelCfg.briefing}</li>
+          <li><strong>🛡️ Cortafuegos Inmortales (c3, f3):</strong> Muévelos 1 casilla ortogonal. <strong>Pisa cualquier Grieta de Vacío</strong> para sellarla y mantén tus piezas junto a ellos para bloquear ataques anómalos.</li>`,
+        onStart: launch
       });
-    } else {
-      this.paused = false;
-      this.showBossSpeech(levelCfg.openingLine);
-      this.resetIdleTauntTimer();
-    }
+    } else launch();
   }
 
   launchChessFinalWithPower(levelCfg, chosenPower, minutes = this.selectedMinutes, { playIntro = true } = {}) {
     this.mode = 'chess_final';
     this.bossId = levelCfg.bossId;
     this.bossName = levelCfg.name;
-    this.aiDifficulty = 5;
+    this.aiDifficulty = levelCfg.aiDifficulty || 4;
     this.campaignMeta = { campaignId: 'chess', levelId: levelCfg.id, levelCfg, chosenPower };
     this.onlineMeta = null;
     this.engine = new ChessFinalEngine(levelCfg.id, chosenPower, minutes);
-    this.sound.startBossMusic('chess', playIntro);
 
     this.showBattleScreen();
     this.configureBattlePanels();
     this.phase = 'PLAYER_TURN';
     this.render();
 
+    const launch = () => {
+      this.sound.startBossMusic('chess', playIntro);
+      if (playIntro) {
+        this.playBossCinematicIntro({
+          themeClass: 'theme-chess',
+          kicker: levelCfg.id === 5 ? 'CAPÍTULO 05 · JEFE FINAL ABSOLUTO' : `CAPÍTULO 05 · NIVEL ${levelCfg.id}`,
+          title: levelCfg.name.toUpperCase(),
+          subtitle: levelCfg.id === 5 ? 'AJEDREZ 100% LIMPIO · SIN PODERES ENEMIGOS' : 'PLANO PURO · AJEDREZ LIMPIO',
+          bossId: levelCfg.bossId,
+          openingSpeech: levelCfg.openingLine,
+          sfx: 'introBoom'
+        });
+      } else {
+        this.paused = false;
+        this.showBossSpeech(levelCfg.openingLine);
+        this.resetIdleTauntTimer();
+      }
+    };
     if (playIntro) {
-      this.playBossCinematicIntro({
-        themeClass: 'theme-chess',
-        kicker: levelCfg.id === 5 ? 'CAPÍTULO 05 · JEFE FINAL ABSOLUTO' : `CAPÍTULO 05 · NIVEL ${levelCfg.id}`,
-        title: levelCfg.name.toUpperCase(),
-        subtitle: levelCfg.id === 5 ? 'SIN PODERES SOBRENATURALES · ESTRATEGIA PURA' : 'PLANO PURO · SÚPER IA',
-        bossId: levelCfg.bossId,
-        openingSpeech: levelCfg.openingLine,
-        sfx: 'introBoom'
+      this.showPreMatchGuide({
+        modeTag: `CAPÍTULO 05 · NIVEL ${levelCfg.id}`,
+        title: levelCfg.name,
+        subtitle: 'Ajedrez 100% Limpio — Estrategia Pura',
+        rulesHtml: `
+          <li><strong>👑 Reglas Limpias:</strong> ${levelCfg.briefing}</li>`,
+        onStart: launch
       });
-    } else {
-      this.paused = false;
-      this.showBossSpeech(levelCfg.openingLine);
-      this.resetIdleTauntTimer();
-    }
+    } else launch();
   }
 
-  startClassicMatch({ difficulty = 3, label = 'Vs IA', minutes = this.selectedMinutes } = {}) {
+  startClassicMatch({ difficulty = 3, label = 'Vs IA', minutes = this.selectedMinutes, showGuide = true } = {}) {
     this.mode = 'classic';
     this.bossId = 'classic_ai';
     this.bossName = `${label} (IA Nv.${difficulty})`;
@@ -594,9 +993,24 @@ export class BattleController {
 
     this.showBattleScreen();
     this.configureBattlePanels();
-    this.paused = false;
     this.phase = 'PLAYER_TURN';
     this.render();
+    if (showGuide) {
+      this.showPreMatchGuide({
+        modeTag: 'AJEDREZ CLÁSICO',
+        title: this.bossName,
+        subtitle: minutes > 0 ? `Control de tiempo: ${minutes} min por jugador` : 'Sin límite de tiempo',
+        rulesHtml: `<li><strong>🏆 Objetivo:</strong> Da Jaque Mate al Rey negro. Si tienes un Poder equipado en la Tienda o Mod VIP, podrás activarlo desde el botón lateral.</li>`,
+        onStart: () => {
+          this.paused = false;
+          this.lastClockTick = performance.now();
+          this.render();
+        }
+      });
+    } else {
+      this.paused = false;
+      this.render();
+    }
   }
 
   startOnlineMatch(matchPayload) {
@@ -621,6 +1035,13 @@ export class BattleController {
     this.phase = this.engine.turn === this.onlineMeta.yourColor ? 'PLAYER_TURN' : 'AI_THINKING';
     this.render();
     this.toast(`¡Rival encontrado! ${matchPayload.opponent.username} (${matchPayload.opponent.elo} Elo)`, 'success');
+    this.showPreMatchGuide({
+      modeTag: 'MULTIJUGADOR ONLINE · ELO',
+      title: `Vs ${matchPayload.opponent.username}`,
+      subtitle: `Juegas con ${matchPayload.yourColor === 'w' ? 'BLANCAS (mueves primero)' : 'NEGRAS'} · ${matchPayload.timeMinutes} min`,
+      rulesHtml: `<li><strong>🌐 Reglas Oficiales:</strong> Ajedrez clásico validado por el servidor con relojes sincronizados en vivo. Al terminar se actualiza tu Elo y ganas Mods.</li>`,
+      onStart: () => { this.paused = false; this.render(); }
+    });
   }
 
   startBlackySecretBoss({ playIntro = true, minutes = this.selectedMinutes } = {}) {
@@ -636,24 +1057,33 @@ export class BattleController {
     this.configureBattlePanels();
     this.phase = 'PLAYER_TURN';
     this.render();
-    // Música oficial de BLACKY en loop automático
-    this.sound.startBossMusic('blacky', playIntro);
-
+    const launch = () => {
+      this.sound.startBossMusic('blacky', playIntro);
+      if (playIntro) {
+        this.playBossCinematicIntro({
+          themeClass: 'theme-blacky',
+          kicker: 'SECRET BOSS',
+          title: 'BLACKY',
+          subtitle: 'DIFICULTAD: IMPOSIBLE',
+          bossId: 'blacky_secret',
+          openingSpeech: 'Grr... encontraste la puerta oculta. Nadie sale vivo del tablero de BLACKY.',
+          sfx: 'blackyBark'
+        });
+      } else {
+        this.paused = false;
+        this.showBossSpeech('Grr... ¿quieres intentar lo imposible otra vez?');
+        this.resetIdleTauntTimer();
+      }
+    };
     if (playIntro) {
-      this.playBossCinematicIntro({
-        themeClass: 'theme-blacky',
-        kicker: 'SECRET BOSS',
+      this.showPreMatchGuide({
+        modeTag: 'SECRET BOSS · IMPOSIBLE',
         title: 'BLACKY',
-        subtitle: 'DIFICULTAD: IMPOSIBLE',
-        bossId: 'blacky_secret',
-        openingSpeech: 'Grr... encontraste la puerta oculta. Nadie sale vivo del tablero de BLACKY.',
-        sfx: 'blackyBark'
+        subtitle: 'El Schnauzer más extremo de CHESS.MOD',
+        rulesHtml: `<li><strong>🐾 Poderes de BLACKY:</strong> Sella casillas, invoca piezas del vacío, absorbe piezas (nunca tu Rey) y corrompe aliados. ¡Sobrevive y da Jaque Mate!</li>`,
+        onStart: launch
       });
-    } else {
-      this.paused = false;
-      this.showBossSpeech('Grr... ¿quieres intentar lo imposible otra vez?');
-      this.resetIdleTauntTimer();
-    }
+    } else launch();
   }
 
   restartCurrentMatch() {
@@ -670,7 +1100,7 @@ export class BattleController {
         { playIntro: false, presetPower: this.campaignMeta.chosenPower || null }
       );
     }
-    this.startClassicMatch({ difficulty: this.aiDifficulty, minutes: this.selectedMinutes });
+    this.startClassicMatch({ difficulty: this.aiDifficulty, minutes: this.selectedMinutes, showGuide: false });
   }
 
   configureBattlePanels() {
@@ -697,6 +1127,7 @@ export class BattleController {
     document.getElementById('maya-threats-card')?.classList.toggle('hidden', !(isMayaBoss || isMayaCamp || isGalaxy));
     document.getElementById('mittens-controls-card')?.classList.toggle('hidden', !(isMittens && this.engine.hasWhiteSoldiers));
     document.getElementById('chess-power-controls-card')?.classList.toggle('hidden', !(isChessFinal && this.engine.playerPower === 'galaxy'));
+    document.getElementById('shop-power-controls-card')?.classList.toggle('hidden', !this.getEquippedShopPower());
     document.getElementById('online-controls-card')?.classList.toggle('hidden', !isOnline);
 
     document.getElementById('btn-undo')?.classList.toggle('hidden', isOnline);
@@ -712,30 +1143,51 @@ export class BattleController {
       const opp = this.onlineMeta.opponent;
       if (portraitSlot) {
         portraitSlot.innerHTML = `<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:14px;background:radial-gradient(circle at 50% 30%, #2a241b, #14120f);">
-          <div class="avatar-badge ${opp.frameId || 'frame_stone'}" style="width:94px;height:94px;">${renderAvatarMarkup(opp.avatar)}</div>
+          <div class="avatar-badge ${opp.frameId || 'frame_stone'}${opp.isVip ? ' vip-aura' : ''}" style="width:94px;height:94px;">${renderAvatarMarkup(opp.avatar)}</div>
           <div style="text-align:center;">
-            <div style="font-family:var(--font-display);font-weight:700;color:var(--gold-bright);">${opp.username}</div>
+            <div class="${opp.isVip ? 'vip-name' : ''}" style="font-family:var(--font-display);font-weight:700;color:var(--gold-bright);">${opp.username}${opp.isVip ? ' 👑' : ''}</div>
+            ${opp.isVip ? '<span class="vip-tag" style="margin-top:4px;">Mod VIP</span>' : ''}
             <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">Elo ${opp.elo} · Nivel ${opp.level}</div>
           </div>
         </div>`;
       }
-      if (portraitName) portraitName.textContent = opp.username;
-      if (portraitStatus) portraitStatus.textContent = `Elo ${opp.elo}`;
+      if (portraitName) {
+        portraitName.className = `boss-portrait-name${opp.isVip ? ' vip-name' : ''}`;
+        portraitName.textContent = opp.isVip ? `👑 ${opp.username}` : opp.username;
+      }
+      if (portraitStatus) portraitStatus.textContent = opp.isVip ? `Mod VIP · ${opp.elo}` : `Elo ${opp.elo}`;
     } else {
       if (portraitSlot) portraitSlot.innerHTML = getBossPortraitSVG(this.bossId);
-      if (portraitName) portraitName.textContent = this.bossName;
+      if (portraitName) {
+        portraitName.className = 'boss-portrait-name';
+        portraitName.textContent = this.bossName;
+      }
       if (portraitStatus) portraitStatus.textContent = 'Observando';
       if (speaker) speaker.textContent = this.bossName;
     }
 
     const topLabel = document.getElementById('clock-top-label');
     const bottomLabel = document.getElementById('clock-bottom-label');
+    const myVip = Boolean(this.userProfile?.isVip);
     if (isOnline && this.onlineMeta) {
-      if (topLabel) topLabel.textContent = `${this.onlineMeta.opponent.username} (${this.onlineMeta.opponent.elo} Elo)`;
-      if (bottomLabel) bottomLabel.textContent = `Tú (${this.onlineMeta.yourColor === 'w' ? 'Blancas' : 'Negras'})`;
+      const opp = this.onlineMeta.opponent;
+      if (topLabel) {
+        topLabel.className = `clock-label${opp.isVip ? ' vip-name' : ''}`;
+        topLabel.textContent = `${opp.isVip ? '👑 ' : ''}${opp.username} (${opp.elo} Elo)`;
+      }
+      if (bottomLabel) {
+        bottomLabel.className = `clock-label${myVip ? ' vip-name' : ''}`;
+        bottomLabel.textContent = `${myVip ? '👑 ' : ''}Tú (${this.onlineMeta.yourColor === 'w' ? 'Blancas' : 'Negras'})`;
+      }
     } else {
-      if (topLabel) topLabel.textContent = this.bossName;
-      if (bottomLabel) bottomLabel.textContent = 'Tú (Blancas)';
+      if (topLabel) {
+        topLabel.className = 'clock-label';
+        topLabel.textContent = this.bossName;
+      }
+      if (bottomLabel) {
+        bottomLabel.className = `clock-label${myVip ? ' vip-name' : ''}`;
+        bottomLabel.textContent = myVip ? '👑 Tú · Mod VIP (Blancas)' : 'Tú (Blancas)';
+      }
     }
 
     const legend = document.getElementById('battle-legend');
@@ -882,6 +1334,11 @@ export class BattleController {
     const myColor = this.mode === 'online' ? this.onlineMeta.yourColor : 'w';
     if (this.engine.turn !== myColor) return;
 
+    if (this.shopPowerActive) {
+      this.handleShopPowerSquareClick(r, c);
+      return;
+    }
+
     const chosen = this.legalMoves.find((m) => m.tr === r && m.tc === c);
     if (chosen) {
       const piece = this.engine.board[chosen.fr][chosen.fc];
@@ -1022,6 +1479,7 @@ export class BattleController {
 
     const movingPiece = this.engine.board[move.fr][move.fc];
     const svgKey = this.getPieceSvgKey(movingPiece);
+    const activeSkinId = this.getActivePieceSkin().id;
     this.render(move.fr, move.fc);
     this.animatePieceSlide(svgKey, move.fr, move.fc, move.tr, move.tc, () => {
       if (this.mode === 'maya') {
@@ -1041,11 +1499,11 @@ export class BattleController {
           this.sound.play(res.casaProtectedCount > 0 ? 'houseShield' : 'houseMove');
           this.vfx.spawnShieldPulse(move.tr, move.tc);
         } else if (res?.captured) {
-          this.sound.play('capture');
+          this.sound.playPieceAction(activeSkinId, true);
           this.vfx.spawnSquareBurst(move.tr, move.tc, '#e05a4a', 18, 2.7);
           this.setTempBossMood('mood-angry', 1000);
         } else {
-          this.sound.play('move');
+          this.sound.playPieceAction(activeSkinId, false);
         }
       } else if (this.mode === 'maya_campaign') {
         const ev = this.engine.executeMove(move, promoType, true);
@@ -1058,11 +1516,11 @@ export class BattleController {
           this.sound.play(ev.casaProtectedCount > 0 ? 'houseShield' : 'houseMove');
           this.vfx.spawnShieldPulse(move.tr, move.tc);
         } else if (ev?.captured) {
-          this.sound.play('capture');
+          this.sound.playPieceAction(activeSkinId, true);
           this.vfx.spawnSquareBurst(move.tr, move.tc, '#e05a4a', 16, 2.6);
           this.setTempBossMood('mood-angry', 1100);
         } else {
-          this.sound.play('move');
+          this.sound.playPieceAction(activeSkinId, false);
         }
       } else {
         const ev = this.engine.executeMove(move, promoType, true);
@@ -1078,12 +1536,12 @@ export class BattleController {
           this.setTempBossMood('mood-angry', 1500);
           this.showBossSpeech(pickLine(BOSS_DIALOGUES.galaxy_entity.onHurt));
         } else if (ev?.captured) {
-          this.sound.play('capture');
+          this.sound.playPieceAction(activeSkinId, true);
           this.vfx.spawnSquareBurst(move.tr, move.tc, '#e05a4a', 16, 2.5);
           this.setTempBossMood('mood-angry', 1150);
           if (Math.random() < 0.65) this.showBossSpeech(pickLine(BOSS_DIALOGUES[this.bossId]?.onHurt));
         } else {
-          this.sound.play('move');
+          this.sound.playPieceAction(activeSkinId, false);
         }
       }
 
@@ -1132,6 +1590,16 @@ export class BattleController {
       }
 
       if (this.paused || this.engine.winner) return;
+      // Respetar Congelación Dorada (3 turnos) y Escudo Solar (2 turnos)
+      if (bestMove && this.isAiMoveBlockedByShopPowers(bestMove)) {
+        const allBlackMoves = this.engine.getAllLegalMoves('b');
+        const allowed = allBlackMoves.filter((m) => !this.isAiMoveBlockedByShopPowers(m));
+        if (allowed.length > 0) {
+          // Preferir captura legal no bloqueada o un movimiento válido seguro
+          allowed.sort((a, b) => (this.engine.board[b.tr]?.[b.tc] ? 1 : 0) - (this.engine.board[a.tr]?.[a.tc] ? 1 : 0));
+          bestMove = allowed[0];
+        }
+      }
       if (!bestMove) {
         this.phase = this.engine.winner ? 'GAME_OVER' : 'PLAYER_TURN';
         this.render();
@@ -1305,6 +1773,7 @@ export class BattleController {
   }
 
   finishAITurn() {
+    this.tickBattlePowerStatesAfterEnemyTurn();
     if (this.engine.winner) {
       this.handleSinglePlayerGameOver();
     } else {
@@ -1361,9 +1830,13 @@ export class BattleController {
             <span>Experiencia ganada:</span>
             <strong style="color:var(--gold-bright);">+${report.xpGained} XP</strong>
           </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+            <span>Monedas ganadas:</span>
+            <strong style="color:#ffd859;">🪙 +${report.modsGained ?? 0} Mods</strong>
+          </div>
           <div style="display:flex; justify-content:space-between; font-size:0.76rem; color:var(--text-muted);">
-            <span>Total XP / Nivel:</span>
-            <strong>${report.profile.xp} XP · Nv. ${report.profile.level}</strong>
+            <span>Total XP / Mods:</span>
+            <strong>${report.profile.xp} XP · 🪙 ${report.profile.mods ?? 0} Mods</strong>
           </div>`;
       } catch (err) {
         extraHtml = narrativeHtml + `<div style="color:#ffaca3;font-size:0.78rem;">${err.message}</div>`;
@@ -1606,14 +2079,23 @@ export class BattleController {
           const piece = this.engine.board[r][c];
           if (piece && !(r === hideR && c === hideC)) {
             const svgKey = this.getPieceSvgKey(piece);
+            const myColor = this.mode === 'online' ? this.onlineMeta.yourColor : 'w';
+            const applySkin = piece.color === myColor && !['H', 'U'].includes(piece.type) && !piece.isSoldier;
+            const skinCls = applySkin ? ` ${this.getActivePieceSkin().cssClass}` : '';
+            const frozenLeft = this.frozenPieces[piece.id] || 0;
+            const shieldLeft = this.solarShields[piece.id] || 0;
+            if (frozenLeft > 0) sq.classList.add('golden-frozen');
+            if (shieldLeft > 0) sq.classList.add('solar-shielded');
             const wrap = document.createElement('div');
-            wrap.className = `piece-wrap${piece.betrayed ? ' blacky-betrayed' : ''}`;
+            wrap.className = `piece-wrap${skinCls}${piece.betrayed ? ' blacky-betrayed' : ''}${frozenLeft > 0 ? ' piece-golden-frozen' : ''}`;
             wrap.innerHTML = SVGS[svgKey] || MITTENS_SVGS[svgKey] || GALAXY_SVGS[svgKey] || GLITCH_SVGS[svgKey] || CHESS_ORIGIN_SVGS[svgKey] || '';
             if (piece.isBase || (this.mode === 'galaxy' && this.engine.hasGalaxyMan && piece.color === 'b' && (piece.type === 'B' || piece.type === 'N'))) {
               wrap.insertAdjacentHTML('beforeend', `<span class="base-crest" title="Objetivo Crítico"></span>`);
             }
             sq.appendChild(wrap);
 
+            if (frozenLeft > 0) sq.insertAdjacentHTML('beforeend', `<span class="golden-freeze-badge" title="Congelado en oro">❄️ ${frozenLeft}t</span>`);
+            if (shieldLeft > 0) sq.insertAdjacentHTML('beforeend', `<span class="casa-shield-badge" title="Escudo Solar">☀️${shieldLeft}t</span>`);
             if (protectedCasaSet.has(key) || protectedBarrierSet.has(key)) sq.insertAdjacentHTML('beforeend', '<span class="casa-shield-badge">🛡️</span>');
             if (piece.type === 'G' && piece.shieldIntact) sq.insertAdjacentHTML('beforeend', '<span class="unit-badge">🛡️</span>');
             if (piece.type === 'C') sq.insertAdjacentHTML('beforeend', `<span class="unit-badge">${piece.pushCooldown === 0 ? '☀️' : `${piece.pushCooldown}t`}</span>`);
@@ -1621,6 +2103,15 @@ export class BattleController {
               sq.insertAdjacentHTML('beforeend', `<span class="soldier-mode-pill">${this.soldierMode === 'shoot' ? '🔫 DISPARO' : '👣 MOVER'}</span>`);
             }
           }
+        }
+
+        const spTarget = this.shopPowerTargets.find((t) => t.tr === r && t.tc === c);
+        if (this.shopPowerSource && this.shopPowerSource.r === r && this.shopPowerSource.c === c) {
+          sq.classList.add('selected');
+        }
+        if (spTarget) {
+          sq.classList.add('golden-freeze-target');
+          sq.insertAdjacentHTML('beforeend', `<span class="water-target-badge">${spTarget.kind === 'golden_freeze' ? '❄️' : (spTarget.kind === 'wind_pulse' ? '💨' : '✨')}</span>`);
         }
 
         const legal = this.legalMoves.find((m) => m.tr === r && m.tc === c);
@@ -1779,6 +2270,17 @@ export class BattleController {
       if (s2) s2.textContent = String(this.engine.stats?.summonedTotal || 0);
       if (s3) s3.textContent = String(this.engine.stats?.absorbedTotal || 0);
       if (s4) s4.textContent = String(this.engine.stats?.betrayedTotal || 0);
+    }
+
+    const sp = this.getEquippedShopPower();
+    const spBtn = document.getElementById('btn-shop-power');
+    const spDesc = document.getElementById('shop-power-hud-desc');
+    if (sp && spBtn) {
+      spBtn.textContent = this.shopPowerCooldown > 0
+        ? `${sp.icon} ${sp.name} (${this.shopPowerCooldown}t)`
+        : (this.shopPowerActive ? `✕ Cancelar ${sp.name}` : `${sp.icon} Usar ${sp.name}`);
+      spBtn.disabled = this.phase !== 'PLAYER_TURN' || Boolean(this.engine.winner) || this.shopPowerCooldown > 0;
+      if (spDesc) spDesc.textContent = sp.description;
     }
 
     const canUndo = this.mode !== 'online' && (this.phase === 'PLAYER_TURN' || this.phase === 'GAME_OVER') && this.engine.history.length > 0;

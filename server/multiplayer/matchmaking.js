@@ -224,8 +224,10 @@ export class MultiplayerManager {
     const whiteSock = flip ? sockA : sockB;
     const blackSock = flip ? sockB : sockA;
 
-    const whiteProfile = this.db.formatPublicUser(await this.db.findUserById(whiteEntry.userId));
-    const blackProfile = this.db.formatPublicUser(await this.db.findUserById(blackEntry.userId));
+    const whiteRow = await this.db.ensureFreshVipState(await this.db.findUserById(whiteEntry.userId));
+    const blackRow = await this.db.ensureFreshVipState(await this.db.findUserById(blackEntry.userId));
+    const whiteProfile = this.db.formatPublicUser(whiteRow);
+    const blackProfile = this.db.formatPublicUser(blackRow);
 
     const matchId = `room_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
     const engine = new ClassicChessEngine(whiteEntry.timeMinutes);
@@ -316,6 +318,8 @@ export class MultiplayerManager {
         blackProfile: saved.blackProfile,
         whiteXpGained: saved.whiteXpGained,
         blackXpGained: saved.blackXpGained,
+        whiteModsGained: saved.whiteModsGained,
+        blackModsGained: saved.blackModsGained,
         state: room.engine.cloneState()
       });
     } finally {

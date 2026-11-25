@@ -16,6 +16,7 @@ export const PIECE_NAMES = {
 };
 
 export const INITIAL_ELO = 0;
+export const INITIAL_MODS = 100;
 export const HINT_XP_COST = 25;
 
 export const XP_LEVELS = [

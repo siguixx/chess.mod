@@ -33,7 +33,11 @@ class ApiClient {
     return data;
   }
 
-  me() { return this.request('/api/auth/me'); }
+  async me() {
+    const res = await this.request('/api/auth/me');
+    if (res.authenticated && res.token) this.setToken(res.token);
+    return res;
+  }
   async register(payload) {
     const res = await this.request('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) });
     if (res.token) this.setToken(res.token);
@@ -50,6 +54,10 @@ class ApiClient {
   }
 
   getCosmetics() { return this.request('/api/cosmetics'); }
+  getShop() { return this.request('/api/shop'); }
+  buyShopItem(itemId) { return this.request('/api/shop/buy', { method: 'POST', body: JSON.stringify({ itemId }) }); }
+  subscribeModVip(paymentMethod = 'yape') { return this.request('/api/vip/subscribe', { method: 'POST', body: JSON.stringify({ paymentMethod }) }); }
+  cancelModVip() { return this.request('/api/vip/cancel', { method: 'POST', body: JSON.stringify({}) }); }
   updateUsername(username) { return this.request('/api/profile/username', { method: 'PATCH', body: JSON.stringify({ username }) }); }
   updateAvatar(avatar) { return this.request('/api/profile/avatar', { method: 'PATCH', body: JSON.stringify({ avatar }) }); }
   updateCosmetics(payload) { return this.request('/api/profile/cosmetics', { method: 'PATCH', body: JSON.stringify(payload) }); }

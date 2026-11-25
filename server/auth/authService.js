@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 
 const JWT_SECRET = process.env.CHESS_MOD_JWT_SECRET || 'chess_mod_obsidian_jade_secret_key_change_in_prod_2026';
 export const SESSION_COOKIE_NAME = 'chess_mod_token';
-const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
+const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 365; // 1 año para mantener la cuenta siempre vinculada
 
 function b64urlEncode(input) { return Buffer.from(input).toString('base64url'); }
 function b64urlDecode(str) { return Buffer.from(str, 'base64url').toString('utf8'); }
