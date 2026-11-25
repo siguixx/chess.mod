@@ -18,7 +18,38 @@ export const PIECE_NAMES = {
 export const INITIAL_ELO = 0;
 export const INITIAL_MODS = 100;
 export const HINT_XP_COST = 25;
-export const CLAN_CREATE_COST_MODS = 150;
+export const CLAN_CREATE_COST_MODS = 15000;
+
+export const CLAN_TEXT_COLORS = [
+  { id: 'gold', name: 'Dorado Clásico', hex: '#efd083', vipOnly: false },
+  { id: 'ivory', name: 'Marfil Real', hex: '#f8fafc', vipOnly: false },
+  { id: 'cyan', name: 'Cian Estelar', hex: '#7dd3fc', vipOnly: false },
+  { id: 'emerald', name: 'Jade Esmeralda', hex: '#86efac', vipOnly: false },
+  { id: 'rose', name: 'Rosa Carmesí', hex: '#fda4af', vipOnly: false },
+  { id: 'vip_gold', name: '👑 Oro Supremo (Mod VIP)', hex: '#ffd700', vipOnly: true },
+  { id: 'vip_neon_pink', name: '👑 Fucsia Neón (Mod VIP)', hex: '#ff3d81', vipOnly: true },
+  { id: 'vip_prism_teal', name: '👑 Prisma Turquesa (Mod VIP)', hex: '#00f5d4', vipOnly: true },
+  { id: 'vip_galaxy', name: '👑 Galaxia Mítica (Mod VIP)', hex: '#c084fc', vipOnly: true },
+  { id: 'vip_magma', name: '👑 Magma Ardiente (Mod VIP)', hex: '#ff6b35', vipOnly: true }
+];
+
+export const CLAN_FONT_FAMILIES = [
+  { id: 'cinzel', name: 'Épica Imperial (Cinzel)', css: "'Cinzel', serif" },
+  { id: 'inter', name: 'Moderna Limpia (Inter)', css: "'Inter', sans-serif" },
+  { id: 'georgia', name: 'Clásica Real (Georgia)', css: "'Georgia', serif" },
+  { id: 'mono', name: 'Glitch / Código (Monospace)', css: "'Courier New', monospace" },
+  { id: 'trebuchet', name: 'Táctica (Trebuchet)', css: "'Trebuchet MS', sans-serif" }
+];
+
+export const CLAN_PERMISSION_DEFS = [
+  { key: 'is_clan_mod', label: '🛡️ Moderador de Clan' },
+  { key: 'accept_members', label: '✅ Aceptar / rechazar solicitudes' },
+  { key: 'kick_members', label: '🚪 Expulsar miembros del clan' },
+  { key: 'ban_members', label: '🔨 Banear usuarios del clan' },
+  { key: 'delete_messages', label: '🗑️ Moderar / borrar chat del clan' },
+  { key: 'manage_roles', label: '🏷️ Crear y asignar roles del clan' },
+  { key: 'edit_clan', label: '🎨 Editar imagen, color, fuente y ajustes' }
+];
 
 export const TRAINERS = [
   {

@@ -186,8 +186,26 @@ export function createAuthMiddleware(db) {
           return res.status(401).json({ error: 'Sesión requerida.' });
         }
         const user = await db.findUserById(decoded.uid);
-        if (!user || !isTokenVersionValid(decoded, user) || !Number(user.is_moderator)) {
-          return res.status(403).json({ error: 'Acceso denegado: se requieren permisos de Moderador.' });
+        if (!user || !isTokenVersionValid(decoded, user) || (!Number(user.is_moderator) && !Number(user.is_owner))) {
+          return res.status(403).json({ error: 'Acceso denegado: se requieren permisos de Moderador o Owner.' });
+        }
+        req.userId = user.id;
+        req.user = user;
+        next();
+      } catch (err) {
+        next(err);
+      }
+    },
+    requireOwner: async (req, res, next) => {
+      try {
+        const token = extractTokenFromRequest(req);
+        const decoded = verifyToken(token);
+        if (!decoded?.uid) {
+          return res.status(401).json({ error: 'Sesión requerida.' });
+        }
+        const user = await db.findUserById(decoded.uid);
+        if (!user || !isTokenVersionValid(decoded, user) || !Number(user.is_owner)) {
+          return res.status(403).json({ error: 'Acceso denegado: solo el Owner de CHESS.MOD puede realizar esta acción.' });
         }
         req.userId = user.id;
         req.user = user;

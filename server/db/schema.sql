@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
   battle_pass_s1 INTEGER NOT NULL DEFAULT 0,
   battle_pass_s1_at TEXT,
   battle_pass_claimed_json TEXT NOT NULL DEFAULT '[]',
+  is_owner INTEGER NOT NULL DEFAULT 0,
   is_moderator INTEGER NOT NULL DEFAULT 0,
   is_banned INTEGER NOT NULL DEFAULT 0,
   ban_reason TEXT NOT NULL DEFAULT '',
@@ -97,6 +98,11 @@ CREATE TABLE IF NOT EXISTS clans (
   name_lower TEXT NOT NULL UNIQUE,
   tag TEXT NOT NULL UNIQUE,
   description TEXT NOT NULL DEFAULT '',
+  avatar TEXT NOT NULL DEFAULT '',
+  join_policy TEXT NOT NULL DEFAULT 'open',
+  public_read_chat INTEGER NOT NULL DEFAULT 0,
+  text_color TEXT NOT NULL DEFAULT '#efd083',
+  font_family TEXT NOT NULL DEFAULT '''Cinzel'', serif',
   leader_id TEXT NOT NULL,
   created_at TEXT NOT NULL,
   FOREIGN KEY (leader_id) REFERENCES users(id) ON DELETE CASCADE
@@ -106,7 +112,52 @@ CREATE TABLE IF NOT EXISTS clan_members (
   clan_id TEXT NOT NULL,
   user_id TEXT NOT NULL UNIQUE,
   role TEXT NOT NULL DEFAULT 'member',
+  custom_role_id TEXT,
   joined_at TEXT NOT NULL,
+  PRIMARY KEY (clan_id, user_id),
+  FOREIGN KEY (clan_id) REFERENCES clans(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS clan_roles (
+  id TEXT PRIMARY KEY,
+  clan_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  color TEXT NOT NULL DEFAULT '#7dd3fc',
+  priority INTEGER NOT NULL DEFAULT 10,
+  permissions_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (clan_id) REFERENCES clans(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS clan_messages (
+  id TEXT PRIMARY KEY,
+  clan_id TEXT NOT NULL,
+  sender_id TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (clan_id) REFERENCES clans(id) ON DELETE CASCADE,
+  FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS clan_join_requests (
+  id TEXT PRIMARY KEY,
+  clan_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  message TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TEXT NOT NULL,
+  UNIQUE(clan_id, user_id),
+  FOREIGN KEY (clan_id) REFERENCES clans(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS clan_bans (
+  clan_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  banned_by TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
   PRIMARY KEY (clan_id, user_id),
   FOREIGN KEY (clan_id) REFERENCES clans(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

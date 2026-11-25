@@ -996,8 +996,8 @@ try {
     });
     assert.equal(buyBk.status, 400, 'Zarpa Traidora de Blacky no puede comprarse en tienda');
 
-    // 3. Clanes: cuesta 150 Mods crear; jugador nuevo (100 Mods) falla con INSUFFICIENT_MODS, Alice (ya ganó Mods) SÍ puede crear y Bob se une
-    assert.equal(CLAN_CREATE_COST_MODS, 150);
+    // 3. Clanes: cuesta 15,000 Mods crear; jugador nuevo (100 Mods) falla con INSUFFICIENT_MODS, Alice (con 15,000 Mods) SÍ puede crear y Bob se une
+    assert.equal(CLAN_CREATE_COST_MODS, 15000);
     const poorReg = await (await fetch(`${url}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1012,6 +1012,8 @@ try {
     assert.equal(clanFail.status, 400);
     assert.equal((await clanFail.json()).code, 'INSUFFICIENT_MODS');
 
+    const aliceRow = await server.db.findUserByUsername('AliceMaya');
+    await server.db.addMods(aliceRow.id, 15000);
     const clanOk = await fetch(`${url}/api/clans`, {
       method: 'POST',
       headers: aliceH,
@@ -1682,6 +1684,224 @@ try {
     assert.equal(modCheck.mod.gameMode.boardSize, 10);
     assert.equal(modCheck.mod.gameMode.atomicMode, true);
     assert.equal(modCheck.mod.gameMode.armyPreset, 'rooks_fortress');
+  });
+
+  await test('Clanes 15,000 Mods (1 por persona, imagen, chat, privado solo lectura, roles/permisos, bans, colores VIP/fuentes), Rol OWNER y Jerarquía CHESS.MOD', async () => {
+    // 1. Iniciar sesión como Owner (sebasstianrf27@gmail.com / Escorpio01) -> isOwner === true
+    const ownerLogin = await (await fetch(`${url}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: 'sebasstianrf27@gmail.com', password: 'Escorpio01' })
+    })).json();
+    assert.equal(ownerLogin.user.isOwner, true, 'sebasstianrf27@gmail.com debe ser OWNER de CHESS.MOD');
+    assert.equal(ownerLogin.user.isModerator, true);
+    const ownerH = { Authorization: `Bearer ${ownerLogin.token}`, 'Content-Type': 'application/json' };
+
+    // 2. Registrar 3 jugadores para probar nombramiento de Moderador, 1 clan por persona, solicitudes, roles, chat, expulsión y baneo de clan
+    const regUser = async (username, email) => {
+      const r = await (await fetch(`${url}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password: 'Password123' })
+      })).json();
+      return { ...r, h: { Authorization: `Bearer ${r.token}`, 'Content-Type': 'application/json' } };
+    };
+    const cBoss = await regUser('ClanBoss15k', 'clanboss15k@chessmod.test');
+    const cRecruit = await regUser('ClanRecruit', 'clanrecruit@chessmod.test');
+    const cVisitor = await regUser('ClanVisitor', 'clanvisitor@chessmod.test');
+
+    // 3. Solo Owner puede nombrar Moderador: dar Mod a cBoss SIN todo desbloqueado (grantAll: false)
+    const nonOwnerSetMod = await fetch(`${url}/api/mod/set-moderator`, {
+      method: 'POST',
+      headers: cVisitor.h,
+      body: JSON.stringify({ userId: cRecruit.user.id, isModerator: true, grantAll: false })
+    });
+    assert.equal(nonOwnerSetMod.status, 403, 'Un usuario normal no puede nombrar Moderadores');
+
+    const appointMod = await fetch(`${url}/api/mod/set-moderator`, {
+      method: 'POST',
+      headers: ownerH,
+      body: JSON.stringify({ userId: cBoss.user.id, isModerator: true, grantAll: false })
+    });
+    assert.equal(appointMod.status, 200);
+    const appointedData = await appointMod.json();
+    assert.equal(appointedData.user.isModerator, true, 'Owner nombró Moderador a ClanBoss15k');
+    assert.equal(appointedData.user.isOwner, false, 'Un Moderador nombrado NO se vuelve Owner');
+    assert.equal(appointedData.user.isVip, false, 'Moderador sin grantAll NO tiene VIP ni todo desbloqueado');
+    assert.equal(appointedData.user.battlePassS1.owned, false, 'Moderador sin grantAll NO tiene Pase Premium');
+
+    // El Moderador nombrado puede ver /api/mod/overview pero NO puede banear al Owner ni nombrar otros Moderadores
+    assert.equal((await fetch(`${url}/api/mod/overview`, { headers: cBoss.h })).status, 200);
+    assert.equal((await fetch(`${url}/api/mod/set-moderator`, {
+      method: 'POST', headers: cBoss.h, body: JSON.stringify({ userId: cRecruit.user.id, isModerator: true })
+    })).status, 403);
+    assert.equal((await fetch(`${url}/api/mod/ban`, {
+      method: 'POST', headers: cBoss.h, body: JSON.stringify({ userId: ownerLogin.user.id, reason: 'Intento ilegal' })
+    })).status, 400);
+
+    // 4. Jerarquía Global: Owner primero, luego Moderadores, luego resto
+    const lb = await (await fetch(`${url}/api/leaderboard`)).json();
+    assert.equal(lb.players[0].isOwner, true, 'El Owner debe aparecer primero en la jerarquía de CHESS.MOD');
+    assert.equal(lb.players[1].isModerator, true, 'Los Moderadores deben seguir al Owner en la jerarquía');
+
+    // 5. Color VIP bloqueado para no-VIP al crear clan (y permitido con color normal) + 15,000 Mods requeridos
+    await server.db.addMods(cBoss.user.id, 15000);
+    const clanImg = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="48" height="48" fill="#1b3a2b"/></svg>').toString('base64');
+    const vipColorFail = await fetch(`${url}/api/clans`, {
+      method: 'POST',
+      headers: cBoss.h,
+      body: JSON.stringify({
+        name: 'Orden Estelar',
+        tag: 'EST',
+        textColor: '#ff3d81', // VIP exclusive
+        fontFamily: 'mono'
+      })
+    });
+    assert.equal(vipColorFail.status, 403, 'Color exclusivo Mod VIP debe bloquearse para no-VIP');
+
+    // Crear clan privado con chat público solo lectura, imagen, color normal y fuente mono
+    const createOk = await fetch(`${url}/api/clans`, {
+      method: 'POST',
+      headers: cBoss.h,
+      body: JSON.stringify({
+        name: 'Orden Estelar',
+        tag: 'EST',
+        description: 'Clan privado con chat público',
+        avatar: clanImg,
+        joinPolicy: 'private_readonly',
+        publicReadChat: true,
+        textColor: '#7dd3fc',
+        fontFamily: 'mono'
+      })
+    });
+    assert.equal(createOk.status, 201);
+    const createdClan = await createOk.json();
+    const estClanId = createdClan.clanId;
+    assert.equal(createdClan.costMods, 15000);
+    assert.equal(createdClan.user.clan.joinPolicy, 'private_readonly');
+    assert.equal(createdClan.user.clan.publicReadChat, true);
+    assert.equal(createdClan.user.clan.fontFamily, 'mono');
+    assert.equal(createdClan.user.clan.avatar, clanImg);
+
+    // Máximo 1 clan por persona: estando en un clan NO puede crear otro
+    await server.db.addMods(cBoss.user.id, 15000);
+    const secondClanFail = await fetch(`${url}/api/clans`, {
+      method: 'POST',
+      headers: cBoss.h,
+      body: JSON.stringify({ name: 'Segundo Clan', tag: 'SEG' })
+    });
+    assert.equal(secondClanFail.status, 400, 'No se puede crear un segundo clan estando ya en uno');
+
+    // 6. Chat del clan: el Owner del clan escribe; un visitante externo PUEDE LEER (private_readonly) pero NO escribir
+    const sendMsg = await fetch(`${url}/api/clans/${estClanId}/messages`, {
+      method: 'POST',
+      headers: cBoss.h,
+      body: JSON.stringify({ content: 'Bienvenidos al chat público de Orden Estelar' })
+    });
+    assert.equal(sendMsg.status, 201);
+    const sentMsgData = await sendMsg.json();
+
+    const visitorRead = await fetch(`${url}/api/clans/${estClanId}/messages`, { headers: cVisitor.h });
+    assert.equal(visitorRead.status, 200);
+    const visitorChat = await visitorRead.json();
+    assert.equal(visitorChat.canWrite, false, 'Visitante externo solo puede leer');
+    assert.ok(visitorChat.messages.some((m) => m.content.includes('Orden Estelar')));
+
+    const visitorWriteFail = await fetch(`${url}/api/clans/${estClanId}/messages`, {
+      method: 'POST',
+      headers: cVisitor.h,
+      body: JSON.stringify({ content: 'Intruso' })
+    });
+    assert.equal(visitorWriteFail.status, 403, 'Visitante externo no puede escribir en el chat del clan');
+
+    // 7. Solicitud de ingreso (revisión/aprobación) + Rol custom con permisos internos + Expulsar/Banear del clan
+    const reqJoin = await fetch(`${url}/api/clans/${estClanId}/join`, {
+      method: 'POST',
+      headers: cRecruit.h,
+      body: JSON.stringify({ message: 'Quiero unirme a la Orden' })
+    });
+    assert.equal(reqJoin.status, 200);
+    const reqJoinData = await reqJoin.json();
+    assert.equal(reqJoinData.pendingApproval, true, 'En clan privado/aprobación debe quedar pendiente de revisión');
+
+    const accJoin = await fetch(`${url}/api/clans/${estClanId}/requests/${reqJoinData.requestId}/respond`, {
+      method: 'POST',
+      headers: cBoss.h,
+      body: JSON.stringify({ accept: true })
+    });
+    assert.equal(accJoin.status, 200);
+
+    // Crear rol custom "Guardián del Chat" con permiso solo para borrar mensajes dentro del clan
+    const roleRes = await fetch(`${url}/api/clans/${estClanId}/roles`, {
+      method: 'POST',
+      headers: cBoss.h,
+      body: JSON.stringify({
+        name: 'Guardián del Chat',
+        color: '#86efac',
+        priority: 30,
+        permissions: { delete_messages: true, kick_members: false }
+      })
+    });
+    assert.equal(roleRes.status, 201);
+    const customRoleId = (await roleRes.json()).roleId;
+
+    const assignRole = await fetch(`${url}/api/clans/${estClanId}/members/${cRecruit.user.id}/role`, {
+      method: 'POST',
+      headers: cBoss.h,
+      body: JSON.stringify({ roleId: customRoleId })
+    });
+    assert.equal(assignRole.status, 200);
+
+    // El recluta con delete_messages puede borrar mensaje, pero NO expulsar al líder ni editar ajustes
+    assert.equal((await fetch(`${url}/api/clans/${estClanId}/messages/${sentMsgData.message.id}`, {
+      method: 'DELETE', headers: cRecruit.h
+    })).status, 200);
+    assert.equal((await fetch(`${url}/api/clans/${estClanId}/settings`, {
+      method: 'PATCH', headers: cRecruit.h, body: JSON.stringify({ description: 'Hackeado' })
+    })).status, 403);
+
+    // El Owner del clan banea al recluta del clan -> no puede volver a solicitar ingreso hasta ser desbaneado
+    const banFromClan = await fetch(`${url}/api/clans/${estClanId}/members/${cRecruit.user.id}/ban`, {
+      method: 'POST',
+      headers: cBoss.h,
+      body: JSON.stringify({ reason: 'Spam en chat del clan' })
+    });
+    assert.equal(banFromClan.status, 200);
+    const rejoinBlocked = await fetch(`${url}/api/clans/${estClanId}/join`, {
+      method: 'POST', headers: cRecruit.h, body: '{}'
+    });
+    assert.equal(rejoinBlocked.status, 403, 'Usuario baneado del clan no puede volver a entrar');
+
+    // Desbanear y permitir que Owner (con VIP) use color exclusivo VIP en su propio clan
+    assert.equal((await fetch(`${url}/api/clans/${estClanId}/bans/${cRecruit.user.id}/unban`, {
+      method: 'POST', headers: cBoss.h, body: '{}'
+    })).status, 200);
+
+    const ownerClan = await fetch(`${url}/api/clans`, {
+      method: 'POST',
+      headers: ownerH,
+      body: JSON.stringify({
+        name: 'Imperio Owner',
+        tag: 'OWN',
+        joinPolicy: 'approval',
+        publicReadChat: true,
+        textColor: '#ffd700', // VIP exclusive allowed for Owner!
+        fontFamily: 'cinzel'
+      })
+    });
+    assert.equal(ownerClan.status, 201);
+    const clansList = await (await fetch(`${url}/api/clans`)).json();
+    assert.equal(clansList.clans[0].tag, 'OWN', 'El clan del Owner aparece primero en el Ranking de Clanes');
+
+    // Owner promueve a ClanVisitor a Mod CON todo desbloqueado (grantAll: true)
+    const modFull = await (await fetch(`${url}/api/mod/set-moderator`, {
+      method: 'POST',
+      headers: ownerH,
+      body: JSON.stringify({ userId: cVisitor.user.id, isModerator: true, grantAll: true })
+    })).json();
+    assert.equal(modFull.user.isModerator, true);
+    assert.equal(modFull.user.isVip, true, 'Moderador con grantAll=true recibe VIP y todo desbloqueado');
+    assert.equal(modFull.user.battlePassS1.owned, true);
   });
 } finally {
   await server.stop();

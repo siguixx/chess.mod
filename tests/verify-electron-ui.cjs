@@ -390,6 +390,41 @@ app.whenReady().then(async () => {
       document.getElementById('btn-battle-back').click();
       await wait(150);
 
+      // 15. Verificar Clanes 15,000 Mods (ajustes antes de crear: imagen, privacidad, color VIP, fuente, chat público) + Rol OWNER (sebasstianrf27@gmail.com)
+      document.querySelector('[data-screen="social"]').click();
+      await wait(250);
+      results.clanCreateShows15k = (document.getElementById('create-clan-card')?.textContent || '').includes('15,000');
+      results.clanPreCreateSettingsExist = Boolean(
+        document.getElementById('clan-avatar-file')
+        && document.getElementById('clan-join-policy')
+        && document.getElementById('clan-text-color')
+        && document.getElementById('clan-font-family')
+        && document.getElementById('clan-public-chat')
+        && document.getElementById('modal-clan-public-chat')
+      );
+      results.clanColorOptionsCount = document.getElementById('clan-text-color')?.options?.length || 0;
+      results.clanFontOptionsCount = document.getElementById('clan-font-family')?.options?.length || 0;
+
+      // Iniciar sesión como OWNER (sebasstianrf27@gmail.com / Escorpio01) -> debe mostrar "Owner" en menú y crear Clan Hub completo
+      await window.chessModApp.logout();
+      await wait(250);
+      const ownerLoginRes = await (await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: 'sebasstianrf27@gmail.com', password: 'Escorpio01' })
+      })).json();
+      localStorage.setItem('chess_mod_auth_token', ownerLoginRes.token);
+      window.chessModApp.setUser(ownerLoginRes.user);
+      await wait(200);
+      results.ownerNavShowsOwner = (document.getElementById('nav-btn-mod')?.textContent || '').includes('Owner');
+      results.ownerProfileIsOwner = Boolean(ownerLoginRes.user?.isOwner);
+
+      // Abrir Panel Owner y verificar botones "Dar Mod" / "Mod + Todo"
+      document.querySelector('[data-screen="moderation"]').click();
+      await wait(450);
+      results.ownerPanelHasGiveModBtns = document.querySelectorAll('[data-owner-set-mod]').length > 0;
+      results.ownerPanelShowsOwnerBadge = (document.getElementById('mod-users-tbody')?.textContent || '').includes('OWNER');
+
       return results;
     })()`);
 

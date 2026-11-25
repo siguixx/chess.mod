@@ -198,15 +198,51 @@ class ApiClient {
     return res;
   }
 
-  // Clanes
+  // Clanes (15,000 Mods · Chat · Roles · Permisos · Bans · Ajustes)
   getClans() { return this.request('/api/clans'); }
   async createClan(payload) {
     const res = await this.request('/api/clans', { method: 'POST', body: JSON.stringify(payload) });
     this.syncSnapshot();
     return res;
   }
-  joinClan(clanId) { return this.request(`/api/clans/${encodeURIComponent(clanId)}/join`, { method: 'POST', body: '{}' }); }
+  updateClanSettings(clanId, payload) {
+    return this.request(`/api/clans/${encodeURIComponent(clanId)}/settings`, { method: 'PATCH', body: JSON.stringify(payload) });
+  }
+  joinClan(clanId, message = '') {
+    return this.request(`/api/clans/${encodeURIComponent(clanId)}/join`, { method: 'POST', body: JSON.stringify({ message }) });
+  }
   leaveClan() { return this.request('/api/clans/leave', { method: 'POST', body: '{}' }); }
+  respondClanRequest(clanId, reqId, accept) {
+    return this.request(`/api/clans/${encodeURIComponent(clanId)}/requests/${encodeURIComponent(reqId)}/respond`, { method: 'POST', body: JSON.stringify({ accept }) });
+  }
+  createClanRole(clanId, payload) {
+    return this.request(`/api/clans/${encodeURIComponent(clanId)}/roles`, { method: 'POST', body: JSON.stringify(payload) });
+  }
+  deleteClanRole(clanId, roleId) {
+    return this.request(`/api/clans/${encodeURIComponent(clanId)}/roles/${encodeURIComponent(roleId)}`, { method: 'DELETE' });
+  }
+  assignClanMemberRole(clanId, memberId, roleId) {
+    return this.request(`/api/clans/${encodeURIComponent(clanId)}/members/${encodeURIComponent(memberId)}/role`, { method: 'POST', body: JSON.stringify({ roleId }) });
+  }
+  kickClanMember(clanId, memberId) {
+    return this.request(`/api/clans/${encodeURIComponent(clanId)}/members/${encodeURIComponent(memberId)}/kick`, { method: 'POST', body: '{}' });
+  }
+  banClanMember(clanId, memberId, reason = '') {
+    return this.request(`/api/clans/${encodeURIComponent(clanId)}/members/${encodeURIComponent(memberId)}/ban`, { method: 'POST', body: JSON.stringify({ reason }) });
+  }
+  unbanClanMember(clanId, bannedUserId) {
+    return this.request(`/api/clans/${encodeURIComponent(clanId)}/bans/${encodeURIComponent(bannedUserId)}/unban`, { method: 'POST', body: '{}' });
+  }
+  getClanMessages(clanId) { return this.request(`/api/clans/${encodeURIComponent(clanId)}/messages`); }
+  sendClanMessage(clanId, content) {
+    return this.request(`/api/clans/${encodeURIComponent(clanId)}/messages`, { method: 'POST', body: JSON.stringify({ content }) });
+  }
+  deleteClanMessage(clanId, msgId) {
+    return this.request(`/api/clans/${encodeURIComponent(clanId)}/messages/${encodeURIComponent(msgId)}`, { method: 'DELETE' });
+  }
+  modSetModerator(userId, isModerator, grantAll = false) {
+    return this.request('/api/mod/set-moderator', { method: 'POST', body: JSON.stringify({ userId, isModerator, grantAll }) });
+  }
 
   // Amigos y Mensajes Privados
   getFriends() { return this.request('/api/friends'); }

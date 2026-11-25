@@ -503,13 +503,13 @@
         </div>
       </section>
 
-      <!-- 3D. SOCIAL: CLANES (150 MODS), AMIGOS Y REPORTES DE HACKS/CHEATS -->
+      <!-- 3D. SOCIAL: CLANES (15,000 MODS), AMIGOS Y REPORTES DE HACKS/CHEATS -->
       <section id="screen-social" class="screen-section">
         <div class="screen-header">
           <div>
-            <div class="screen-kicker">COMUNIDAD CHESS.MOD</div>
+            <div class="screen-kicker">COMUNIDAD CHESS.MOD · JERARQUÍA Y CLANES</div>
             <h1 class="screen-title">SOCIAL · CLANES Y AMIGOS</h1>
-            <p class="screen-subtitle">Crea o únete a un Clan (150 Mods crear), agrega amigos para jugar Salas Privadas y reporta hackers o tramposos.</p>
+            <p class="screen-subtitle">Crea un Clan (<strong>15,000 Mods</strong> · máx. 1 clan por persona) con imagen, chat, roles internos, privacidad y estilos, o chatea con tus amigos.</p>
           </div>
         </div>
 
@@ -521,15 +521,29 @@
 
         <!-- TAB CLANES -->
         <div id="social-panel-clans" class="social-panel">
-          <div class="cards-grid-2" style="margin-bottom:16px;">
+          <div id="clan-top-grid" class="cards-grid-2" style="margin-bottom:16px;">
             <div class="panel-card" id="my-clan-card">
-              <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:8px;">Mi Clan</h3>
+              <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:8px;">🏰 Mi Clan</h3>
               <div id="my-clan-content" style="font-size:0.84rem;color:var(--text-muted);">No perteneces a ningún clan todavía.</div>
             </div>
 
             <div class="panel-card" id="create-clan-card">
-              <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:8px;">Crear Clan <span class="pill">🪙 150 Mods</span></h3>
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin:0;">Crear Clan</h3>
+                <span class="pill" style="border-color:var(--gold);color:#ffe27a;">🪙 15,000 Mods · 1 por persona</span>
+              </div>
               <form id="form-create-clan" class="auth-form">
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                  <div id="clan-create-avatar-preview" class="avatar-badge frame_stone" style="width:58px;height:58px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;overflow:hidden;">🏰</div>
+                  <div style="flex:1;min-width:170px;">
+                    <label style="font-size:0.74rem;color:var(--text-muted);display:block;margin-bottom:4px;">Imagen / Escudo del Clan (cualquier formato)</label>
+                    <input id="clan-avatar-file" type="file" accept="image/*,.heic,.heif,.avif,.webp,.svg,.bmp,.ico,.gif,.png,.jpg,.jpeg" class="hidden">
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                      <button id="btn-clan-pick-avatar" type="button" class="btn btn-sm">📷 Subir Imagen del Clan</button>
+                      <button id="btn-clan-clear-avatar" type="button" class="btn btn-sm hidden">✕ Quitar</button>
+                    </div>
+                  </div>
+                </div>
                 <div>
                   <label for="clan-name-input">Nombre del Clan (3–28 caracteres)</label>
                   <input id="clan-name-input" class="input-field" type="text" required minlength="3" maxlength="28" placeholder="Legión de Obsidiana">
@@ -540,16 +554,44 @@
                 </div>
                 <div>
                   <label for="clan-desc-input">Descripción (opcional)</label>
-                  <input id="clan-desc-input" class="input-field" type="text" maxlength="140" placeholder="Clanes competitivos y torneos privados">
+                  <input id="clan-desc-input" class="input-field" type="text" maxlength="160" placeholder="Clanes competitivos, chat y torneos privados">
                 </div>
-                <button type="submit" class="btn btn-gold" style="width:100%;">🏰 Crear Clan (150 Mods)</button>
+                <div>
+                  <label for="clan-join-policy">🔐 Acceso y Privacidad del Clan</label>
+                  <select id="clan-join-policy" class="input-field">
+                    <option value="open">🚪 Entrada Directa (pasan de frente y se unen)</option>
+                    <option value="approval">📋 Revisar Solicitudes (el Owner/Mods aceptan o rechazan)</option>
+                    <option value="private_readonly">🔒 Clan Privado con Chat Público (todos pueden leer, solo miembros escriben)</option>
+                  </select>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;">
+                  <div>
+                    <label for="clan-text-color">🎨 Color de Letra</label>
+                    <select id="clan-text-color" class="input-field"></select>
+                  </div>
+                  <div>
+                    <label for="clan-font-family">🔤 Fuente de Letra</label>
+                    <select id="clan-font-family" class="input-field"></select>
+                  </div>
+                </div>
+                <label class="host-toggle-label" style="font-size:0.78rem;">
+                  <input type="checkbox" id="clan-public-chat">
+                  👁️ Permitir que cualquiera lea el chat del clan (modo solo lectura para externos)
+                </label>
+                <div id="clan-style-preview" style="padding:8px 10px;border-radius:8px;background:rgba(12,11,9,0.8);border:1px solid var(--border-subtle);font-size:0.84rem;">
+                  Vista previa: <strong id="clan-style-preview-txt">[OBS] Legión de Obsidiana</strong>
+                </div>
+                <button type="submit" class="btn btn-gold" style="width:100%;">🏰 Crear Clan (15,000 Mods)</button>
               </form>
             </div>
           </div>
 
           <div class="panel-card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-              <h3 style="font-family:var(--font-display);color:var(--gold-bright);">Ranking de Clanes</h3>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+              <div>
+                <h3 style="font-family:var(--font-display);color:var(--gold-bright);">Ranking de Clanes</h3>
+                <div style="font-size:0.72rem;color:var(--text-muted);">Ordenado por Jerarquía CHESS.MOD (👑 Owner / 🛡️ Moderadores primero) y Elo total.</div>
+              </div>
               <button id="btn-refresh-clans" class="btn btn-sm">↻ Actualizar</button>
             </div>
             <div id="clans-list-container" style="display:flex;flex-direction:column;gap:8px;"></div>
@@ -607,16 +649,16 @@
         </div>
       </section>
 
-      <!-- 3E. PANEL DE MODERACIÓN (SOLO MODERADORES) -->
+      <!-- 3E. PANEL DE OWNER Y MODERACIÓN -->
       <section id="screen-moderation" class="screen-section">
         <div class="screen-header">
           <div>
-            <div class="screen-kicker">CONTROL TOTAL · PANEL DE MODERACIÓN</div>
-            <h1 class="screen-title">🛡️ MODERACIÓN CHESS.MOD</h1>
-            <p class="screen-subtitle">Revisa reportes de hacks/cheats, banea o desbanea cuentas, inspecciona usuarios, clanes y partidas en vivo.</p>
+            <div id="mod-panel-kicker" class="screen-kicker">CONTROL TOTAL · JERARQUÍA CHESS.MOD</div>
+            <h1 id="mod-panel-title" class="screen-title">👑 OWNER &amp; MODERACIÓN CHESS.MOD</h1>
+            <p class="screen-subtitle">Revisa reportes de hacks/cheats, banea o expulsa cuentas, ajusta Mods, y (exclusivo Owner) nombra o revoca Moderadores con o sin todo desbloqueado.</p>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button id="btn-mod-grant-all" class="btn btn-sm btn-gold">👑 Desbloquear Todo (Mod)</button>
+            <button id="btn-mod-grant-all" class="btn btn-sm btn-gold">👑 Desbloquear Todo (Owner)</button>
             <button id="btn-mod-refresh" class="btn btn-sm">↻ Actualizar Panel</button>
           </div>
         </div>
@@ -688,6 +730,8 @@
                 <span id="profile-level-val" class="pill jade">Nv. 1</span>
                 <span id="profile-xp-val" class="pill muted">50 XP</span>
                 <span class="pill">🪙 <strong id="profile-mods-val">100</strong> Mods</span>
+                <span id="profile-owner-pill" class="pill hidden" style="border-color:#ffd700;background:rgba(255,215,0,0.2);color:#fff2a6;font-weight:700;">👑 OWNER</span>
+                <span id="profile-mod-pill" class="mod-badge-pill hidden">🛡️ MODERADOR</span>
                 <span id="profile-vip-pill" class="vip-tag hidden">👑 Mod VIP</span>
                 <span id="profile-trainer-pill" class="pill hidden">🎓 Mentor</span>
               </div>
@@ -1492,6 +1536,24 @@
         <span id="trainer-pending-label" style="font-size:0.8rem;color:var(--text-muted);margin-right:auto;">Selecciona una tarjeta de entrenador arriba para continuar.</span>
         <button id="btn-confirm-permanent-trainer" class="btn btn-gold" disabled style="padding:11px 20px;font-size:0.9rem;" data-i18n="trainer_confirm_btn">🔒 Confirmar Entrenador Permanente</button>
       </div>
+    </div>
+  </div>
+
+  <!-- MODAL CHAT PÚBLICO SOLO LECTURA DE CLAN -->
+  <div id="modal-clan-public-chat" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Chat público de clan">
+    <div class="modal-box" style="max-width:540px;text-align:left;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+          <div id="cpublic-avatar" class="avatar-badge frame_stone" style="width:42px;height:42px;display:flex;align-items:center;justify-content:center;overflow:hidden;">🏰</div>
+          <div style="min-width:0;">
+            <span class="pill" style="font-size:0.62rem;">👁️ CHAT PÚBLICO · SOLO LECTURA</span>
+            <h2 id="cpublic-clan-name" style="margin:3px 0 0;font-size:1.1rem;text-align:left;">Clan</h2>
+          </div>
+        </div>
+        <button id="btn-close-clan-public-chat" class="btn btn-sm btn-icon">✕</button>
+      </div>
+      <div id="cpublic-messages-box" style="height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:7px;padding:10px;border-radius:9px;background:rgba(10,9,8,0.85);border:1px solid var(--border-subtle);margin-bottom:8px;"></div>
+      <div style="font-size:0.74rem;color:var(--text-muted);text-align:center;">🔒 Estás viendo este chat en modo solo lectura. Solo los miembros del clan pueden escribir aquí.</div>
     </div>
   </div>
 

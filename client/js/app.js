@@ -5,7 +5,14 @@ import {
   isCampaignLevelUnlocked,
   getCampaignUnlockReason
 } from '/shared/config/campaigns.js';
-import { TRAINERS, SPECIAL_GAME_MODES, CLAN_CREATE_COST_MODS } from '/shared/config/constants.js';
+import {
+  TRAINERS,
+  SPECIAL_GAME_MODES,
+  CLAN_CREATE_COST_MODS,
+  CLAN_TEXT_COLORS,
+  CLAN_FONT_FAMILIES,
+  CLAN_PERMISSION_DEFS
+} from '/shared/config/constants.js';
 import { getFideCategory, BOT_ELO_BY_DIFFICULTY } from '/shared/config/elo.js';
 import {
   COSMETIC_AVATARS,
@@ -48,6 +55,15 @@ const DEFAULT_PREFS = {
   showDialogues: true,
   lowTimeAlert: true
 };
+
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 function showToast(message, type = 'info') {
   const box = document.getElementById('toast-container');
@@ -141,6 +157,10 @@ class ChessModApp {
     this.activeBpRange = '1-10';
     this.activeInvTab = 'powers';
     this.activeSocialTab = 'clans';
+    this.activeClanTab = 'chat';
+    this.pendingCreateClanAvatar = '';
+    this.pendingEditClanAvatar = null;
+    this.activePublicChatClanId = null;
     this.vipBillingStatus = { billingConfigured: false };
     this.savedMods = this.loadSavedMods();
     this.activePrivateRoomCode = null;
@@ -1015,6 +1035,56 @@ class ChessModApp {
     });
 
     on('btn-refresh-clans', 'click', () => this.loadClans());
+    on('btn-close-clan-public-chat', 'click', () => {
+      document.getElementById('modal-clan-public-chat')?.classList.remove('open');
+      this.activePublicChatClanId = null;
+    });
+    on('btn-clan-pick-avatar', 'click', () => document.getElementById('clan-avatar-file')?.click());
+    on('btn-clan-clear-avatar', 'click', () => {
+      this.pendingCreateClanAvatar = '';
+      const prev = document.getElementById('clan-create-avatar-preview');
+      if (prev) prev.innerHTML = '🏰';
+      document.getElementById('btn-clan-clear-avatar')?.classList.add('hidden');
+    });
+    on('clan-avatar-file', 'change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const dataUrl = await processAvatarUpload(file);
+        this.pendingCreateClanAvatar = dataUrl;
+        const prev = document.getElementById('clan-create-avatar-preview');
+        if (prev) prev.innerHTML = `<img src="${dataUrl}" alt="Clan" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+        document.getElementById('btn-clan-clear-avatar')?.classList.remove('hidden');
+        showToast('Imagen del clan lista.', 'success');
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        e.target.value = '';
+      }
+    });
+    const updateClanCreatePreview = () => {
+      const name = document.getElementById('clan-name-input')?.value.trim() || 'Legión de Obsidiana';
+      const tag = (document.getElementById('clan-tag-input')?.value.trim() || 'OBS').toUpperCase();
+      const colorVal = document.getElementById('clan-text-color')?.value || '#efd083';
+      const fontId = document.getElementById('clan-font-family')?.value || 'cinzel';
+      const fontDef = CLAN_FONT_FAMILIES.find((f) => f.id === fontId) || CLAN_FONT_FAMILIES[0];
+      const txt = document.getElementById('clan-style-preview-txt');
+      if (txt) {
+        txt.textContent = `[${tag}] ${name}`;
+        txt.style.color = colorVal;
+        txt.style.fontFamily = fontDef.css;
+      }
+      const policy = document.getElementById('clan-join-policy')?.value;
+      const pubChk = document.getElementById('clan-public-chat');
+      if (pubChk && policy === 'private_readonly') pubChk.checked = true;
+    };
+    ['clan-name-input', 'clan-tag-input', 'clan-text-color', 'clan-font-family', 'clan-join-policy'].forEach((id) => {
+      on(id, 'input', updateClanCreatePreview);
+      on(id, 'change', updateClanCreatePreview);
+    });
+    this.syncClanCreateSelectors();
+    updateClanCreatePreview();
+
     on('form-create-clan', 'submit', async (e) => {
       e.preventDefault();
       if (!this.user) return this.openAuthModal('login');
@@ -1022,12 +1092,31 @@ class ChessModApp {
         const name = document.getElementById('clan-name-input').value.trim();
         const tag = document.getElementById('clan-tag-input').value.trim().toUpperCase();
         const description = document.getElementById('clan-desc-input').value.trim();
-        const res = await api.createClan({ name, tag, description });
+        const joinPolicy = document.getElementById('clan-join-policy')?.value || 'open';
+        const publicReadChat = Boolean(document.getElementById('clan-public-chat')?.checked) || joinPolicy === 'private_readonly';
+        const textColor = document.getElementById('clan-text-color')?.value || '#efd083';
+        const fontFamily = document.getElementById('clan-font-family')?.value || 'cinzel';
+        const res = await api.createClan({
+          name,
+          tag,
+          description,
+          avatar: this.pendingCreateClanAvatar || '',
+          joinPolicy,
+          publicReadChat,
+          textColor,
+          fontFamily
+        });
         this.sound.play('shop_buy');
+        this.pendingCreateClanAvatar = '';
+        const prev = document.getElementById('clan-create-avatar-preview');
+        if (prev) prev.innerHTML = '🏰';
+        document.getElementById('btn-clan-clear-avatar')?.classList.add('hidden');
         this.setUser(res.user);
         e.target.reset();
+        this.syncClanCreateSelectors();
+        this.activeClanTab = 'chat';
         this.loadClans();
-        showToast(`🏰 Clan [${tag}] ${name} creado (-${CLAN_CREATE_COST_MODS} Mods).`, 'success');
+        showToast(`🏰 Clan [${tag}] ${name} creado (-${CLAN_CREATE_COST_MODS.toLocaleString('es-PE')} Mods).`, 'success');
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -1236,6 +1325,16 @@ class ChessModApp {
         this.loadFriendChatMessages();
       } else {
         showToast(`💬 Nuevo mensaje de ${msg.senderUsername}: ${msg.content.slice(0, 60)}`, 'info');
+      }
+    });
+
+    mpSocket.on('clan:message', (msg) => {
+      if (this.user?.clan && msg.clanId === this.user.clan.id) {
+        if (this.activeScreen === 'social' && this.activeSocialTab === 'clans' && (this.activeClanTab || 'chat') === 'chat') {
+          this.loadMyClanChat(msg.clanId);
+        } else if (msg.senderId !== this.user.id) {
+          showToast(`🏰 [${this.user.clan.tag}] ${msg.senderUsername}: ${msg.content.slice(0, 55)}`, 'info');
+        }
       }
     });
   }
@@ -1647,6 +1746,7 @@ class ChessModApp {
 
   renderAllScreens() {
     this.renderSidebarUser();
+    this.syncClanCreateSelectors();
     this.renderTrainersGrids();
     this.renderMultiplayerScreen();
     this.renderCampaignScreen();
@@ -1668,7 +1768,13 @@ class ChessModApp {
     const btnEl = document.getElementById('btn-sidebar-auth');
 
     const navMod = document.getElementById('nav-btn-mod');
-    if (navMod) navMod.classList.toggle('hidden', !u?.isModerator);
+    if (navMod) {
+      navMod.classList.toggle('hidden', !u?.isModerator);
+      const navLabel = navMod.querySelector('[data-i18n="nav_moderation"]');
+      const navIco = navMod.querySelector('.nav-ico');
+      if (navLabel) navLabel.textContent = u?.isOwner ? 'Owner' : t('nav_moderation', this.lang);
+      if (navIco) navIco.textContent = u?.isOwner ? '👑' : '🛡️';
+    }
 
     if (u) {
       if (avatarEl) {
@@ -1678,7 +1784,8 @@ class ChessModApp {
       if (nameEl) {
         nameEl.className = `sidebar-user-name${u.isVip ? ' vip-name' : ''}`;
         const tagPrefix = u.clan?.tag ? `[${u.clan.tag}] ` : '';
-        nameEl.textContent = `${u.isModerator ? '🛡️ ' : (u.isVip ? '👑 ' : '')}${tagPrefix}${u.username}`;
+        const rolePrefix = u.isOwner ? '👑 ' : (u.isModerator ? '🛡️ ' : (u.isVip ? '👑 ' : ''));
+        nameEl.textContent = `${rolePrefix}${tagPrefix}${u.username}`;
       }
       if (eloEl) eloEl.textContent = `Elo ${u.elo}`;
       if (xpEl) xpEl.textContent = `Nv.${u.level} · ${u.xp} XP`;
@@ -1867,7 +1974,7 @@ class ChessModApp {
   renderBattlePassScreen() {
     const u = this.user;
     const bp = u?.battlePassS1 || { owned: false, xp: 0, claimedTiers: [] };
-    const ownedPaid = Boolean(bp.owned || u?.isModerator);
+    const ownedPaid = Boolean(bp.owned || u?.isOwner);
     const xp = Number(u?.xp || 0);
     const maxXp = BATTLE_PASS_S1.tiers[BATTLE_PASS_S1.tiers.length - 1]?.xpRequired || 3920;
     const pct = Math.min(100, Math.round((xp / maxXp) * 100));
@@ -1879,10 +1986,10 @@ class ChessModApp {
       badge.className = `pill ${ownedPaid ? 'jade' : 'muted'}`;
     }
     const bar = document.getElementById('bp-xp-bar');
-    if (bar) bar.style.width = `${u?.isModerator ? 100 : pct}%`;
+    if (bar) bar.style.width = `${u?.isOwner ? 100 : pct}%`;
     const lbl = document.getElementById('bp-xp-label');
-    if (lbl) lbl.textContent = u?.isModerator
-      ? '👑 Moderador: TODOS los 50 niveles (Gratis + Premium) desbloqueados'
+    if (lbl) lbl.textContent = u?.isOwner
+      ? '👑 Owner: TODOS los 50 niveles (Gratis + Premium) desbloqueados'
       : `${xp.toLocaleString('es-PE')} / ${maxXp.toLocaleString('es-PE')} XP · Nivel actual: ${Math.min(50, Math.floor(xp / 80) + 1)} / 50`;
 
     const buyBox = document.getElementById('bp-buy-actions');
@@ -1900,7 +2007,7 @@ class ChessModApp {
 
     const renderCell = (tier, track, data) => {
       const isPaid = track === 'paid';
-      const isClaimed = claimedSet.has(`${track}:${tier.tier}`) || Boolean(u?.isModerator);
+      const isClaimed = claimedSet.has(`${track}:${tier.tier}`) || Boolean(u?.isOwner);
       const canClaim = Boolean(u) && !isClaimed && (xp >= tier.xpRequired) && (!isPaid || ownedPaid);
       const cls = isClaimed ? 'claimed' : (canClaim ? 'unlocked' : 'locked');
       let btnHtml = '';
@@ -2113,6 +2220,8 @@ class ChessModApp {
     document.getElementById('profile-xp-val').textContent = u.nextLevelXp ? `${u.xp} / ${u.nextLevelXp} XP` : `${u.xp} XP (Máximo)`;
     const modsValEl = document.getElementById('profile-mods-val');
     if (modsValEl) modsValEl.textContent = String(u.mods ?? 100);
+    document.getElementById('profile-owner-pill')?.classList.toggle('hidden', !u.isOwner);
+    document.getElementById('profile-mod-pill')?.classList.toggle('hidden', !(u.isModerator && !u.isOwner));
     document.getElementById('profile-vip-pill')?.classList.toggle('hidden', !u.isVip);
     const trPill = document.getElementById('profile-trainer-pill');
     if (trPill) {
@@ -2248,7 +2357,7 @@ class ChessModApp {
     const pwGrid = document.getElementById('cosmetics-powers-grid');
     if (pwGrid) {
       const pwItems = sortOwnedFirst(
-        COSMETIC_POWERS.filter((item) => (!item.vipOnly || isVip) && (!item.hiddenUntilUnlocked || unlocked.has(item.id) || u?.isModerator)),
+        COSMETIC_POWERS.filter((item) => (!item.vipOnly || isVip) && (!item.hiddenUntilUnlocked || unlocked.has(item.id) || u?.isOwner)),
         (it) => it.vipOnly ? isVip : ((it.bossUnlock || it.battlePassSeason) ? unlocked.has(it.id) : (unlocked.has(it.id) || it.priceMods === 0))
       );
       pwGrid.innerHTML = pwItems.map((item) => {
@@ -2288,7 +2397,9 @@ class ChessModApp {
         const vipAuraCls = p.isVip ? ' vip-aura' : '';
         const nameCls = p.isVip ? 'vip-name' : '';
         const vipBadge = p.isVip ? ' <span class="vip-tag">👑 Mod VIP</span>' : '';
-        const modBadge = p.isModerator ? ' <span class="mod-badge-pill">🛡️ MOD</span>' : '';
+        const roleBadge = p.isOwner
+          ? ' <span class="pill" style="font-size:0.62rem;border-color:#ffd700;background:rgba(255,215,0,0.22);color:#fff2a6;font-weight:700;">👑 OWNER</span>'
+          : (p.isModerator ? ' <span class="mod-badge-pill">🛡️ MOD</span>' : '');
         const clanTag = p.clanTag ? ` <span class="clan-tag-pill">[${p.clanTag}]</span>` : '';
         const repBtn = !isMe && this.user
           ? ` <button class="btn btn-sm" style="padding:2px 6px;font-size:0.66rem;" data-quick-report="${p.username}" title="Reportar Hacks/Cheats">🚨</button>`
@@ -2301,7 +2412,7 @@ class ChessModApp {
                 <span class="avatar-badge ${p.frameId || 'frame_stone'}${vipAuraCls}" style="width:34px;height:34px;">${renderAvatarMarkup(p.avatar)}</span>
                 <div>
                   <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
-                    ${clanTag}<strong class="${nameCls}" style="color:${isMe ? 'var(--gold-bright)' : 'var(--text-main)'};">${p.username}${isMe ? ' (Tú)' : ''}</strong>${modBadge}${vipBadge}${repBtn}
+                    ${clanTag}<strong class="${nameCls}" style="color:${isMe ? 'var(--gold-bright)' : 'var(--text-main)'};">${p.username}${isMe ? ' (Tú)' : ''}</strong>${roleBadge}${vipBadge}${repBtn}
                   </div>
                   <div style="font-size:0.7rem;color:var(--text-muted);">Nivel ${p.level}${p.title ? ` · «${p.title}»` : ''}</div>
                 </div>
@@ -2462,38 +2573,57 @@ class ChessModApp {
     if (this.activeSocialTab === 'friends') await this.loadFriends();
   }
 
+  syncClanCreateSelectors() {
+    const isVip = Boolean(this.user?.isVip || this.user?.isOwner);
+    const colorSel = document.getElementById('clan-text-color');
+    if (colorSel) {
+      const prev = colorSel.value;
+      colorSel.innerHTML = CLAN_TEXT_COLORS.map((c) => {
+        const locked = c.vipOnly && !isVip;
+        return `<option value="${c.hex}" ${locked ? 'disabled' : ''}>${c.name}${locked ? ' 🔒' : ''}</option>`;
+      }).join('');
+      if (prev && [...colorSel.options].some((o) => o.value === prev && !o.disabled)) colorSel.value = prev;
+    }
+    const fontSel = document.getElementById('clan-font-family');
+    if (fontSel && !fontSel.options.length) {
+      fontSel.innerHTML = CLAN_FONT_FAMILIES.map((f) => `<option value="${f.id}">${f.name}</option>`).join('');
+    }
+  }
+
+  formatClanAvatarHtml(avatar, size = 44) {
+    if (avatar && /^data:image\//.test(avatar)) {
+      return `<img src="${avatar}" alt="Clan" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:10px;border:1px solid var(--border-gold);flex-shrink:0;">`;
+    }
+    return `<div style="width:${size}px;height:${size}px;border-radius:10px;border:1px solid var(--border-stone);background:rgba(207,166,76,0.12);display:flex;align-items:center;justify-content:center;font-size:${Math.round(size * 0.52)}px;flex-shrink:0;">🏰</div>`;
+  }
+
+  formatJoinPolicyLabel(policy, publicReadChat) {
+    if (policy === 'private_readonly') return '🔒 Privado · 👁️ Chat Público';
+    if (policy === 'approval') return publicReadChat ? '📋 Aprobación · 👁️ Chat Público' : '📋 Requiere Aprobación';
+    return publicReadChat ? '🚪 Directo · 👁️ Chat Público' : '🚪 Entrada Directa';
+  }
+
   async loadClans() {
+    this.syncClanCreateSelectors();
     const myBox = document.getElementById('my-clan-content');
     const createCard = document.getElementById('create-clan-card');
+    const topGrid = document.getElementById('clan-top-grid');
     const u = this.user;
-    if (myBox) {
-      if (u?.clan) {
-        myBox.innerHTML = `
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-            <span class="clan-tag-pill">[${u.clan.tag}]</span>
-            <strong style="font-family:var(--font-display);font-size:1.05rem;color:var(--gold-bright);">${u.clan.name}</strong>
-            <span class="pill jade">${u.clan.membersCount} miembros</span>
-          </div>
-          <p style="font-size:0.79rem;color:var(--text-muted);margin-bottom:10px;">${u.clan.description || 'Clan oficial de CHESS.MOD'}</p>
-          <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px;">
-            ${(u.clan.members || []).map((m) => `<div style="display:flex;justify-content:space-between;font-size:0.78rem;"><span>${m.role === 'leader' ? '👑 ' : ''}${m.username}</span><strong style="color:var(--gold-bright);">${m.elo} Elo</strong></div>`).join('')}
-          </div>
-          <button id="btn-leave-clan" class="btn btn-sm btn-danger">Salir del Clan</button>`;
-        document.getElementById('btn-leave-clan')?.addEventListener('click', async () => {
-          try {
-            const res = await api.leaveClan();
-            this.setUser(res.user);
-            this.loadClans();
-            showToast('Saliste del clan.', 'info');
-          } catch (err) {
-            showToast(err.message, 'error');
-          }
-        });
-      } else {
-        myBox.textContent = u ? 'Aún no perteneces a ningún clan. Únete a uno abajo o crea el tuyo por 150 Mods.' : 'Inicia sesión para crear o unirte a un Clan.';
-      }
+
+    if (topGrid) {
+      topGrid.style.gridTemplateColumns = u?.clan ? '1fr' : '';
     }
     if (createCard) createCard.classList.toggle('hidden', Boolean(u?.clan));
+
+    if (myBox) {
+      if (u?.clan) {
+        this.renderMyClanHub(u.clan);
+      } else {
+        myBox.innerHTML = u
+          ? `Aún no perteneces a ningún clan. Únete a uno abajo o crea el tuyo por <strong>🪙 ${CLAN_CREATE_COST_MODS.toLocaleString('es-PE')} Mods</strong> (máx. 1 clan por persona).`
+          : 'Inicia sesión para crear o unirte a un Clan.';
+      }
+    }
 
     const listEl = document.getElementById('clans-list-container');
     if (!listEl) return;
@@ -2503,32 +2633,554 @@ class ChessModApp {
         listEl.innerHTML = '<p style="font-size:0.82rem;color:var(--text-muted);">Aún no hay clanes creados. ¡Sé el primero en fundar uno!</p>';
         return;
       }
-      listEl.innerHTML = clans.map((c) => `
-        <div class="social-row-card">
-          <div>
-            <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
-              <span class="clan-tag-pill">[${c.tag}]</span>
-              <strong style="color:var(--gold-bright);">${c.name}</strong>
-              <span class="pill muted">${c.memberCount} miembros · ${c.totalElo} Elo total</span>
+      listEl.innerHTML = clans.map((c) => {
+        const leaderRank = c.leaderIsOwner
+          ? '<span class="pill" style="font-size:0.62rem;border-color:#ffd700;background:rgba(255,215,0,0.22);color:#fff2a6;font-weight:700;">👑 OWNER</span>'
+          : (c.leaderIsModerator ? '<span class="mod-badge-pill">🛡️ MOD</span>' : '');
+        const policyBadge = `<span class="pill muted" style="font-size:0.64rem;">${this.formatJoinPolicyLabel(c.joinPolicy, c.publicReadChat)}</span>`;
+        const canReadPublic = Boolean(c.publicReadChat || c.joinPolicy === 'private_readonly');
+        const joinLabel = c.joinPolicy === 'open' ? 'Unirse' : 'Solicitar Ingreso';
+        return `
+        <div class="social-row-card" style="gap:10px;align-items:center;">
+          <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:210px;">
+            ${this.formatClanAvatarHtml(c.avatar, 44)}
+            <div style="min-width:0;">
+              <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+                <span class="clan-tag-pill" style="color:${escapeHtml(c.textColor || '#efd083')};font-family:${c.fontCss || 'inherit'};">[${escapeHtml(c.tag)}]</span>
+                <strong style="color:${escapeHtml(c.textColor || '#efd083')};font-family:${c.fontCss || 'inherit'};font-size:0.96rem;">${escapeHtml(c.name)}</strong>
+                ${leaderRank}
+                ${policyBadge}
+              </div>
+              <div style="font-size:0.74rem;color:var(--text-muted);margin-top:3px;">
+                Líder: <strong>${escapeHtml(c.leaderName)}</strong> · ${c.memberCount} miembros · ${c.totalElo} Elo total${c.description ? ` · ${escapeHtml(c.description)}` : ''}
+              </div>
             </div>
-            <div style="font-size:0.74rem;color:var(--text-muted);margin-top:3px;">Líder: ${c.leaderName}${c.description ? ` · ${c.description}` : ''}</div>
           </div>
-          ${u && !u.clan ? `<button class="btn btn-sm btn-primary" data-join-clan="${c.id}">Unirse</button>` : ''}
-        </div>`).join('');
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            ${canReadPublic ? `<button class="btn btn-sm" data-read-clan-chat="${c.id}">👁️ Leer Chat</button>` : ''}
+            ${u && !u.clan ? `<button class="btn btn-sm btn-primary" data-join-clan="${c.id}" data-join-policy="${c.joinPolicy}">${joinLabel}</button>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+
+      listEl.querySelectorAll('[data-read-clan-chat]').forEach((b) => {
+        b.addEventListener('click', () => this.openClanPublicChat(b.dataset.readClanChat));
+      });
       listEl.querySelectorAll('[data-join-clan]').forEach((b) => {
         b.addEventListener('click', async () => {
           try {
-            const res = await api.joinClan(b.dataset.joinClan);
-            this.setUser(res.user);
-            this.loadClans();
-            showToast('¡Te uniste al clan!', 'success');
+            let msg = '';
+            if (b.dataset.joinPolicy !== 'open') {
+              const promptMsg = window.prompt('Mensaje opcional para el Owner del clan (ej. tu Elo o por qué quieres entrar):', '');
+              if (promptMsg === null) return;
+              msg = promptMsg;
+            }
+            const res = await api.joinClan(b.dataset.joinClan, msg);
+            if (res.pendingApproval) {
+              showToast(`📨 ${res.message || 'Solicitud enviada al Owner del clan.'}`, 'success');
+            } else {
+              this.setUser(res.user);
+              this.activeClanTab = 'chat';
+              this.loadClans();
+              showToast('¡Te uniste al clan!', 'success');
+            }
           } catch (err) {
             showToast(err.message, 'error');
           }
         });
       });
     } catch (err) {
-      listEl.innerHTML = `<p style="color:#ffaca3;font-size:0.8rem;">${err.message}</p>`;
+      listEl.innerHTML = `<p style="color:#ffaca3;font-size:0.8rem;">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  renderMyClanHub(clan) {
+    const myBox = document.getElementById('my-clan-content');
+    if (!myBox || !clan) return;
+    const perms = clan.myPermissions || {};
+    const tab = this.activeClanTab || 'chat';
+    const isVip = Boolean(this.user?.isVip || this.user?.isOwner);
+    const pendingCount = (clan.pendingRequests || []).length;
+    const bansCount = (clan.bans || []).length;
+
+    const canManageRoles = Boolean(perms.isLeader || perms.manage_roles);
+    const canKick = Boolean(perms.isLeader || perms.kick_members);
+    const canBan = Boolean(perms.isLeader || perms.ban_members);
+    const canAccept = Boolean(perms.isLeader || perms.accept_members);
+    const canEdit = Boolean(perms.isLeader || perms.edit_clan);
+
+    const tabsHtml = `
+      <div class="shop-tabs" id="clan-hub-tabs" style="margin:10px 0 12px;">
+        <button class="shop-tab-btn ${tab === 'chat' ? 'active' : ''}" data-clan-tab="chat">💬 Chat del Clan</button>
+        <button class="shop-tab-btn ${tab === 'members' ? 'active' : ''}" data-clan-tab="members">👥 Miembros (${clan.membersCount})</button>
+        <button class="shop-tab-btn ${tab === 'roles' ? 'active' : ''}" data-clan-tab="roles">🏷️ Roles (${(clan.roles || []).length})</button>
+        ${(canAccept || canBan) ? `<button class="shop-tab-btn ${tab === 'requests' ? 'active' : ''}" data-clan-tab="requests">📨 Solicitudes${pendingCount ? ` (${pendingCount})` : ''} / Bans (${bansCount})</button>` : ''}
+        ${canEdit ? `<button class="shop-tab-btn ${tab === 'settings' ? 'active' : ''}" data-clan-tab="settings">⚙️ Ajustes del Clan</button>` : ''}
+      </div>`;
+
+    let bodyHtml = '';
+
+    if (tab === 'chat') {
+      bodyHtml = `
+        <div id="my-clan-chat-messages" style="height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:7px;padding:10px;border-radius:9px;background:rgba(10,9,8,0.85);border:1px solid var(--border-subtle);margin-bottom:10px;">
+          <div style="font-size:0.78rem;color:var(--text-muted);">Cargando chat del clan...</div>
+        </div>
+        <form id="form-clan-chat" style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input id="clan-chat-input" class="input-field" type="text" maxlength="500" required placeholder="Escribe a los integrantes del clan..." style="flex:1;min-width:180px;">
+          <button type="submit" class="btn btn-gold">Enviar</button>
+        </form>`;
+    } else if (tab === 'members') {
+      const rolesOpts = (clan.roles || []).map((r) => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
+      const modRole = (clan.roles || []).find((r) => r.permissions?.is_clan_mod);
+      bodyHtml = `
+        <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:8px;">Jerarquía: 👑 Owner CHESS.MOD → 🛡️ Moderadores → 👑 Owner del Clan → Roles de Clan → Elo</div>
+        <div style="display:flex;flex-direction:column;gap:7px;">
+          ${(clan.members || []).map((m) => {
+            const isMe = this.user && m.id === this.user.id;
+            const globalBadge = m.isOwner
+              ? '<span class="pill" style="font-size:0.62rem;border-color:#ffd700;background:rgba(255,215,0,0.22);color:#fff2a6;font-weight:700;">👑 OWNER</span>'
+              : (m.isModerator ? '<span class="mod-badge-pill">🛡️ MOD</span>' : '');
+            const clanRoleBadge = m.isClanLeader
+              ? '<span class="pill" style="font-size:0.62rem;border-color:#ffd700;color:#ffe27a;">👑 Owner del Clan</span>'
+              : (m.customRoleName
+                ? `<span class="pill" style="font-size:0.62rem;border-color:${escapeHtml(m.customRoleColor || '#7dd3fc')};color:${escapeHtml(m.customRoleColor || '#7dd3fc')};">${escapeHtml(m.customRoleName)}</span>`
+                : '<span class="pill muted" style="font-size:0.62rem;">Miembro</span>');
+            const canActOn = !isMe && !m.isClanLeader;
+            return `
+              <div class="social-row-card" style="padding:8px 10px;gap:8px;">
+                <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:170px;">
+                  <span class="avatar-badge ${m.frameId || 'frame_stone'}${m.isVip ? ' vip-aura' : ''}" style="width:32px;height:32px;">${renderAvatarMarkup(m.avatar)}</span>
+                  <div style="min-width:0;">
+                    <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                      <strong style="color:${escapeHtml(clan.textColor || '#efd083')};font-family:${clan.fontCss || 'inherit'};">${escapeHtml(m.username)}${isMe ? ' (Tú)' : ''}</strong>
+                      ${globalBadge}${clanRoleBadge}
+                    </div>
+                    <div style="font-size:0.7rem;color:var(--text-muted);">${m.elo} Elo${m.isVip ? ' · 👑 Mod VIP' : ''}</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;">
+                  ${canActOn && canManageRoles ? `
+                    <select class="input-field" data-clan-assign-role="${m.id}" style="padding:4px 6px;font-size:0.72rem;width:auto;">
+                      <option value="">Miembro</option>
+                      ${rolesOpts.replace(`value="${m.customRoleId}"`, `value="${m.customRoleId}" selected`)}
+                    </select>` : ''}
+                  ${canActOn && canManageRoles && modRole && m.customRoleId !== modRole.id ? `<button class="btn btn-sm btn-primary" data-clan-make-mod="${m.id}" data-clan-mod-role="${modRole.id}">🛡️ Hacer Mod</button>` : ''}
+                  ${canActOn && canKick ? `<button class="btn btn-sm" data-clan-kick="${m.id}" data-clan-uname="${escapeHtml(m.username)}">🚪 Expulsar</button>` : ''}
+                  ${canActOn && canBan ? `<button class="btn btn-sm btn-danger" data-clan-ban="${m.id}" data-clan-uname="${escapeHtml(m.username)}">🔨 Banear</button>` : ''}
+                </div>
+              </div>`;
+          }).join('')}
+        </div>`;
+    } else if (tab === 'roles') {
+      const rolesListHtml = (clan.roles || []).length
+        ? (clan.roles || []).map((r) => {
+          const activePerms = CLAN_PERMISSION_DEFS.filter((d) => r.permissions?.[d.key]).map((d) => d.label);
+          return `
+            <div class="social-row-card" style="padding:8px 10px;">
+              <div style="flex:1;min-width:180px;">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                  <strong style="color:${escapeHtml(r.color || '#7dd3fc')};">${escapeHtml(r.name)}</strong>
+                  <span class="pill muted" style="font-size:0.62rem;">Jerarquía ${r.priority}</span>
+                </div>
+                <div style="font-size:0.71rem;color:var(--text-muted);margin-top:3px;">${activePerms.length ? activePerms.join(' · ') : 'Sin permisos especiales (solo título)'}</div>
+              </div>
+              ${canManageRoles ? `<button class="btn btn-sm btn-danger" data-clan-del-role="${r.id}">🗑️</button>` : ''}
+            </div>`;
+        }).join('')
+        : '<p style="font-size:0.78rem;color:var(--text-muted);">Aún no hay roles personalizados en este clan.</p>';
+
+      const createRoleForm = canManageRoles
+        ? `
+          <form id="form-clan-create-role" style="margin-top:12px;padding:10px;border-radius:9px;background:rgba(12,11,9,0.75);border:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:8px;">
+            <strong style="color:var(--gold-bright);font-size:0.86rem;">➕ Crear Nuevo Rol (Permisos SOLO dentro de este clan)</strong>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;">
+              <input id="crole-name" class="input-field" type="text" required minlength="2" maxlength="24" placeholder="Ej: Co-Líder / Moderador">
+              <input id="crole-color" class="input-field" type="color" value="#38bdf8" style="height:38px;padding:3px;">
+              <input id="crole-priority" class="input-field" type="number" min="1" max="90" value="40" placeholder="Jerarquía (1-90)">
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:5px;font-size:0.75rem;">
+              ${CLAN_PERMISSION_DEFS.map((d) => `<label class="host-toggle-label"><input type="checkbox" data-crole-perm="${d.key}"> ${d.label}</label>`).join('')}
+            </div>
+            <button type="submit" class="btn btn-sm btn-gold" style="align-self:flex-start;">🏷️ Crear Rol en el Clan</button>
+          </form>`
+        : '<p style="font-size:0.76rem;color:var(--text-muted);margin-top:8px;">Solo el Owner del clan o roles con permiso de gestión pueden crear roles.</p>';
+
+      bodyHtml = `<div style="display:flex;flex-direction:column;gap:7px;">${rolesListHtml}</div>${createRoleForm}`;
+    } else if (tab === 'requests') {
+      const reqHtml = (clan.pendingRequests || []).length
+        ? clan.pendingRequests.map((r) => `
+          <div class="social-row-card" style="padding:8px 10px;">
+            <div style="flex:1;min-width:170px;">
+              <strong>${escapeHtml(r.username)}</strong> <span style="font-size:0.72rem;color:var(--text-muted);">(${r.elo} Elo)</span>
+              ${r.message ? `<div style="font-size:0.73rem;color:#ebe3d5;margin-top:2px;">«${escapeHtml(r.message)}»</div>` : ''}
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-sm btn-primary" data-clan-req-accept="${r.id}">✅ Aceptar</button>
+              <button class="btn btn-sm btn-danger" data-clan-req-reject="${r.id}">✕ Rechazar</button>
+            </div>
+          </div>`).join('')
+        : '<p style="font-size:0.78rem;color:var(--text-muted);">No hay solicitudes pendientes.</p>';
+
+      const banHtml = (clan.bans || []).length
+        ? clan.bans.map((b) => `
+          <div class="social-row-card" style="padding:8px 10px;">
+            <div style="flex:1;min-width:170px;">
+              <strong style="color:#ff9b90;">${escapeHtml(b.username)}</strong>
+              <div style="font-size:0.72rem;color:var(--text-muted);">Por ${escapeHtml(b.bannedByName)}${b.reason ? ` · ${escapeHtml(b.reason)}` : ''}</div>
+            </div>
+            <button class="btn btn-sm btn-primary" data-clan-unban="${b.userId}">🔓 Desbanear</button>
+          </div>`).join('')
+        : '<p style="font-size:0.78rem;color:var(--text-muted);">No hay usuarios baneados en este clan.</p>';
+
+      bodyHtml = `
+        <strong style="color:var(--gold-bright);font-size:0.84rem;display:block;margin-bottom:6px;">📨 Solicitudes de Ingreso</strong>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">${reqHtml}</div>
+        <strong style="color:#ff9b90;font-size:0.84rem;display:block;margin-bottom:6px;">🔨 Usuarios Baneados del Clan</strong>
+        <div style="display:flex;flex-direction:column;gap:6px;">${banHtml}</div>`;
+    } else if (tab === 'settings' && canEdit) {
+      const colorOpts = CLAN_TEXT_COLORS.map((c) => {
+        const locked = c.vipOnly && !isVip;
+        const selected = c.hex.toLowerCase() === (clan.textColor || '#efd083').toLowerCase();
+        return `<option value="${c.hex}" ${selected ? 'selected' : ''} ${locked ? 'disabled' : ''}>${c.name}${locked ? ' 🔒' : ''}</option>`;
+      }).join('');
+      const fontOpts = CLAN_FONT_FAMILIES.map((f) => `<option value="${f.id}" ${f.id === (clan.fontFamily || 'cinzel') ? 'selected' : ''}>${f.name}</option>`).join('');
+      bodyHtml = `
+        <form id="form-clan-edit-settings" style="display:flex;flex-direction:column;gap:10px;">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div id="clan-edit-avatar-preview">${this.formatClanAvatarHtml(this.pendingEditClanAvatar !== null ? this.pendingEditClanAvatar : clan.avatar, 56)}</div>
+            <input id="clan-edit-avatar-file" type="file" accept="image/*,.heic,.heif,.avif,.webp,.svg,.bmp,.ico,.gif,.png,.jpg,.jpeg" class="hidden">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button id="btn-clan-edit-avatar" type="button" class="btn btn-sm">📷 Cambiar Imagen del Clan</button>
+              <button id="btn-clan-edit-clear-avatar" type="button" class="btn btn-sm">✕ Quitar Imagen</button>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:0.74rem;color:var(--text-muted);display:block;margin-bottom:4px;">Descripción del Clan</label>
+            <input id="clan-edit-desc" class="input-field" type="text" maxlength="160" value="${escapeHtml(clan.description || '')}">
+          </div>
+          <div>
+            <label style="font-size:0.74rem;color:var(--text-muted);display:block;margin-bottom:4px;">🔐 Acceso y Privacidad del Clan</label>
+            <select id="clan-edit-policy" class="input-field">
+              <option value="open" ${clan.joinPolicy === 'open' ? 'selected' : ''}>🚪 Entrada Directa (pasan de frente y se unen)</option>
+              <option value="approval" ${clan.joinPolicy === 'approval' ? 'selected' : ''}>📋 Revisar Solicitudes (aceptar/rechazar)</option>
+              <option value="private_readonly" ${clan.joinPolicy === 'private_readonly' ? 'selected' : ''}>🔒 Clan Privado con Chat Público Solo Lectura</option>
+            </select>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;">
+            <div>
+              <label style="font-size:0.74rem;color:var(--text-muted);display:block;margin-bottom:4px;">🎨 Color de Letra</label>
+              <select id="clan-edit-color" class="input-field">${colorOpts}</select>
+            </div>
+            <div>
+              <label style="font-size:0.74rem;color:var(--text-muted);display:block;margin-bottom:4px;">🔤 Fuente de Letra</label>
+              <select id="clan-edit-font" class="input-field">${fontOpts}</select>
+            </div>
+          </div>
+          <label class="host-toggle-label" style="font-size:0.78rem;">
+            <input type="checkbox" id="clan-edit-public-chat" ${clan.publicReadChat ? 'checked' : ''}>
+            👁️ Chat público en modo solo lectura (todos pueden ver lo que chatean)
+          </label>
+          <button type="submit" class="btn btn-gold" style="align-self:flex-start;">💾 Guardar Ajustes del Clan</button>
+        </form>`;
+    }
+
+    myBox.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:10px;border-bottom:1px solid var(--border-subtle);">
+        <div style="display:flex;align-items:center;gap:12px;min-width:200px;">
+          ${this.formatClanAvatarHtml(clan.avatar, 54)}
+          <div style="min-width:0;">
+            <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+              <span class="clan-tag-pill" style="color:${escapeHtml(clan.textColor || '#efd083')};font-family:${clan.fontCss || 'inherit'};">[${escapeHtml(clan.tag)}]</span>
+              <strong style="font-size:1.18rem;color:${escapeHtml(clan.textColor || '#efd083')};font-family:${clan.fontCss || 'inherit'};">${escapeHtml(clan.name)}</strong>
+              <span class="pill jade" style="font-size:0.65rem;">${this.formatJoinPolicyLabel(clan.joinPolicy, clan.publicReadChat)}</span>
+            </div>
+            <div style="font-size:0.78rem;color:var(--text-muted);margin-top:3px;">${escapeHtml(clan.description || 'Clan oficial de CHESS.MOD')}</div>
+          </div>
+        </div>
+        <button id="btn-leave-clan" class="btn btn-sm btn-danger">Salir del Clan</button>
+      </div>
+      ${tabsHtml}
+      <div id="clan-hub-body">${bodyHtml}</div>`;
+
+    document.getElementById('btn-leave-clan')?.addEventListener('click', async () => {
+      try {
+        const res = await api.leaveClan();
+        this.pendingEditClanAvatar = null;
+        this.setUser(res.user);
+        this.loadClans();
+        showToast('Saliste del clan.', 'info');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
+    myBox.querySelectorAll('[data-clan-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.activeClanTab = btn.dataset.clanTab;
+        this.pendingEditClanAvatar = null;
+        this.renderMyClanHub(this.user.clan);
+      });
+    });
+
+    if (tab === 'chat') {
+      this.loadMyClanChat(clan.id);
+      document.getElementById('form-clan-chat')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const inp = document.getElementById('clan-chat-input');
+        const content = inp?.value.trim();
+        if (!content) return;
+        try {
+          await api.sendClanMessage(clan.id, content);
+          if (inp) inp.value = '';
+          this.loadMyClanChat(clan.id);
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      });
+    } else if (tab === 'members') {
+      myBox.querySelectorAll('[data-clan-assign-role]').forEach((sel) => {
+        sel.addEventListener('change', async () => {
+          try {
+            const res = await api.assignClanMemberRole(clan.id, sel.dataset.clanAssignRole, sel.value || null);
+            this.setUser(res.user);
+            this.renderMyClanHub(res.user.clan);
+            showToast('Rol del miembro actualizado.', 'success');
+          } catch (err) {
+            showToast(err.message, 'error');
+          }
+        });
+      });
+      myBox.querySelectorAll('[data-clan-make-mod]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          try {
+            const res = await api.assignClanMemberRole(clan.id, b.dataset.clanMakeMod, b.dataset.clanModRole);
+            this.setUser(res.user);
+            this.renderMyClanHub(res.user.clan);
+            showToast('🛡️ Miembro ascendido a Moderador del Clan.', 'success');
+          } catch (err) {
+            showToast(err.message, 'error');
+          }
+        });
+      });
+      myBox.querySelectorAll('[data-clan-kick]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          if (!window.confirm(`¿Expulsar a ${b.dataset.clanUname} del clan?`)) return;
+          try {
+            const res = await api.kickClanMember(clan.id, b.dataset.clanKick);
+            this.setUser(res.user);
+            this.renderMyClanHub(res.user.clan);
+            showToast(`🚪 ${b.dataset.clanUname} fue expulsado del clan.`, 'info');
+          } catch (err) {
+            showToast(err.message, 'error');
+          }
+        });
+      });
+      myBox.querySelectorAll('[data-clan-ban]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          const reason = window.prompt(`Motivo para banear a ${b.dataset.clanUname} de tu clan:`, 'Incumplimiento de reglas del clan');
+          if (reason === null) return;
+          try {
+            const res = await api.banClanMember(clan.id, b.dataset.clanBan, reason);
+            this.setUser(res.user);
+            this.renderMyClanHub(res.user.clan);
+            showToast(`🔨 ${b.dataset.clanUname} fue baneado del clan.`, 'success');
+          } catch (err) {
+            showToast(err.message, 'error');
+          }
+        });
+      });
+    } else if (tab === 'roles') {
+      myBox.querySelectorAll('[data-clan-del-role]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          try {
+            const res = await api.deleteClanRole(clan.id, b.dataset.clanDelRole);
+            this.setUser(res.user);
+            this.renderMyClanHub(res.user.clan);
+            showToast('Rol eliminado del clan.', 'info');
+          } catch (err) {
+            showToast(err.message, 'error');
+          }
+        });
+      });
+      document.getElementById('form-clan-create-role')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          const name = document.getElementById('crole-name').value.trim();
+          const color = document.getElementById('crole-color').value || '#38bdf8';
+          const priority = Number(document.getElementById('crole-priority').value) || 30;
+          const permissions = {};
+          e.target.querySelectorAll('[data-crole-perm]').forEach((chk) => {
+            permissions[chk.dataset.crolePerm] = Boolean(chk.checked);
+          });
+          const res = await api.createClanRole(clan.id, { name, color, priority, permissions });
+          this.setUser(res.user);
+          this.renderMyClanHub(res.user.clan);
+          showToast(`🏷️ Rol "${name}" creado dentro del clan.`, 'success');
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      });
+    } else if (tab === 'requests') {
+      myBox.querySelectorAll('[data-clan-req-accept]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          try {
+            const res = await api.respondClanRequest(clan.id, b.dataset.clanReqAccept, true);
+            this.setUser(res.user);
+            this.renderMyClanHub(res.user.clan);
+            showToast('✅ Solicitud aceptada.', 'success');
+          } catch (err) {
+            showToast(err.message, 'error');
+          }
+        });
+      });
+      myBox.querySelectorAll('[data-clan-req-reject]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          try {
+            const res = await api.respondClanRequest(clan.id, b.dataset.clanReqReject, false);
+            this.setUser(res.user);
+            this.renderMyClanHub(res.user.clan);
+            showToast('Solicitud rechazada.', 'info');
+          } catch (err) {
+            showToast(err.message, 'error');
+          }
+        });
+      });
+      myBox.querySelectorAll('[data-clan-unban]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          try {
+            const res = await api.unbanClanMember(clan.id, b.dataset.clanUnban);
+            this.setUser(res.user);
+            this.renderMyClanHub(res.user.clan);
+            showToast('🔓 Usuario desbaneado del clan.', 'success');
+          } catch (err) {
+            showToast(err.message, 'error');
+          }
+        });
+      });
+    } else if (tab === 'settings' && canEdit) {
+      document.getElementById('btn-clan-edit-avatar')?.addEventListener('click', () => document.getElementById('clan-edit-avatar-file')?.click());
+      document.getElementById('btn-clan-edit-clear-avatar')?.addEventListener('click', () => {
+        this.pendingEditClanAvatar = '';
+        const prev = document.getElementById('clan-edit-avatar-preview');
+        if (prev) prev.innerHTML = this.formatClanAvatarHtml('', 56);
+      });
+      document.getElementById('clan-edit-avatar-file')?.addEventListener('change', async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+          const dataUrl = await processAvatarUpload(file);
+          this.pendingEditClanAvatar = dataUrl;
+          const prev = document.getElementById('clan-edit-avatar-preview');
+          if (prev) prev.innerHTML = this.formatClanAvatarHtml(dataUrl, 56);
+          showToast('Nueva imagen lista. Pulsa Guardar Ajustes.', 'success');
+        } catch (err) {
+          showToast(err.message, 'error');
+        } finally {
+          e.target.value = '';
+        }
+      });
+      document.getElementById('form-clan-edit-settings')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          const description = document.getElementById('clan-edit-desc').value.trim();
+          const joinPolicy = document.getElementById('clan-edit-policy').value;
+          const publicReadChat = Boolean(document.getElementById('clan-edit-public-chat').checked) || joinPolicy === 'private_readonly';
+          const textColor = document.getElementById('clan-edit-color').value;
+          const fontFamily = document.getElementById('clan-edit-font').value;
+          const payload = { description, joinPolicy, publicReadChat, textColor, fontFamily };
+          if (this.pendingEditClanAvatar !== null) payload.avatar = this.pendingEditClanAvatar;
+          const res = await api.updateClanSettings(clan.id, payload);
+          this.pendingEditClanAvatar = null;
+          this.setUser(res.user);
+          this.loadClans();
+          showToast('💾 Ajustes y estilo del clan guardados.', 'success');
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      });
+    }
+  }
+
+  renderClanMessagesList(container, data, allowDelete = false) {
+    if (!container) return;
+    const msgs = data?.messages || [];
+    const clanStyle = data?.clan || {};
+    if (!msgs.length) {
+      container.innerHTML = '<div style="font-size:0.78rem;color:var(--text-muted);text-align:center;padding:24px 8px;">Aún no hay mensajes en este clan. ¡Saluda a tu equipo!</div>';
+      return;
+    }
+    container.innerHTML = msgs.map((m) => {
+      const isMe = this.user && m.senderId === this.user.id;
+      const gBadge = m.senderIsOwner
+        ? '<span class="pill" style="font-size:0.58rem;border-color:#ffd700;background:rgba(255,215,0,0.22);color:#fff2a6;">👑 OWNER</span>'
+        : (m.senderIsModerator ? '<span class="mod-badge-pill" style="font-size:0.58rem;">🛡️ MOD</span>' : '');
+      const cBadge = m.senderClanRoleName
+        ? `<span style="font-size:0.62rem;padding:1px 5px;border-radius:4px;border:1px solid ${escapeHtml(m.senderClanRoleColor || '#7dd3fc')};color:${escapeHtml(m.senderClanRoleColor || '#7dd3fc')};">${escapeHtml(m.senderClanRoleName)}</span>`
+        : '';
+      const timeStr = m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+      const canDel = allowDelete && (isMe || data.canDelete);
+      return `
+        <div style="padding:7px 10px;border-radius:8px;background:${isMe ? 'rgba(207,166,76,0.12)' : 'rgba(255,255,255,0.04)'};border:1px solid rgba(255,255,255,0.06);">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px;">
+            <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+              <strong style="font-size:0.78rem;color:${escapeHtml(clanStyle.textColor || '#efd083')};font-family:${clanStyle.fontCss || 'inherit'};">${escapeHtml(m.senderUsername)}</strong>
+              ${gBadge}${cBadge}
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:0.65rem;color:var(--text-muted);">${timeStr}</span>
+              ${canDel ? `<button type="button" class="btn btn-sm" style="padding:1px 5px;font-size:0.62rem;" data-del-cmsg="${m.id}" title="Borrar mensaje">🗑️</button>` : ''}
+            </div>
+          </div>
+          <div style="font-size:0.81rem;color:#ebe3d5;font-family:${clanStyle.fontCss || 'inherit'};word-break:break-word;">${escapeHtml(m.content)}</div>
+        </div>`;
+    }).join('');
+    container.scrollTop = container.scrollHeight;
+  }
+
+  async loadMyClanChat(clanId) {
+    const box = document.getElementById('my-clan-chat-messages');
+    if (!box) return;
+    try {
+      const data = await api.getClanMessages(clanId);
+      this.renderClanMessagesList(box, data, true);
+      box.querySelectorAll('[data-del-cmsg]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          try {
+            await api.deleteClanMessage(clanId, b.dataset.delCmsg);
+            this.loadMyClanChat(clanId);
+          } catch (err) {
+            showToast(err.message, 'error');
+          }
+        });
+      });
+    } catch (err) {
+      box.innerHTML = `<div style="color:#ffaca3;font-size:0.78rem;">${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  async openClanPublicChat(clanId) {
+    this.activePublicChatClanId = clanId;
+    const modal = document.getElementById('modal-clan-public-chat');
+    const title = document.getElementById('cpublic-clan-name');
+    const av = document.getElementById('cpublic-avatar');
+    const box = document.getElementById('cpublic-messages-box');
+    if (box) box.innerHTML = '<div style="font-size:0.78rem;color:var(--text-muted);">Cargando chat público del clan...</div>';
+    modal?.classList.add('open');
+    try {
+      const data = await api.getClanMessages(clanId);
+      if (title) {
+        title.textContent = `[${data.clan.tag}] ${data.clan.name}`;
+        title.style.color = data.clan.textColor || '#efd083';
+        title.style.fontFamily = data.clan.fontCss || 'inherit';
+      }
+      if (av) {
+        av.innerHTML = data.clan.avatar
+          ? `<img src="${data.clan.avatar}" alt="Clan" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+          : '🏰';
+      }
+      this.renderClanMessagesList(box, data, false);
+    } catch (err) {
+      if (box) box.innerHTML = `<div style="color:#ffaca3;font-size:0.8rem;">${escapeHtml(err.message)}</div>`;
     }
   }
 
@@ -2607,6 +3259,11 @@ class ChessModApp {
 
   async loadModerationScreen() {
     if (!this.user?.isModerator) return;
+    const amOwner = Boolean(this.user?.isOwner);
+    const titleEl = document.getElementById('mod-panel-title');
+    if (titleEl) titleEl.textContent = amOwner ? '👑 PANEL OWNER · CHESS.MOD' : '🛡️ PANEL DE MODERACIÓN · CHESS.MOD';
+    document.getElementById('btn-mod-grant-all')?.classList.toggle('hidden', !amOwner);
+
     try {
       const ov = await api.getModOverview();
       const sg = document.getElementById('mod-stats-grid');
@@ -2628,13 +3285,13 @@ class ChessModApp {
                 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:3px;">
                   <span class="pill ${f.status === 'open' ? 'crimson' : 'jade'}">${f.category.toUpperCase()}</span>
                   <span class="pill muted">Riesgo +${f.score}</span>
-                  <strong>${f.username}</strong>
+                  <strong>${escapeHtml(f.username)}</strong>
                 </div>
-                <div style="font-size:0.78rem;color:#ebe3d5;">${f.details}</div>
+                <div style="font-size:0.78rem;color:#ebe3d5;">${escapeHtml(f.details)}</div>
               </div>
               <div class="mod-action-group">
-                <button class="btn btn-sm btn-gold" data-mod-tempban-uid="${f.userId}" data-mod-uname="${f.username}">⏳ Expulsar</button>
-                <button class="btn btn-sm btn-danger" data-mod-ban-uid="${f.userId}" data-mod-ban-reason="[Anti-Cheat] ${f.details.slice(0, 80)}">🔨 Ban</button>
+                <button class="btn btn-sm btn-gold" data-mod-tempban-uid="${f.userId}" data-mod-uname="${escapeHtml(f.username)}">⏳ Expulsar</button>
+                <button class="btn btn-sm btn-danger" data-mod-ban-uid="${f.userId}" data-mod-ban-reason="[Anti-Cheat] ${escapeHtml(f.details.slice(0, 80))}">🔨 Ban</button>
                 ${f.status === 'open' ? `<button class="btn btn-sm btn-primary" data-mod-dismiss-ac="${f.id}">✓ Revisado</button>` : ''}
               </div>
             </div>`).join('')
@@ -2650,13 +3307,13 @@ class ChessModApp {
                 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:3px;">
                   <span class="pill ${r.status === 'pending' ? 'crimson' : 'jade'}">${r.status.toUpperCase()}</span>
                   <span class="pill muted">${r.category.toUpperCase()}</span>
-                  <strong>Reportado: ${r.reportedUsername}</strong>
-                  <span style="font-size:0.72rem;color:var(--text-muted);">por ${r.reporterUsername}</span>
+                  <strong>Reportado: ${escapeHtml(r.reportedUsername)}</strong>
+                  <span style="font-size:0.72rem;color:var(--text-muted);">por ${escapeHtml(r.reporterUsername)}</span>
                 </div>
-                <div style="font-size:0.8rem;color:#ebe3d5;">${r.description}</div>
+                <div style="font-size:0.8rem;color:#ebe3d5;">${escapeHtml(r.description)}</div>
               </div>
               <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                ${r.reportedUserId ? `<button class="btn btn-sm btn-danger" data-mod-ban-uid="${r.reportedUserId}" data-mod-ban-reason="Reporte ${r.category}: ${r.description.slice(0, 80)}">🔨 Banear</button>` : ''}
+                ${r.reportedUserId ? `<button class="btn btn-sm btn-danger" data-mod-ban-uid="${r.reportedUserId}" data-mod-ban-reason="Reporte ${r.category}: ${escapeHtml(r.description.slice(0, 80))}">🔨 Banear</button>` : ''}
                 ${r.status === 'pending' ? `<button class="btn btn-sm btn-primary" data-mod-res-rep="${r.id}" data-mod-res-st="resolved">✅ Resolver</button>` : ''}
                 ${r.status === 'pending' ? `<button class="btn btn-sm" data-mod-res-rep="${r.id}" data-mod-res-st="dismissed">✕ Descartar</button>` : ''}
               </div>
@@ -2668,23 +3325,35 @@ class ChessModApp {
       if (tbody) {
         tbody.innerHTML = ov.users.map((u) => {
           const untilTxt = u.bannedUntil ? ` hasta ${new Date(u.bannedUntil).toLocaleDateString('es-PE')}` : ' (Permanente)';
+          const rankBadge = u.isOwner
+            ? '<span class="pill" style="font-size:0.62rem;border-color:#ffd700;background:rgba(255,215,0,0.22);color:#fff2a6;font-weight:700;">👑 OWNER</span>'
+            : (u.isModerator ? '<span class="mod-badge-pill">🛡️ MOD</span>' : '');
+          const canSanction = !u.isOwner && (amOwner || !u.isModerator);
+          const ownerModControls = (amOwner && !u.isOwner)
+            ? (u.isModerator
+              ? `<button class="btn btn-sm btn-danger" data-owner-set-mod="${u.id}" data-owner-mod-val="0" data-owner-grant-all="0" data-mod-uname="${escapeHtml(u.username)}">✕ Quitar Mod</button>
+                 <button class="btn btn-sm btn-gold" data-owner-set-mod="${u.id}" data-owner-mod-val="1" data-owner-grant-all="1" data-mod-uname="${escapeHtml(u.username)}">👑 Dar Todo</button>`
+              : `<button class="btn btn-sm btn-primary" data-owner-set-mod="${u.id}" data-owner-mod-val="1" data-owner-grant-all="0" data-mod-uname="${escapeHtml(u.username)}">🛡️ Dar Mod</button>
+                 <button class="btn btn-sm btn-gold" data-owner-set-mod="${u.id}" data-owner-mod-val="1" data-owner-grant-all="1" data-mod-uname="${escapeHtml(u.username)}">👑 Mod + Todo</button>`)
+            : '';
           return `
           <tr>
-            <td><strong>${u.clanTag ? `[${u.clanTag}] ` : ''}${u.username}</strong> ${u.isModerator ? '<span class="mod-badge-pill">MOD</span>' : ''} ${u.isVip ? '<span class="vip-tag">VIP</span>' : ''} ${u.hasBattlePassS1 ? '<span class="pill" style="font-size:0.62rem;border-color:#38bdf8;color:#7dd3fc;">🎖️ T1</span>' : ''}</td>
-            <td style="font-size:0.75rem;color:var(--text-muted);">${u.email}</td>
+            <td><strong>${u.clanTag ? `[${escapeHtml(u.clanTag)}] ` : ''}${escapeHtml(u.username)}</strong> ${rankBadge} ${u.isVip ? '<span class="vip-tag">VIP</span>' : ''} ${u.hasBattlePassS1 ? '<span class="pill" style="font-size:0.62rem;border-color:#38bdf8;color:#7dd3fc;">🎖️ T1</span>' : ''}</td>
+            <td style="font-size:0.75rem;color:var(--text-muted);">${escapeHtml(u.email)}</td>
             <td>${u.elo} Elo · 🪙 ${u.mods}</td>
-            <td>${u.isBanned ? `<span class="pill crimson">${u.bannedUntil ? 'EXPULSADO' : 'BANEADO'}</span><div style="font-size:0.68rem;color:#ffaca3;">${u.banReason}${untilTxt}</div>` : '<span class="pill jade">Activo</span>'}</td>
+            <td>${u.isBanned ? `<span class="pill crimson">${u.bannedUntil ? 'EXPULSADO' : 'BANEADO'}</span><div style="font-size:0.68rem;color:#ffaca3;">${escapeHtml(u.banReason)}${untilTxt}</div>` : '<span class="pill jade">Activo</span>'}</td>
             <td>
-              ${!u.isModerator
+              ${canSanction
                 ? `<div class="mod-action-group">
+                    ${ownerModControls}
                     ${u.isBanned
                       ? `<button class="btn btn-sm btn-primary" data-mod-unban-uid="${u.id}">🔓 Desbanear</button>`
-                      : `<button class="btn btn-sm btn-gold" data-mod-tempban-uid="${u.id}" data-mod-uname="${u.username}">⏳ Expulsar días</button>
+                      : `<button class="btn btn-sm btn-gold" data-mod-tempban-uid="${u.id}" data-mod-uname="${escapeHtml(u.username)}">⏳ Expulsar días</button>
                          <button class="btn btn-sm btn-danger" data-mod-ban-uid="${u.id}" data-mod-ban-reason="Baneado permanentemente por moderación">🔨 Ban</button>`}
-                    <button class="btn btn-sm" data-mod-deduct-mods="${u.id}" data-mod-uname="${u.username}">🪙 -Mods</button>
-                    <button class="btn btn-sm" data-mod-add-mods="${u.id}" data-mod-uname="${u.username}">➕ +Mods</button>
+                    <button class="btn btn-sm" data-mod-deduct-mods="${u.id}" data-mod-uname="${escapeHtml(u.username)}">🪙 -Mods</button>
+                    <button class="btn btn-sm" data-mod-add-mods="${u.id}" data-mod-uname="${escapeHtml(u.username)}">➕ +Mods</button>
                   </div>`
-                : '<span style="font-size:0.72rem;color:var(--text-muted);">Protegido</span>'}
+                : '<span style="font-size:0.72rem;color:#ffe27a;font-weight:700;">👑 Owner Protegido</span>'}
             </td>
           </tr>`;
         }).join('');
@@ -2693,15 +3362,34 @@ class ChessModApp {
       const cBox = document.getElementById('mod-clans-list');
       if (cBox) {
         cBox.innerHTML = ov.clans.length
-          ? ov.clans.map((c) => `<div><span class="clan-tag-pill">[${c.tag}]</span> <strong>${c.name}</strong> — Líder: ${c.leaderName} (${c.memberCount} miembros)</div>`).join('')
+          ? ov.clans.map((c) => `<div><span class="clan-tag-pill" style="color:${escapeHtml(c.textColor || '#efd083')};">[${escapeHtml(c.tag)}]</span> <strong style="color:${escapeHtml(c.textColor || '#efd083')};font-family:${c.fontCss || 'inherit'};">${escapeHtml(c.name)}</strong> — Líder: ${escapeHtml(c.leaderName)} (${c.memberCount} miembros · ${this.formatJoinPolicyLabel(c.joinPolicy, c.publicReadChat)})</div>`).join('')
           : '<span style="color:var(--text-muted);">Sin clanes aún.</span>';
       }
       const mBox = document.getElementById('mod-matches-list');
       if (mBox) {
         mBox.innerHTML = ov.recentMatches.length
-          ? ov.recentMatches.map((m) => `<div><strong>${m.mode.toUpperCase()}</strong>: ${m.white_username || 'Jugador'} vs ${m.black_username || m.opponent_name} · Ganó: ${m.winner} (${m.turns}t)</div>`).join('')
+          ? ov.recentMatches.map((m) => `<div><strong>${m.mode.toUpperCase()}</strong>: ${escapeHtml(m.white_username || 'Jugador')} vs ${escapeHtml(m.black_username || m.opponent_name)} · Ganó: ${m.winner} (${m.turns}t)</div>`).join('')
           : '<span style="color:var(--text-muted);">Sin partidas registradas.</span>';
       }
+
+      document.querySelectorAll('[data-owner-set-mod]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          const isMod = b.dataset.ownerModVal === '1';
+          const grantAll = b.dataset.ownerGrantAll === '1';
+          const uname = b.dataset.modUname;
+          const label = !isMod
+            ? `quitar el rango de Moderador a ${uname}`
+            : (grantAll ? `nombrar Moderador a ${uname} CON TODO DESBLOQUEADO` : `nombrar Moderador a ${uname} (SIN todo desbloqueado)`);
+          if (!window.confirm(`¿Confirmas ${label}?`)) return;
+          try {
+            await api.modSetModerator(b.dataset.ownerSetMod, isMod, grantAll);
+            showToast(`✅ Rango actualizado para ${uname}.`, 'success');
+            this.loadModerationScreen();
+          } catch (err) {
+            showToast(err.message, 'error');
+          }
+        });
+      });
 
       document.querySelectorAll('[data-mod-ban-uid]').forEach((b) => {
         b.addEventListener('click', async () => {

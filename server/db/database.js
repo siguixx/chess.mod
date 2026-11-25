@@ -4,7 +4,16 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import pg from 'pg';
-import { computeLevelFromXp, INITIAL_ELO, INITIAL_MODS, HINT_XP_COST, CLAN_CREATE_COST_MODS } from '../../shared/config/constants.js';
+import {
+  computeLevelFromXp,
+  INITIAL_ELO,
+  INITIAL_MODS,
+  HINT_XP_COST,
+  CLAN_CREATE_COST_MODS,
+  CLAN_TEXT_COLORS,
+  CLAN_FONT_FAMILIES,
+  CLAN_PERMISSION_DEFS
+} from '../../shared/config/constants.js';
 import { calculateEloUpdate, getFideCategory, BOT_ELO_BY_DIFFICULTY } from '../../shared/config/elo.js';
 import { getAllCosmetics, findShopItem, isCosmeticUnlocked, VIP_EXCLUSIVE_IDS, MOD_VIP_PLAN, BATTLE_PASS_S1, BATTLE_PASS_S1_IDS } from '../../shared/config/cosmetics.js';
 import { MISSIONS, MAX_MISSION_REWARD_MODS, computeUserMissions } from '../../shared/config/missions.js';
@@ -63,7 +72,14 @@ export class ChessDatabase {
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS battle_pass_s1 INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS battle_pass_s1_at TEXT",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS battle_pass_claimed_json TEXT NOT NULL DEFAULT '[]'"
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS battle_pass_claimed_json TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_owner INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE clans ADD COLUMN IF NOT EXISTS avatar TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE clans ADD COLUMN IF NOT EXISTS join_policy TEXT NOT NULL DEFAULT 'open'",
+        "ALTER TABLE clans ADD COLUMN IF NOT EXISTS public_read_chat INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE clans ADD COLUMN IF NOT EXISTS text_color TEXT NOT NULL DEFAULT '#efd083'",
+        "ALTER TABLE clans ADD COLUMN IF NOT EXISTS font_family TEXT NOT NULL DEFAULT 'cinzel'",
+        "ALTER TABLE clan_members ADD COLUMN IF NOT EXISTS custom_role_id TEXT"
       ];
       for (const sql of pgMigrations) {
         await this.pgPool.query(sql).catch(() => {});
@@ -98,7 +114,14 @@ export class ChessDatabase {
         "ALTER TABLE users ADD COLUMN banned_until TEXT",
         "ALTER TABLE users ADD COLUMN battle_pass_s1 INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN battle_pass_s1_at TEXT",
-        "ALTER TABLE users ADD COLUMN battle_pass_claimed_json TEXT NOT NULL DEFAULT '[]'"
+        "ALTER TABLE users ADD COLUMN battle_pass_claimed_json TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE users ADD COLUMN is_owner INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE clans ADD COLUMN avatar TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE clans ADD COLUMN join_policy TEXT NOT NULL DEFAULT 'open'",
+        "ALTER TABLE clans ADD COLUMN public_read_chat INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE clans ADD COLUMN text_color TEXT NOT NULL DEFAULT '#efd083'",
+        "ALTER TABLE clans ADD COLUMN font_family TEXT NOT NULL DEFAULT 'cinzel'",
+        "ALTER TABLE clan_members ADD COLUMN custom_role_id TEXT"
       ];
       for (const sql of sqliteMigrations) {
         try { this.sqlite.exec(sql); } catch {}
@@ -219,14 +242,15 @@ export class ChessDatabase {
   formatPublicUser(row) {
     if (!row) return null;
     const lvlInfo = computeLevelFromXp(row.xp);
-    const isVip = this.isVipRowActive(row) || Boolean(Number(row.is_moderator));
-    const isModerator = Boolean(Number(row.is_moderator));
+    const isOwner = Boolean(Number(row.is_owner)) || String(row.email || '').toLowerCase() === MODERATOR_EXACT_EMAIL;
+    const isModerator = Boolean(Number(row.is_moderator)) || isOwner;
+    const isVip = this.isVipRowActive(row) || isOwner;
     const isBanned = Boolean(Number(row.is_banned)) && (!row.banned_until || Date.parse(row.banned_until) > Date.now());
-    const hasBattlePassS1 = Boolean(Number(row.battle_pass_s1)) || isModerator;
+    const hasBattlePassS1 = Boolean(Number(row.battle_pass_s1)) || isOwner;
     let bpClaimed = [];
     try { bpClaimed = JSON.parse(row.battle_pass_claimed_json || '[]'); } catch { bpClaimed = []; }
     if (!Array.isArray(bpClaimed)) bpClaimed = [];
-    if (isModerator && bpClaimed.length < BATTLE_PASS_S1.tiers.length * 2) {
+    if (isOwner && bpClaimed.length < BATTLE_PASS_S1.tiers.length * 2) {
       bpClaimed = BATTLE_PASS_S1.tiers.flatMap((t) => [`free:${t.tier}`, `paid:${t.tier}`]);
     }
     const frameId = (!isVip && VIP_EXCLUSIVE_IDS.includes(row.frame_id)) ? 'frame_stone' : (row.frame_id || 'frame_stone');
@@ -244,6 +268,7 @@ export class ChessDatabase {
       trainerId: row.trainer_id || null,
       language: row.language || 'es',
       isVip,
+      isOwner,
       isModerator,
       isBanned,
       banReason: row.ban_reason || '',
@@ -390,7 +415,7 @@ export class ChessDatabase {
   }
 
   async updateUserLanguage(userId, language) {
-    const safe = ['es', 'en', 'pt', 'fr'].includes(language) ? language : 'es';
+    const safe = ['es', 'en', 'pt', 'fr', 'de', 'it', 'ja', 'ko', 'ru', 'zh'].includes(language) ? language : 'es';
     const now = new Date().toISOString();
     await this.execSql('UPDATE users SET language = ?, updated_at = ? WHERE id = ?', [safe, now, userId]);
     return this.getFullUserProfile(userId);
@@ -429,7 +454,7 @@ export class ChessDatabase {
     if (!profile) throw new Error('Usuario no encontrado.');
 
     if (avatar !== undefined) {
-      const isCustom = /^data:image\/(png|jpeg|webp);base64,/.test(avatar);
+      const isCustom = /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(avatar);
       if (!isCustom && !profile.unlockedCosmetics.includes(avatar)) {
         throw new Error('Avatar bloqueado: sube de nivel o completa el logro requerido.');
       }
@@ -1067,21 +1092,22 @@ export class ChessDatabase {
 
   async getLeaderboard(limit = 50) {
     const rows = await this.queryAll(`
-      SELECT u.id, u.username, u.avatar, u.frame_id, u.title, u.elo, u.xp, u.level, u.wins, u.losses, u.draws, u.games_played,
-             u.vip_active, u.vip_expires_at, u.is_moderator, u.is_banned, c.tag AS clan_tag
+      SELECT u.id, u.username, u.email, u.avatar, u.frame_id, u.title, u.elo, u.xp, u.level, u.wins, u.losses, u.draws, u.games_played,
+             u.vip_active, u.vip_expires_at, u.is_owner, u.is_moderator, u.is_banned, c.tag AS clan_tag
       FROM users u
       LEFT JOIN clan_members cm ON cm.user_id = u.id
       LEFT JOIN clans c ON c.id = cm.clan_id
       WHERE u.is_banned = 0
-      ORDER BY u.elo DESC, u.wins DESC, u.xp DESC
+      ORDER BY u.is_owner DESC, u.is_moderator DESC, u.elo DESC, u.wins DESC, u.xp DESC
       LIMIT ?
     `, [limit]);
 
     const result = [];
     for (let idx = 0; idx < rows.length; idx++) {
       const r = await this.ensureFreshVipState(rows[idx]);
-      const isMod = Boolean(Number(r.is_moderator));
-      const isVip = this.isVipRowActive(r) || isMod;
+      const isOwner = Boolean(Number(r.is_owner)) || String(r.email || '').toLowerCase() === MODERATOR_EXACT_EMAIL;
+      const isMod = Boolean(Number(r.is_moderator)) || isOwner;
+      const isVip = this.isVipRowActive(r) || isOwner;
       result.push({
         rank: idx + 1,
         id: r.id,
@@ -1089,6 +1115,7 @@ export class ChessDatabase {
         avatar: r.avatar,
         frameId: (!isVip && VIP_EXCLUSIVE_IDS.includes(r.frame_id)) ? 'frame_stone' : r.frame_id,
         isVip,
+        isOwner,
         isModerator: isMod,
         clanTag: r.clan_tag || null,
         title: r.title || '',
@@ -1104,17 +1131,24 @@ export class ChessDatabase {
     return result;
   }
 
-  /* ================= MODERACIÓN SUPREMA (TODO DESBLOQUEADO + BANEO + VISIÓN TOTAL) ================= */
-  async grantModeratorEverything(userId) {
+  /* ================= OWNER & MODERACIÓN SUPREMA (JERARQUÍA CHESS.MOD) ================= */
+  async grantModeratorEverything(userId, { makeOwner = false } = {}) {
     const row = await this.findUserById(userId);
     if (!row) return null;
     const now = new Date().toISOString();
     const farFuture = '2099-12-31T23:59:59.000Z';
     const nextMods = Math.max(Number(row.mods) || 0, 99999);
     const allTierNums = JSON.stringify(BATTLE_PASS_S1.tiers.flatMap((t) => [`free:${t.tier}`, `paid:${t.tier}`]));
+    const shouldBeOwner = Boolean(makeOwner) || String(row.email || '').toLowerCase() === MODERATOR_EXACT_EMAIL;
+    const nextOwnerFlag = shouldBeOwner ? 1 : (Number(row.is_owner) ? 1 : 0);
+    const nextTitle = shouldBeOwner
+      ? ((!row.title || row.title === 'Moderador CHESS.MOD') ? 'Owner CHESS.MOD' : row.title)
+      : (row.title || 'Moderador CHESS.MOD');
+
     await this.execSql(`
       UPDATE users
-      SET is_moderator = 1,
+      SET is_owner = ?,
+          is_moderator = 1,
           is_banned = 0,
           ban_reason = '',
           banned_until = NULL,
@@ -1124,10 +1158,10 @@ export class ChessDatabase {
           battle_pass_s1_at = COALESCE(battle_pass_s1_at, ?),
           battle_pass_claimed_json = ?,
           mods = ?,
-          title = CASE WHEN title = '' THEN 'Moderador CHESS.MOD' ELSE title END,
+          title = ?,
           updated_at = ?
       WHERE id = ?
-    `, [farFuture, now, allTierNums, nextMods, now, userId]);
+    `, [nextOwnerFlag, farFuture, now, allTierNums, nextMods, nextTitle, now, userId]);
 
     const all = getAllCosmetics();
     const everyId = [
@@ -1141,7 +1175,6 @@ export class ChessDatabase {
       await this.grantExclusiveUnlock(userId, cid);
     }
 
-    // SOLO EL MODERADOR recibe los 25 niveles (5 capítulos × 5 niveles) del Modo Historia completados
     for (const campId of CHAPTER_ORDER) {
       for (let lv = 1; lv <= 5; lv++) {
         const exists = await this.queryOne(
@@ -1157,6 +1190,59 @@ export class ChessDatabase {
       }
     }
     return this.getFullUserProfile(userId);
+  }
+
+  /**
+   * Exclusivo del OWNER: otorgar o quitar rol de Moderador a otra persona.
+   * Si grantAll === false, recibe permisos de Moderador SIN todo desbloqueado.
+   * Si grantAll === true, también recibe todo desbloqueado (VIP, Pase, Cosméticos, Historia).
+   */
+  async setUserModeratorStatus(ownerId, targetUserId, { isModerator = true, grantAll = false } = {}) {
+    const owner = await this.findUserById(ownerId);
+    const actorIsOwner = Boolean(Number(owner?.is_owner)) || String(owner?.email || '').toLowerCase() === MODERATOR_EXACT_EMAIL;
+    if (!actorIsOwner) {
+      const err = new Error('Solo el Owner de CHESS.MOD puede nombrar o revocar Moderadores.');
+      err.status = 403;
+      throw err;
+    }
+    const target = await this.findUserById(targetUserId);
+    if (!target) {
+      const err = new Error('Usuario objetivo no encontrado.');
+      err.status = 404;
+      throw err;
+    }
+    const targetIsOwner = Boolean(Number(target.is_owner)) || String(target.email || '').toLowerCase() === MODERATOR_EXACT_EMAIL;
+    if (targetIsOwner) {
+      const err = new Error('No se puede modificar el rango del Owner.');
+      err.status = 400;
+      throw err;
+    }
+    const now = new Date().toISOString();
+    if (isModerator) {
+      if (grantAll) {
+        const updated = await this.grantModeratorEverything(targetUserId, { makeOwner: false });
+        await this.recordSecurityEvent(targetUserId, 'mod_promoted_full', {
+          details: `Nombrado Moderador (con todo desbloqueado) por Owner ${owner?.username || 'Owner'}`
+        });
+        return { ok: true, isModerator: true, grantAll: true, user: updated };
+      }
+      await this.execSql(
+        "UPDATE users SET is_moderator = 1, title = CASE WHEN title = '' THEN 'Moderador CHESS.MOD' ELSE title END, updated_at = ? WHERE id = ?",
+        [now, targetUserId]
+      );
+      await this.recordSecurityEvent(targetUserId, 'mod_promoted', {
+        details: `Nombrado Moderador (progreso normal) por Owner ${owner?.username || 'Owner'}`
+      });
+      return { ok: true, isModerator: true, grantAll: false, user: await this.getFullUserProfile(targetUserId) };
+    }
+    await this.execSql(
+      "UPDATE users SET is_moderator = 0, title = CASE WHEN title = 'Moderador CHESS.MOD' THEN '' ELSE title END, updated_at = ? WHERE id = ?",
+      [now, targetUserId]
+    );
+    await this.recordSecurityEvent(targetUserId, 'mod_revoked', {
+      details: `Rol de Moderador revocado por Owner ${owner?.username || 'Owner'}`
+    });
+    return { ok: true, isModerator: false, grantAll: false, user: await this.getFullUserProfile(targetUserId) };
   }
 
   /* ================= SEGURIDAD AVANZADA DE CUENTAS (2FA TOTP, BACKUP, PIN, SESIONES, LOG) ================= */
@@ -1249,9 +1335,13 @@ export class ChessDatabase {
   }
 
   async banUser(moderatorId, targetUserId, reason = 'Infracción de normas / Hacks o Cheats', durationDays = null) {
+    const actor = await this.findUserById(moderatorId);
+    const actorIsOwner = Boolean(Number(actor?.is_owner)) || String(actor?.email || '').toLowerCase() === MODERATOR_EXACT_EMAIL;
     const target = await this.findUserById(targetUserId);
     if (!target) throw new Error('Usuario a banear no encontrado.');
-    if (Number(target.is_moderator)) throw new Error('No se puede banear a un Moderador.');
+    const targetIsOwner = Boolean(Number(target.is_owner)) || String(target.email || '').toLowerCase() === MODERATOR_EXACT_EMAIL;
+    if (targetIsOwner) throw new Error('No se puede banear al Owner de CHESS.MOD.');
+    if (Number(target.is_moderator) && !actorIsOwner) throw new Error('Solo el Owner puede sancionar a un Moderador.');
     const now = new Date().toISOString();
     const days = Number(durationDays);
     const bannedUntil = Number.isFinite(days) && days > 0
@@ -1296,12 +1386,12 @@ export class ChessDatabase {
   async getModeratorOverview() {
     const users = await this.queryAll(`
       SELECT u.id, u.username, u.email, u.elo, u.xp, u.mods, u.level, u.wins, u.losses, u.draws, u.games_played,
-             u.vip_active, u.vip_expires_at, u.battle_pass_s1, u.is_moderator, u.is_banned, u.ban_reason, u.banned_at, u.banned_until, u.created_at,
+             u.vip_active, u.vip_expires_at, u.battle_pass_s1, u.is_owner, u.is_moderator, u.is_banned, u.ban_reason, u.banned_at, u.banned_until, u.created_at,
              c.tag AS clan_tag
       FROM users u
       LEFT JOIN clan_members cm ON cm.user_id = u.id
       LEFT JOIN clans c ON c.id = cm.clan_id
-      ORDER BY u.created_at DESC
+      ORDER BY u.is_owner DESC, u.is_moderator DESC, u.vip_active DESC, u.elo DESC, u.created_at DESC
       LIMIT 200
     `);
     const reports = await this.listAllReports();
@@ -1318,6 +1408,8 @@ export class ChessDatabase {
 
     const mappedUsers = users.map((u) => {
       const activeBan = Boolean(Number(u.is_banned)) && (!u.banned_until || Date.parse(u.banned_until) > Date.now());
+      const isOwner = Boolean(Number(u.is_owner)) || String(u.email || '').toLowerCase() === MODERATOR_EXACT_EMAIL;
+      const isMod = Boolean(Number(u.is_moderator)) || isOwner;
       return {
         id: u.id,
         username: u.username,
@@ -1329,9 +1421,10 @@ export class ChessDatabase {
         gamesPlayed: Number(u.games_played) || 0,
         wins: Number(u.wins) || 0,
         losses: Number(u.losses) || 0,
-        isVip: this.isVipRowActive(u) || Boolean(Number(u.is_moderator)),
-        hasBattlePassS1: Boolean(Number(u.battle_pass_s1)) || Boolean(Number(u.is_moderator)),
-        isModerator: Boolean(Number(u.is_moderator)),
+        isVip: this.isVipRowActive(u) || isOwner,
+        hasBattlePassS1: Boolean(Number(u.battle_pass_s1)) || isOwner,
+        isOwner,
+        isModerator: isMod,
         isBanned: activeBan,
         banReason: u.ban_reason || '',
         bannedUntil: activeBan ? (u.banned_until || null) : null,
@@ -1345,6 +1438,7 @@ export class ChessDatabase {
         totalUsers: mappedUsers.length,
         bannedUsers: mappedUsers.filter((u) => u.isBanned).length,
         vipUsers: mappedUsers.filter((u) => u.isVip).length,
+        moderatorsCount: mappedUsers.filter((u) => u.isModerator).length,
         pendingReports: reports.filter((r) => r.status === 'pending').length,
         openAntiCheatFlags: antiCheatFlags.filter((f) => f.status === 'open').length,
         totalClans: clans.length,
@@ -1358,86 +1452,305 @@ export class ChessDatabase {
     };
   }
 
-  /* ================= SISTEMA DE CLANES (CUESTA MODS CREAR) ================= */
+  /* ================= SISTEMA DE CLANES (15,000 MODS · 1 CLAN/PERSONA · CHAT · ROLES · BANS · ESTILOS) ================= */
+  resolveClanFontCss(fontId) {
+    const found = CLAN_FONT_FAMILIES.find((f) => f.id === fontId);
+    return found ? found.css : CLAN_FONT_FAMILIES[0].css;
+  }
+
+  sanitizeClanStyle(actorRow, { textColor, fontFamily, avatar, joinPolicy, publicReadChat } = {}, existingClan = null) {
+    const actorIsOwner = Boolean(Number(actorRow?.is_owner)) || String(actorRow?.email || '').toLowerCase() === MODERATOR_EXACT_EMAIL;
+    const actorIsVip = this.isVipRowActive(actorRow) || actorIsOwner;
+
+    let cleanColor = existingClan ? (existingClan.text_color || '#efd083') : '#efd083';
+    if (textColor !== undefined && textColor !== null && String(textColor).trim() !== '') {
+      const raw = String(textColor).trim();
+      const matched = CLAN_TEXT_COLORS.find((c) => c.id === raw || c.hex.toLowerCase() === raw.toLowerCase());
+      if (matched) {
+        if (matched.vipOnly && !actorIsVip) {
+          const err = new Error(`El color "${matched.name}" es exclusivo de Mod VIP.`);
+          err.status = 403;
+          throw err;
+        }
+        cleanColor = matched.hex;
+      } else if (/^#[0-9a-fA-F]{6}$/.test(raw)) {
+        if (!actorIsVip) {
+          const err = new Error('Los colores personalizados hexadecimales son exclusivos de Mod VIP.');
+          err.status = 403;
+          throw err;
+        }
+        cleanColor = raw;
+      }
+    }
+
+    let cleanFont = existingClan ? (existingClan.font_family || 'cinzel') : 'cinzel';
+    if (fontFamily !== undefined && fontFamily !== null) {
+      const f = CLAN_FONT_FAMILIES.find((x) => x.id === String(fontFamily));
+      if (f) cleanFont = f.id;
+    }
+
+    let cleanJoinPolicy = existingClan ? (existingClan.join_policy || 'open') : 'open';
+    if (joinPolicy !== undefined && ['open', 'approval', 'private_readonly'].includes(String(joinPolicy))) {
+      cleanJoinPolicy = String(joinPolicy);
+    }
+
+    let cleanPublicRead = existingClan ? (Number(existingClan.public_read_chat) ? 1 : 0) : 0;
+    if (publicReadChat !== undefined) {
+      cleanPublicRead = publicReadChat ? 1 : 0;
+    }
+    if (cleanJoinPolicy === 'private_readonly') {
+      cleanPublicRead = 1;
+    }
+
+    let cleanAvatar = existingClan ? (existingClan.avatar || '') : '';
+    if (avatar !== undefined) {
+      const rawAv = String(avatar || '').trim();
+      if (!rawAv) {
+        cleanAvatar = '';
+      } else if (/^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(rawAv) && rawAv.length <= 500000) {
+        cleanAvatar = rawAv;
+      } else {
+        const err = new Error('La imagen del clan debe ser una imagen válida (máx. 350 KB optimizada).');
+        err.status = 400;
+        throw err;
+      }
+    }
+
+    return {
+      textColor: cleanColor,
+      fontFamily: cleanFont,
+      joinPolicy: cleanJoinPolicy,
+      publicReadChat: cleanPublicRead,
+      avatar: cleanAvatar
+    };
+  }
+
+  async getClanMemberContext(clanId, userId) {
+    const clan = await this.queryOne('SELECT * FROM clans WHERE id = ?', [clanId]);
+    if (!clan) return { clan: null, member: null, isLeader: false, priority: -1, perms: {} };
+    const member = userId
+      ? await this.queryOne(
+        `SELECT cm.clan_id, cm.user_id, cm.role, cm.custom_role_id, cr.name AS custom_role_name, cr.color AS custom_role_color, cr.priority AS custom_role_priority, cr.permissions_json
+         FROM clan_members cm
+         LEFT JOIN clan_roles cr ON cr.id = cm.custom_role_id
+         WHERE cm.clan_id = ? AND cm.user_id = ?`,
+        [clanId, userId]
+      )
+      : null;
+    const isLeader = Boolean(member && (clan.leader_id === userId || member.role === 'leader'));
+    const perms = {};
+    for (const def of CLAN_PERMISSION_DEFS) perms[def.key] = isLeader;
+    if (member && !isLeader && member.permissions_json) {
+      try {
+        const parsed = JSON.parse(member.permissions_json);
+        for (const def of CLAN_PERMISSION_DEFS) {
+          if (parsed[def.key]) perms[def.key] = true;
+        }
+      } catch {}
+    }
+    const priority = isLeader ? 1000 : (member ? (Number(member.custom_role_priority) || 0) : -1);
+    return { clan, member, isLeader, priority, perms };
+  }
+
   async getUserClan(userId) {
     const row = await this.queryOne(`
-      SELECT c.id, c.name, c.tag, c.description, c.leader_id, cm.role, c.created_at
+      SELECT c.*, cm.role, cm.custom_role_id
       FROM clan_members cm
       JOIN clans c ON c.id = cm.clan_id
       WHERE cm.user_id = ?
     `, [userId]);
     if (!row) return null;
-    const members = await this.queryAll(`
-      SELECT u.id, u.username, u.elo, u.avatar, u.frame_id, u.vip_active, u.vip_expires_at, u.is_moderator, cm.role
+
+    const ctx = await this.getClanMemberContext(row.id, userId);
+
+    const rolesRows = await this.queryAll(
+      'SELECT id, clan_id, name, color, priority, permissions_json, created_at FROM clan_roles WHERE clan_id = ? ORDER BY priority DESC, created_at ASC',
+      [row.id]
+    );
+    const roles = rolesRows.map((r) => {
+      let permissions = {};
+      try { permissions = JSON.parse(r.permissions_json || '{}'); } catch { permissions = {}; }
+      return {
+        id: r.id,
+        name: r.name,
+        color: r.color || '#7dd3fc',
+        priority: Number(r.priority) || 10,
+        permissions
+      };
+    });
+
+    const membersRows = await this.queryAll(`
+      SELECT u.id, u.username, u.email, u.elo, u.avatar, u.frame_id, u.vip_active, u.vip_expires_at,
+             u.is_owner, u.is_moderator, cm.role, cm.custom_role_id, cm.joined_at,
+             cr.name AS custom_role_name, cr.color AS custom_role_color, cr.priority AS custom_role_priority, cr.permissions_json
       FROM clan_members cm
       JOIN users u ON u.id = cm.user_id
+      LEFT JOIN clan_roles cr ON cr.id = cm.custom_role_id
       WHERE cm.clan_id = ?
-      ORDER BY u.elo DESC
     `, [row.id]);
-    return {
-      id: row.id,
-      name: row.name,
-      tag: row.tag,
-      description: row.description,
-      leaderId: row.leader_id,
-      myRole: row.role,
-      membersCount: members.length,
-      members: members.map((m) => ({
+
+    const members = membersRows.map((m) => {
+      const isGlobalOwner = Boolean(Number(m.is_owner)) || String(m.email || '').toLowerCase() === MODERATOR_EXACT_EMAIL;
+      const isGlobalMod = Boolean(Number(m.is_moderator)) || isGlobalOwner;
+      const isVip = this.isVipRowActive(m) || isGlobalOwner;
+      let rolePerms = {};
+      try { rolePerms = JSON.parse(m.permissions_json || '{}'); } catch {}
+      const isClanLeader = m.role === 'leader' || m.id === row.leader_id;
+      const isClanMod = isClanLeader || Boolean(rolePerms.is_clan_mod);
+      return {
         id: m.id,
         username: m.username,
         elo: Number(m.elo) || 0,
         avatar: m.avatar,
         frameId: m.frame_id,
-        isVip: this.isVipRowActive(m) || Boolean(Number(m.is_moderator)),
-        role: m.role
-      }))
+        isVip,
+        isOwner: isGlobalOwner,
+        isModerator: isGlobalMod,
+        role: isClanLeader ? 'leader' : 'member',
+        isClanLeader,
+        isClanMod,
+        customRoleId: m.custom_role_id || null,
+        customRoleName: isClanLeader ? 'Owner del Clan' : (m.custom_role_name || null),
+        customRoleColor: isClanLeader ? '#ffd700' : (m.custom_role_color || null),
+        customRolePriority: isClanLeader ? 1000 : (Number(m.custom_role_priority) || 0),
+        joinedAt: m.joined_at
+      };
+    });
+
+    // Jerarquía CHESS.MOD primero (Owner -> Moderadores -> Owner del Clan -> Roles del Clan -> VIP -> Elo)
+    members.sort((a, b) => {
+      if (a.isOwner !== b.isOwner) return a.isOwner ? -1 : 1;
+      if (a.isModerator !== b.isModerator) return a.isModerator ? -1 : 1;
+      if (a.isClanLeader !== b.isClanLeader) return a.isClanLeader ? -1 : 1;
+      if (a.customRolePriority !== b.customRolePriority) return b.customRolePriority - a.customRolePriority;
+      if (a.isVip !== b.isVip) return a.isVip ? -1 : 1;
+      return b.elo - a.elo;
+    });
+
+    let pendingRequests = [];
+    if (ctx.isLeader || ctx.perms.accept_members) {
+      const reqRows = await this.queryAll(`
+        SELECT r.id, r.user_id, r.message, r.created_at, u.username, u.elo, u.avatar, u.is_owner, u.is_moderator
+        FROM clan_join_requests r
+        JOIN users u ON u.id = r.user_id
+        WHERE r.clan_id = ? AND r.status = 'pending'
+        ORDER BY u.is_owner DESC, u.is_moderator DESC, r.created_at ASC
+      `, [row.id]);
+      pendingRequests = reqRows.map((r) => ({
+        id: r.id,
+        userId: r.user_id,
+        username: r.username,
+        elo: Number(r.elo) || 0,
+        avatar: r.avatar,
+        isOwner: Boolean(Number(r.is_owner)),
+        isModerator: Boolean(Number(r.is_moderator)),
+        message: r.message || '',
+        createdAt: r.created_at
+      }));
+    }
+
+    let bans = [];
+    if (ctx.isLeader || ctx.perms.ban_members) {
+      const banRows = await this.queryAll(`
+        SELECT b.user_id, b.reason, b.created_at, u.username, bby.username AS banned_by_name
+        FROM clan_bans b
+        JOIN users u ON u.id = b.user_id
+        LEFT JOIN users bby ON bby.id = b.banned_by
+        WHERE b.clan_id = ?
+        ORDER BY b.created_at DESC
+      `, [row.id]);
+      bans = banRows.map((b) => ({
+        userId: b.user_id,
+        username: b.username,
+        reason: b.reason || '',
+        bannedByName: b.banned_by_name || 'Moderador',
+        createdAt: b.created_at
+      }));
+    }
+
+    return {
+      id: row.id,
+      name: row.name,
+      tag: row.tag,
+      description: row.description || '',
+      avatar: row.avatar || '',
+      joinPolicy: row.join_policy || 'open',
+      publicReadChat: Boolean(Number(row.public_read_chat)) || row.join_policy === 'private_readonly',
+      textColor: row.text_color || '#efd083',
+      fontFamily: row.font_family || 'cinzel',
+      fontCss: this.resolveClanFontCss(row.font_family || 'cinzel'),
+      leaderId: row.leader_id,
+      myRole: ctx.isLeader ? 'leader' : 'member',
+      myCustomRoleId: row.custom_role_id || null,
+      myPermissions: { ...ctx.perms, isLeader: ctx.isLeader },
+      membersCount: members.length,
+      members,
+      roles,
+      pendingRequests,
+      bans
     };
   }
 
   async listClans() {
     const rows = await this.queryAll(`
-      SELECT c.id, c.name, c.tag, c.description, c.leader_id, c.created_at,
-             u.username AS leader_name,
+      SELECT c.id, c.name, c.tag, c.description, c.avatar, c.join_policy, c.public_read_chat,
+             c.text_color, c.font_family, c.leader_id, c.created_at,
+             u.username AS leader_name, u.is_owner AS leader_is_owner, u.is_moderator AS leader_is_mod, u.email AS leader_email,
              COUNT(cm.user_id) AS member_count,
              COALESCE(SUM(mu.elo), 0) AS total_elo
       FROM clans c
       LEFT JOIN users u ON u.id = c.leader_id
       LEFT JOIN clan_members cm ON cm.clan_id = c.id
       LEFT JOIN users mu ON mu.id = cm.user_id
-      GROUP BY c.id, u.username
-      ORDER BY total_elo DESC, member_count DESC, c.created_at DESC
+      GROUP BY c.id, u.username, u.is_owner, u.is_moderator, u.email
+      ORDER BY u.is_owner DESC, u.is_moderator DESC, total_elo DESC, member_count DESC, c.created_at DESC
       LIMIT 60
     `);
-    return rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      tag: r.tag,
-      description: r.description || '',
-      leaderId: r.leader_id,
-      leaderName: r.leader_name || 'Líder',
-      memberCount: Number(r.member_count) || 0,
-      totalElo: Number(r.total_elo) || 0,
-      createdAt: r.created_at
-    }));
+    return rows.map((r) => {
+      const leaderIsOwner = Boolean(Number(r.leader_is_owner)) || String(r.leader_email || '').toLowerCase() === MODERATOR_EXACT_EMAIL;
+      const leaderIsModerator = Boolean(Number(r.leader_is_mod)) || leaderIsOwner;
+      return {
+        id: r.id,
+        name: r.name,
+        tag: r.tag,
+        description: r.description || '',
+        avatar: r.avatar || '',
+        joinPolicy: r.join_policy || 'open',
+        publicReadChat: Boolean(Number(r.public_read_chat)) || r.join_policy === 'private_readonly',
+        textColor: r.text_color || '#efd083',
+        fontFamily: r.font_family || 'cinzel',
+        fontCss: this.resolveClanFontCss(r.font_family || 'cinzel'),
+        leaderId: r.leader_id,
+        leaderName: r.leader_name || 'Líder',
+        leaderIsOwner,
+        leaderIsModerator,
+        memberCount: Number(r.member_count) || 0,
+        totalElo: Number(r.total_elo) || 0,
+        createdAt: r.created_at
+      };
+    });
   }
 
-  async createClan(userId, { name, tag, description = '' }) {
+  async createClan(userId, { name, tag, description = '', avatar = '', joinPolicy = 'open', publicReadChat = false, textColor = '#efd083', fontFamily = 'cinzel' }) {
+    const rawUser = await this.findUserById(userId);
     const profile = await this.getFullUserProfile(userId);
-    if (!profile) throw new Error('Usuario no encontrado.');
-    if (profile.clan) throw new Error(`Ya perteneces al clan [${profile.clan.tag}] ${profile.clan.name}. Sal primero antes de crear uno.`);
+    if (!profile || !rawUser) throw new Error('Usuario no encontrado.');
+    if (profile.clan) throw new Error(`Solo puedes estar en 1 clan a la vez. Ya perteneces a [${profile.clan.tag}] ${profile.clan.name}. Sal primero antes de crear uno.`);
 
     const cleanName = String(name || '').trim().slice(0, 28);
     const cleanTag = String(tag || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
-    const cleanDesc = String(description || '').trim().slice(0, 140);
+    const cleanDesc = String(description || '').trim().slice(0, 160);
     if (cleanName.length < 3) throw new Error('El nombre del clan debe tener al menos 3 caracteres.');
     if (cleanTag.length < 2 || cleanTag.length > 5) throw new Error('La etiqueta (TAG) del clan debe tener entre 2 y 5 letras/números.');
 
     if (profile.mods < CLAN_CREATE_COST_MODS) {
-      const err = new Error(`Crear un Clan cuesta ${CLAN_CREATE_COST_MODS} Mods (tienes ${profile.mods} Mods).`);
+      const err = new Error(`Crear un Clan cuesta ${CLAN_CREATE_COST_MODS.toLocaleString()} Mods (tienes ${profile.mods} Mods).`);
       err.status = 400;
       err.code = 'INSUFFICIENT_MODS';
       throw err;
     }
+
+    const style = this.sanitizeClanStyle(rawUser, { textColor, fontFamily, avatar, joinPolicy, publicReadChat });
 
     const dupName = await this.queryOne('SELECT id FROM clans WHERE name_lower = ?', [cleanName.toLowerCase()]);
     if (dupName) throw new Error('Ya existe un clan con ese nombre.');
@@ -1449,28 +1762,380 @@ export class ChessDatabase {
 
     await this.addMods(userId, -CLAN_CREATE_COST_MODS);
     await this.execSql(
-      'INSERT INTO clans (id, name, name_lower, tag, description, leader_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [clanId, cleanName, cleanName.toLowerCase(), cleanTag, cleanDesc, userId, now]
+      `INSERT INTO clans (id, name, name_lower, tag, description, avatar, join_policy, public_read_chat, text_color, font_family, leader_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [clanId, cleanName, cleanName.toLowerCase(), cleanTag, cleanDesc, style.avatar, style.joinPolicy, style.publicReadChat, style.textColor, style.fontFamily, userId, now]
     );
     await this.execSql(
       "INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES (?, ?, 'leader', ?)",
       [clanId, userId, now]
     );
 
+    // Crear rol predeterminado "Moderador de Clan" listo para asignar si el Owner del clan quiere
+    const modRoleId = `crl_${crypto.randomUUID().replace(/-/g, '').slice(0, 10)}`;
+    await this.execSql(
+      'INSERT INTO clan_roles (id, clan_id, name, color, priority, permissions_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [
+        modRoleId,
+        clanId,
+        'Moderador de Clan',
+        '#38bdf8',
+        50,
+        JSON.stringify({ is_clan_mod: true, accept_members: true, kick_members: true, ban_members: true, delete_messages: true }),
+        now
+      ]
+    );
+
     return { ok: true, clanId, costMods: CLAN_CREATE_COST_MODS, user: await this.getFullUserProfile(userId) };
   }
 
-  async joinClan(userId, clanId) {
-    const existing = await this.getUserClan(userId);
-    if (existing) throw new Error(`Ya eres miembro de [${existing.tag}] ${existing.name}. Sal primero para unirte a otro.`);
-    const clan = await this.queryOne('SELECT id, name, tag FROM clans WHERE id = ?', [clanId]);
-    if (!clan) throw new Error('Clan no encontrado.');
-    const now = new Date().toISOString();
+  async updateClanSettings(userId, clanId, { description, avatar, joinPolicy, publicReadChat, textColor, fontFamily } = {}) {
+    const ctx = await this.getClanMemberContext(clanId, userId);
+    if (!ctx.clan || !ctx.member) {
+      const err = new Error('No perteneces a este clan.');
+      err.status = 403;
+      throw err;
+    }
+    if (!ctx.isLeader && !ctx.perms.edit_clan) {
+      const err = new Error('Solo el Owner del clan o un rol con permiso de edición puede cambiar los ajustes del clan.');
+      err.status = 403;
+      throw err;
+    }
+    const actorRow = await this.findUserById(userId);
+    const style = this.sanitizeClanStyle(actorRow, { textColor, fontFamily, avatar, joinPolicy, publicReadChat }, ctx.clan);
+    const cleanDesc = description !== undefined ? String(description || '').trim().slice(0, 160) : (ctx.clan.description || '');
+
     await this.execSql(
-      "INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)",
-      [clanId, userId, now]
+      `UPDATE clans
+       SET description = ?, avatar = ?, join_policy = ?, public_read_chat = ?, text_color = ?, font_family = ?
+       WHERE id = ?`,
+      [cleanDesc, style.avatar, style.joinPolicy, style.publicReadChat, style.textColor, style.fontFamily, clanId]
     );
     return { ok: true, user: await this.getFullUserProfile(userId) };
+  }
+
+  async joinClan(userId, clanId, message = '') {
+    const existing = await this.getUserClan(userId);
+    if (existing) throw new Error(`Solo 1 clan por persona. Ya eres miembro de [${existing.tag}] ${existing.name}. Sal primero para unirte a otro.`);
+    const clan = await this.queryOne('SELECT id, name, tag, join_policy FROM clans WHERE id = ?', [clanId]);
+    if (!clan) throw new Error('Clan no encontrado.');
+
+    const banned = await this.queryOne('SELECT reason FROM clan_bans WHERE clan_id = ? AND user_id = ?', [clanId, userId]);
+    if (banned) {
+      const err = new Error(`Fuiste baneado de este clan.${banned.reason ? ` Motivo: ${banned.reason}` : ''}`);
+      err.status = 403;
+      throw err;
+    }
+
+    const now = new Date().toISOString();
+    const policy = clan.join_policy || 'open';
+
+    if (policy === 'open') {
+      await this.execSql('DELETE FROM clan_join_requests WHERE clan_id = ? AND user_id = ?', [clanId, userId]);
+      await this.execSql(
+        "INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)",
+        [clanId, userId, now]
+      );
+      return { ok: true, joined: true, pendingApproval: false, user: await this.getFullUserProfile(userId) };
+    }
+
+    const existingReq = await this.queryOne(
+      "SELECT id FROM clan_join_requests WHERE clan_id = ? AND user_id = ? AND status = 'pending'",
+      [clanId, userId]
+    );
+    if (existingReq) {
+      const err = new Error('Ya enviaste una solicitud pendiente a este clan. Espera a que el Owner o un Moderador del clan la revise.');
+      err.status = 409;
+      throw err;
+    }
+
+    await this.execSql('DELETE FROM clan_join_requests WHERE clan_id = ? AND user_id = ?', [clanId, userId]);
+    const reqId = `crq_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    const cleanMsg = String(message || '').trim().slice(0, 140);
+    await this.execSql(
+      "INSERT INTO clan_join_requests (id, clan_id, user_id, message, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)",
+      [reqId, clanId, userId, cleanMsg, now]
+    );
+    return {
+      ok: true,
+      joined: false,
+      pendingApproval: true,
+      requestId: reqId,
+      message: policy === 'private_readonly'
+        ? 'Clan privado: tu solicitud fue enviada al Owner del clan para revisión.'
+        : 'Solicitud enviada: el Owner y moderadores del clan la revisarán.'
+    };
+  }
+
+  async respondClanJoinRequest(userId, clanId, reqId, accept) {
+    const ctx = await this.getClanMemberContext(clanId, userId);
+    if (!ctx.member || (!ctx.isLeader && !ctx.perms.accept_members)) {
+      const err = new Error('No tienes permiso para aceptar o rechazar solicitudes en este clan.');
+      err.status = 403;
+      throw err;
+    }
+    const req = await this.queryOne('SELECT * FROM clan_join_requests WHERE id = ? AND clan_id = ?', [reqId, clanId]);
+    if (!req) throw new Error('Solicitud de ingreso no encontrada.');
+
+    if (accept) {
+      const alreadyInClan = await this.queryOne('SELECT clan_id FROM clan_members WHERE user_id = ?', [req.user_id]);
+      if (alreadyInClan) {
+        await this.execSql('DELETE FROM clan_join_requests WHERE id = ?', [reqId]);
+        throw new Error('Ese usuario ya pertenece a otro clan (máx. 1 clan por persona).');
+      }
+      const banned = await this.queryOne('SELECT user_id FROM clan_bans WHERE clan_id = ? AND user_id = ?', [clanId, req.user_id]);
+      if (banned) {
+        await this.execSql('DELETE FROM clan_join_requests WHERE id = ?', [reqId]);
+        throw new Error('Ese usuario está baneado del clan.');
+      }
+      const now = new Date().toISOString();
+      await this.execSql(
+        "INSERT INTO clan_members (clan_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)",
+        [clanId, req.user_id, now]
+      );
+      await this.execSql('DELETE FROM clan_join_requests WHERE user_id = ?', [req.user_id]);
+    } else {
+      await this.execSql('DELETE FROM clan_join_requests WHERE id = ?', [reqId]);
+    }
+    return { ok: true, accepted: Boolean(accept), user: await this.getFullUserProfile(userId) };
+  }
+
+  async createClanRole(userId, clanId, { name, color = '#7dd3fc', priority = 20, permissions = {} } = {}) {
+    const ctx = await this.getClanMemberContext(clanId, userId);
+    if (!ctx.member || (!ctx.isLeader && !ctx.perms.manage_roles)) {
+      const err = new Error('No tienes permiso para crear roles en este clan.');
+      err.status = 403;
+      throw err;
+    }
+    const existingRoles = await this.queryAll('SELECT id FROM clan_roles WHERE clan_id = ?', [clanId]);
+    if (existingRoles.length >= 15) throw new Error('Máximo 15 roles personalizados por clan.');
+
+    const cleanName = String(name || '').trim().slice(0, 24);
+    if (cleanName.length < 2) throw new Error('El nombre del rol debe tener al menos 2 caracteres.');
+    const cleanColor = /^#[0-9a-fA-F]{6}$/.test(String(color || '')) ? String(color) : '#7dd3fc';
+    const cleanPrio = Math.max(1, Math.min(90, Math.round(Number(priority) || 20)));
+    const safePerms = {};
+    for (const def of CLAN_PERMISSION_DEFS) {
+      safePerms[def.key] = Boolean(permissions && permissions[def.key]);
+    }
+
+    const roleId = `crl_${crypto.randomUUID().replace(/-/g, '').slice(0, 10)}`;
+    const now = new Date().toISOString();
+    await this.execSql(
+      'INSERT INTO clan_roles (id, clan_id, name, color, priority, permissions_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [roleId, clanId, cleanName, cleanColor, cleanPrio, JSON.stringify(safePerms), now]
+    );
+    return { ok: true, roleId, user: await this.getFullUserProfile(userId) };
+  }
+
+  async deleteClanRole(userId, clanId, roleId) {
+    const ctx = await this.getClanMemberContext(clanId, userId);
+    if (!ctx.member || (!ctx.isLeader && !ctx.perms.manage_roles)) {
+      const err = new Error('No tienes permiso para eliminar roles en este clan.');
+      err.status = 403;
+      throw err;
+    }
+    await this.execSql('UPDATE clan_members SET custom_role_id = NULL WHERE clan_id = ? AND custom_role_id = ?', [clanId, roleId]);
+    await this.execSql('DELETE FROM clan_roles WHERE id = ? AND clan_id = ?', [roleId, clanId]);
+    return { ok: true, user: await this.getFullUserProfile(userId) };
+  }
+
+  async assignClanMemberRole(userId, clanId, targetMemberId, roleId = null) {
+    const ctx = await this.getClanMemberContext(clanId, userId);
+    if (!ctx.member || (!ctx.isLeader && !ctx.perms.manage_roles)) {
+      const err = new Error('No tienes permiso para asignar roles en este clan.');
+      err.status = 403;
+      throw err;
+    }
+    if (ctx.clan.leader_id === targetMemberId) throw new Error('No se puede cambiar el rol del Owner del clan.');
+    const targetMem = await this.queryOne('SELECT user_id FROM clan_members WHERE clan_id = ? AND user_id = ?', [clanId, targetMemberId]);
+    if (!targetMem) throw new Error('Miembro no encontrado en el clan.');
+
+    let nextRoleId = null;
+    if (roleId) {
+      const roleRow = await this.queryOne('SELECT id FROM clan_roles WHERE id = ? AND clan_id = ?', [roleId, clanId]);
+      if (!roleRow) throw new Error('Rol de clan no encontrado.');
+      nextRoleId = roleRow.id;
+    }
+    await this.execSql('UPDATE clan_members SET custom_role_id = ? WHERE clan_id = ? AND user_id = ?', [nextRoleId, clanId, targetMemberId]);
+    return { ok: true, user: await this.getFullUserProfile(userId) };
+  }
+
+  async kickClanMember(userId, clanId, targetMemberId) {
+    const ctx = await this.getClanMemberContext(clanId, userId);
+    if (!ctx.member || (!ctx.isLeader && !ctx.perms.kick_members)) {
+      const err = new Error('No tienes permiso para expulsar miembros de este clan.');
+      err.status = 403;
+      throw err;
+    }
+    if (targetMemberId === userId) throw new Error('No puedes expulsarte a ti mismo; usa Salir del Clan.');
+    if (ctx.clan.leader_id === targetMemberId) throw new Error('No puedes expulsar al Owner del clan.');
+    const targetCtx = await this.getClanMemberContext(clanId, targetMemberId);
+    if (!targetCtx.member) throw new Error('El jugador no está en este clan.');
+    if (!ctx.isLeader && targetCtx.priority >= ctx.priority) {
+      const err = new Error('No puedes expulsar a un miembro con igual o mayor jerarquía dentro del clan.');
+      err.status = 403;
+      throw err;
+    }
+    await this.execSql('DELETE FROM clan_members WHERE clan_id = ? AND user_id = ?', [clanId, targetMemberId]);
+    return { ok: true, user: await this.getFullUserProfile(userId) };
+  }
+
+  async banClanMember(userId, clanId, targetMemberId, reason = '') {
+    const ctx = await this.getClanMemberContext(clanId, userId);
+    if (!ctx.member || (!ctx.isLeader && !ctx.perms.ban_members)) {
+      const err = new Error('No tienes permiso para banear usuarios de este clan.');
+      err.status = 403;
+      throw err;
+    }
+    if (targetMemberId === userId) throw new Error('No puedes banearte a ti mismo.');
+    if (ctx.clan.leader_id === targetMemberId) throw new Error('No puedes banear al Owner del clan.');
+    const targetCtx = await this.getClanMemberContext(clanId, targetMemberId);
+    if (targetCtx.member && !ctx.isLeader && targetCtx.priority >= ctx.priority) {
+      const err = new Error('No puedes banear a un miembro con igual o mayor jerarquía dentro del clan.');
+      err.status = 403;
+      throw err;
+    }
+    const cleanReason = String(reason || 'Baneado del clan').trim().slice(0, 160);
+    const now = new Date().toISOString();
+    await this.execSql('DELETE FROM clan_members WHERE clan_id = ? AND user_id = ?', [clanId, targetMemberId]);
+    await this.execSql('DELETE FROM clan_join_requests WHERE clan_id = ? AND user_id = ?', [clanId, targetMemberId]);
+    await this.execSql('DELETE FROM clan_bans WHERE clan_id = ? AND user_id = ?', [clanId, targetMemberId]);
+    await this.execSql(
+      'INSERT INTO clan_bans (clan_id, user_id, banned_by, reason, created_at) VALUES (?, ?, ?, ?, ?)',
+      [clanId, targetMemberId, userId, cleanReason, now]
+    );
+    return { ok: true, user: await this.getFullUserProfile(userId) };
+  }
+
+  async unbanClanMember(userId, clanId, bannedUserId) {
+    const ctx = await this.getClanMemberContext(clanId, userId);
+    if (!ctx.member || (!ctx.isLeader && !ctx.perms.ban_members)) {
+      const err = new Error('No tienes permiso para desbanear usuarios de este clan.');
+      err.status = 403;
+      throw err;
+    }
+    await this.execSql('DELETE FROM clan_bans WHERE clan_id = ? AND user_id = ?', [clanId, bannedUserId]);
+    return { ok: true, user: await this.getFullUserProfile(userId) };
+  }
+
+  async getClanMessages(userId, clanId, limit = 80) {
+    const ctx = await this.getClanMemberContext(clanId, userId);
+    if (!ctx.clan) {
+      const err = new Error('Clan no encontrado.');
+      err.status = 404;
+      throw err;
+    }
+    const isPublicRead = Boolean(Number(ctx.clan.public_read_chat)) || ctx.clan.join_policy === 'private_readonly';
+    if (!ctx.member && !isPublicRead) {
+      const err = new Error('El chat de este clan es privado solo para sus miembros.');
+      err.status = 403;
+      throw err;
+    }
+
+    const rows = await this.queryAll(`
+      SELECT m.id, m.clan_id, m.sender_id, m.content, m.created_at,
+             u.username, u.email, u.avatar, u.is_owner, u.is_moderator,
+             cm.role AS clan_role, cr.name AS custom_role_name, cr.color AS custom_role_color
+      FROM clan_messages m
+      JOIN users u ON u.id = m.sender_id
+      LEFT JOIN clan_members cm ON cm.clan_id = m.clan_id AND cm.user_id = m.sender_id
+      LEFT JOIN clan_roles cr ON cr.id = cm.custom_role_id
+      WHERE m.clan_id = ?
+      ORDER BY m.created_at DESC
+      LIMIT ?
+    `, [clanId, limit]);
+
+    const messages = rows.reverse().map((r) => {
+      const isGlobalOwner = Boolean(Number(r.is_owner)) || String(r.email || '').toLowerCase() === MODERATOR_EXACT_EMAIL;
+      const isGlobalMod = Boolean(Number(r.is_moderator)) || isGlobalOwner;
+      const isClanLeader = r.sender_id === ctx.clan.leader_id || r.clan_role === 'leader';
+      return {
+        id: r.id,
+        clanId: r.clan_id,
+        senderId: r.sender_id,
+        senderUsername: r.username,
+        senderAvatar: r.avatar,
+        senderIsOwner: isGlobalOwner,
+        senderIsModerator: isGlobalMod,
+        senderIsClanLeader: isClanLeader,
+        senderClanRoleName: isClanLeader ? 'Owner del Clan' : (r.custom_role_name || null),
+        senderClanRoleColor: isClanLeader ? '#ffd700' : (r.custom_role_color || null),
+        content: r.content,
+        createdAt: r.created_at
+      };
+    });
+
+    return {
+      clan: {
+        id: ctx.clan.id,
+        name: ctx.clan.name,
+        tag: ctx.clan.tag,
+        avatar: ctx.clan.avatar || '',
+        joinPolicy: ctx.clan.join_policy || 'open',
+        publicReadChat: isPublicRead,
+        textColor: ctx.clan.text_color || '#efd083',
+        fontFamily: ctx.clan.font_family || 'cinzel',
+        fontCss: this.resolveClanFontCss(ctx.clan.font_family || 'cinzel')
+      },
+      canWrite: Boolean(ctx.member),
+      canDelete: Boolean(ctx.isLeader || ctx.perms.delete_messages),
+      messages
+    };
+  }
+
+  async sendClanMessage(userId, clanId, content) {
+    const ctx = await this.getClanMemberContext(clanId, userId);
+    if (!ctx.clan || !ctx.member) {
+      const err = new Error('Solo los integrantes del clan pueden escribir en su chat.');
+      err.status = 403;
+      throw err;
+    }
+    const clean = String(content || '').trim().slice(0, 500);
+    if (!clean) throw new Error('Escribe un mensaje para enviar al clan.');
+
+    const sender = await this.findUserById(userId);
+    const id = `cmsg_${crypto.randomUUID().replace(/-/g, '').slice(0, 14)}`;
+    const now = new Date().toISOString();
+    await this.execSql(
+      'INSERT INTO clan_messages (id, clan_id, sender_id, content, created_at) VALUES (?, ?, ?, ?, ?)',
+      [id, clanId, userId, clean, now]
+    );
+
+    const memberRows = await this.queryAll('SELECT user_id FROM clan_members WHERE clan_id = ?', [clanId]);
+    const isGlobalOwner = Boolean(Number(sender?.is_owner)) || String(sender?.email || '').toLowerCase() === MODERATOR_EXACT_EMAIL;
+    const isGlobalMod = Boolean(Number(sender?.is_moderator)) || isGlobalOwner;
+
+    return {
+      memberIds: memberRows.map((m) => m.user_id),
+      message: {
+        id,
+        clanId,
+        senderId: userId,
+        senderUsername: sender?.username || 'Jugador',
+        senderAvatar: sender?.avatar || 'preset:obsidian_king',
+        senderIsOwner: isGlobalOwner,
+        senderIsModerator: isGlobalMod,
+        senderIsClanLeader: ctx.isLeader,
+        senderClanRoleName: ctx.isLeader ? 'Owner del Clan' : (ctx.member.custom_role_name || null),
+        senderClanRoleColor: ctx.isLeader ? '#ffd700' : (ctx.member.custom_role_color || null),
+        content: clean,
+        createdAt: now
+      }
+    };
+  }
+
+  async deleteClanMessage(userId, clanId, msgId) {
+    const ctx = await this.getClanMemberContext(clanId, userId);
+    const msg = await this.queryOne('SELECT id, sender_id FROM clan_messages WHERE id = ? AND clan_id = ?', [msgId, clanId]);
+    if (!msg) throw new Error('Mensaje no encontrado.');
+    if (msg.sender_id !== userId && !ctx.isLeader && !ctx.perms.delete_messages) {
+      const err = new Error('No tienes permiso para borrar mensajes de este clan.');
+      err.status = 403;
+      throw err;
+    }
+    await this.execSql('DELETE FROM clan_messages WHERE id = ?', [msgId]);
+    return { ok: true };
   }
 
   async leaveClan(userId) {
@@ -1482,7 +2147,7 @@ export class ChessDatabase {
       await this.execSql('DELETE FROM clans WHERE id = ?', [mem.clan_id]);
     } else if (mem.role === 'leader') {
       const nextLeader = remaining[0].user_id;
-      await this.execSql("UPDATE clan_members SET role = 'leader' WHERE clan_id = ? AND user_id = ?", [mem.clan_id, nextLeader]);
+      await this.execSql("UPDATE clan_members SET role = 'leader', custom_role_id = NULL WHERE clan_id = ? AND user_id = ?", [mem.clan_id, nextLeader]);
       await this.execSql('UPDATE clans SET leader_id = ? WHERE id = ?', [nextLeader, mem.clan_id]);
     }
     return { ok: true, user: await this.getFullUserProfile(userId) };

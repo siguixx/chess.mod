@@ -1,14 +1,20 @@
 import express from 'express';
-import { CLAN_CREATE_COST_MODS } from '../../shared/config/constants.js';
+import { CLAN_CREATE_COST_MODS, CLAN_TEXT_COLORS, CLAN_FONT_FAMILIES, CLAN_PERMISSION_DEFS } from '../../shared/config/constants.js';
 
 export function createSocialRouter(db, authMiddleware, multiplayer) {
   const router = express.Router();
 
-  // ================= CLANES =================
+  // ================= CLANES (15,000 MODS · 1 CLAN POR PERSONA · CHAT · ROLES · AJUSTES · BANS) =================
   router.get('/clans', async (_req, res) => {
     try {
       const clans = await db.listClans();
-      return res.json({ clans, createCostMods: CLAN_CREATE_COST_MODS });
+      return res.json({
+        clans,
+        createCostMods: CLAN_CREATE_COST_MODS,
+        textColors: CLAN_TEXT_COLORS,
+        fontFamilies: CLAN_FONT_FAMILIES,
+        permissionDefs: CLAN_PERMISSION_DEFS
+      });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -16,20 +22,29 @@ export function createSocialRouter(db, authMiddleware, multiplayer) {
 
   router.post('/clans', authMiddleware.requireAuth, async (req, res) => {
     try {
-      const { name, tag, description } = req.body || {};
-      const result = await db.createClan(req.userId, { name, tag, description });
+      const { name, tag, description, avatar, joinPolicy, publicReadChat, textColor, fontFamily } = req.body || {};
+      const result = await db.createClan(req.userId, { name, tag, description, avatar, joinPolicy, publicReadChat, textColor, fontFamily });
       return res.status(201).json(result);
     } catch (err) {
       return res.status(err.status || 400).json({ code: err.code, error: err.message });
     }
   });
 
-  router.post('/clans/:id/join', authMiddleware.requireAuth, async (req, res) => {
+  router.patch('/clans/:id/settings', authMiddleware.requireAuth, async (req, res) => {
     try {
-      const result = await db.joinClan(req.userId, req.params.id);
+      const result = await db.updateClanSettings(req.userId, req.params.id, req.body || {});
       return res.json(result);
     } catch (err) {
-      return res.status(400).json({ error: err.message });
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+  });
+
+  router.post('/clans/:id/join', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const result = await db.joinClan(req.userId, req.params.id, req.body?.message || '');
+      return res.json(result);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
     }
   });
 
@@ -39,6 +54,101 @@ export function createSocialRouter(db, authMiddleware, multiplayer) {
       return res.json(result);
     } catch (err) {
       return res.status(400).json({ error: err.message });
+    }
+  });
+
+  router.post('/clans/:id/requests/:reqId/respond', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const result = await db.respondClanJoinRequest(req.userId, req.params.id, req.params.reqId, Boolean(req.body?.accept));
+      return res.json(result);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+  });
+
+  router.post('/clans/:id/roles', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const result = await db.createClanRole(req.userId, req.params.id, req.body || {});
+      return res.status(201).json(result);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+  });
+
+  router.delete('/clans/:id/roles/:roleId', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const result = await db.deleteClanRole(req.userId, req.params.id, req.params.roleId);
+      return res.json(result);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+  });
+
+  router.post('/clans/:id/members/:memberId/role', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const result = await db.assignClanMemberRole(req.userId, req.params.id, req.params.memberId, req.body?.roleId || null);
+      return res.json(result);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+  });
+
+  router.post('/clans/:id/members/:memberId/kick', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const result = await db.kickClanMember(req.userId, req.params.id, req.params.memberId);
+      return res.json(result);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+  });
+
+  router.post('/clans/:id/members/:memberId/ban', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const result = await db.banClanMember(req.userId, req.params.id, req.params.memberId, req.body?.reason || '');
+      return res.json(result);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+  });
+
+  router.post('/clans/:id/bans/:bannedUserId/unban', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const result = await db.unbanClanMember(req.userId, req.params.id, req.params.bannedUserId);
+      return res.json(result);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+  });
+
+  router.get('/clans/:id/messages', authMiddleware.optionalAuth, async (req, res) => {
+    try {
+      const data = await db.getClanMessages(req.userId || null, req.params.id);
+      return res.json(data);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+  });
+
+  router.post('/clans/:id/messages', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const resMsg = await db.sendClanMessage(req.userId, req.params.id, req.body?.content);
+      if (multiplayer?.notifyUser && Array.isArray(resMsg.memberIds)) {
+        for (const uid of resMsg.memberIds) {
+          multiplayer.notifyUser(uid, 'clan:message', resMsg.message);
+        }
+      }
+      return res.status(201).json({ ok: true, message: resMsg.message });
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+  });
+
+  router.delete('/clans/:id/messages/:msgId', authMiddleware.requireAuth, async (req, res) => {
+    try {
+      const result = await db.deleteClanMessage(req.userId, req.params.id, req.params.msgId);
+      return res.json(result);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
     }
   });
 
@@ -172,12 +282,26 @@ export function createSocialRouter(db, authMiddleware, multiplayer) {
     }
   });
 
-  router.post('/mod/grant-all', authMiddleware.requireModerator, async (req, res) => {
+  router.post('/mod/grant-all', authMiddleware.requireOwner, async (req, res) => {
     try {
-      const user = await db.grantModeratorEverything(req.userId);
+      const user = await db.grantModeratorEverything(req.userId, { makeOwner: true });
       return res.json({ ok: true, user });
     } catch (err) {
       return res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Exclusivo del OWNER: otorgar o quitar rol de Moderador (con opción de todo desbloqueado o NO)
+  router.post('/mod/set-moderator', authMiddleware.requireOwner, async (req, res) => {
+    try {
+      const { userId, isModerator, grantAll = false } = req.body || {};
+      const result = await db.setUserModeratorStatus(req.userId, userId, {
+        isModerator: Boolean(isModerator),
+        grantAll: Boolean(grantAll)
+      });
+      return res.json(result);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
     }
   });
 
