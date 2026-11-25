@@ -247,6 +247,21 @@ class StandaloneApiClient {
   async verifyModVipPayment() {
     throw new Error('La verificación de pagos reales solo funciona en la versión web online.');
   }
+  async getClans() { return { clans: [], createCostMods: 150 }; }
+  async createClan() { throw new Error('Los Clanes requieren conexión al servidor online.'); }
+  async joinClan() { throw new Error('Los Clanes requieren conexión al servidor online.'); }
+  async leaveClan() { throw new Error('Los Clanes requieren conexión al servidor online.'); }
+  async getFriends() { return { friends: [], incoming: [], outgoing: [] }; }
+  async sendFriendRequest() { throw new Error('El sistema de Amigos requiere conexión online.'); }
+  async acceptFriend() { throw new Error('Requiere conexión online.'); }
+  async rejectFriend() { throw new Error('Requiere conexión online.'); }
+  async removeFriend() { throw new Error('Requiere conexión online.'); }
+  async submitReport() { return { ok: true, id: 'offline_rep' }; }
+  async getModOverview() { throw new Error('El Panel de Moderación solo funciona en el servidor online.'); }
+  async modBanUser() { throw new Error('Requiere servidor online.'); }
+  async modUnbanUser() { throw new Error('Requiere servidor online.'); }
+  async modResolveReport() { throw new Error('Requiere servidor online.'); }
+  async modGrantAll() { throw new Error('Requiere servidor online.'); }
 
   async cancelModVip() {
     const store = loadStore();
@@ -361,6 +376,14 @@ class StandaloneApiClient {
           u.unlockedCosmetics = [...unl];
         }
       }
+    }
+    if (mode === 'blacky' && winner === 'w') {
+      u.customTitle = 'Domador de Blacky (Imposible)';
+      const unl = new Set(u.unlockedCosmetics || []);
+      unl.add('frame_blacky_imposible');
+      unl.add('preset:blacky_tamer');
+      unl.add('power_blacky_claw');
+      u.unlockedCosmetics = [...unl];
     }
 
     if (winner === 'w') u.wins = (u.wins || 0) + 1;

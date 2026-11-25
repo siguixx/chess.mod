@@ -5,6 +5,7 @@ import {
   isCampaignLevelUnlocked,
   getCampaignUnlockReason
 } from '/shared/config/campaigns.js';
+import { TRAINERS, CLAN_CREATE_COST_MODS } from '/shared/config/constants.js';
 import {
   COSMETIC_AVATARS,
   COSMETIC_FRAMES,
@@ -32,31 +33,57 @@ function showToast(message, type = 'info') {
   setTimeout(() => el.remove(), 4200);
 }
 
-function processAvatarUpload(file) {
+async function processAvatarUpload(file) {
+  if (!file) throw new Error('Selecciona una imagen de tu galería.');
+  if (file.type && !file.type.startsWith('image/')) {
+    throw new Error('El archivo seleccionado no es una imagen.');
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    throw new Error('La imagen supera el máximo de 20 MB.');
+  }
+
+  const size = 160;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  // Soporta cualquier imagen de galería móvil (HEIC, AVIF, PNG, JPG, WebP, GIF, BMP, fotos de cámara)
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bmp = await createImageBitmap(file);
+      const side = Math.min(bmp.width, bmp.height);
+      ctx.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
+      bmp.close?.();
+      let out = canvas.toDataURL('image/webp', 0.82);
+      if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/jpeg', 0.82);
+      return out;
+    } catch {
+      // Fallback a Image() tradicional
+    }
+  }
+
   return new Promise((resolve, reject) => {
-    const allowed = ['image/png', 'image/jpeg', 'image/webp'];
-    if (!file || !allowed.includes(file.type)) return reject(new Error('Solo se permiten imágenes PNG, JPG o WebP.'));
-    if (file.size > 2 * 1024 * 1024) return reject(new Error('La imagen supera el máximo de 2 MB.'));
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('No se pudo leer el archivo.'));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('El archivo no es una imagen válida.'));
-      img.onload = () => {
-        const size = 128;
-        const canvas = document.createElement('canvas');
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext('2d');
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('No se pudo leer ese formato de imagen en este navegador. Intenta otra foto de tu galería.'));
+    };
+    img.onload = () => {
+      try {
         const side = Math.min(img.width, img.height);
         ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
         let out = canvas.toDataURL('image/webp', 0.82);
         if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/jpeg', 0.82);
         resolve(out);
-      };
-      img.src = reader.result;
+      } catch (e) {
+        reject(new Error('Error al procesar la foto.'));
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
     };
-    reader.readAsDataURL(file);
+    img.src = objectUrl;
   });
 }
 
@@ -67,6 +94,7 @@ class ChessModApp {
     this.activeScreen = 'play';
     this.activeCampaignTab = 'maya';
     this.activeShopTab = 'powers';
+    this.activeSocialTab = 'clans';
     this.vipBillingStatus = { billingConfigured: false };
     this.savedMods = this.loadSavedMods();
     this.activePrivateRoomCode = null;
@@ -112,7 +140,12 @@ class ChessModApp {
     this.checkVipPaymentReturn();
     api.getVipStatus().then((st) => { this.vipBillingStatus = st || {}; this.syncVipBillingUI(); }).catch(() => {});
     this.initModsWorkshopEditor();
-    this.checkSecretBossUrl();
+    this.renderTrainersGrids();
+    const openedSecret = this.checkSecretBossUrl();
+    if (!openedSecret && !sessionStorage.getItem('chess_mod_trainer_prompt_seen')) {
+      sessionStorage.setItem('chess_mod_trainer_prompt_seen', '1');
+      document.getElementById('modal-trainer-picker')?.classList.add('open');
+    }
     window.addEventListener('hashchange', () => this.checkSecretBossUrl());
   }
 
@@ -177,7 +210,9 @@ class ChessModApp {
 
     if (isBlacky && this.battle.mode !== 'blacky') {
       this.battle.startBlackySecretBoss({ playIntro: true, minutes: this.battle.selectedMinutes });
+      return true;
     }
+    return false;
   }
 
   async refreshCurrentUser() {
@@ -216,6 +251,8 @@ class ChessModApp {
     if (screenName === 'story') this.renderCampaignScreen();
     if (screenName === 'shop') this.renderShopScreen();
     if (screenName === 'mods') this.renderModsWorkshop();
+    if (screenName === 'social') this.loadSocialScreen();
+    if (screenName === 'moderation') this.loadModerationScreen();
     if (screenName === 'customize') this.renderCosmeticsScreen();
     if (screenName === 'profile') this.renderProfileScreen();
     if (screenName === 'stats') this.renderStatsScreen();
@@ -478,6 +515,106 @@ class ChessModApp {
     // === 6. RANKING ===
     on('btn-refresh-ranking', 'click', () => this.loadLeaderboard());
 
+    // === ENTRENADORES ===
+    on('btn-open-trainer-modal', 'click', () => document.getElementById('modal-trainer-picker')?.classList.add('open'));
+    on('btn-close-trainer-modal', 'click', () => document.getElementById('modal-trainer-picker')?.classList.remove('open'));
+
+    // === SOCIAL (CLANES, AMIGOS, REPORTES) ===
+    document.querySelectorAll('#social-tabs-bar [data-social-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.activeSocialTab = btn.dataset.socialTab;
+        document.querySelectorAll('#social-tabs-bar [data-social-tab]').forEach((b) => b.classList.toggle('active', b === btn));
+        document.getElementById('social-panel-clans')?.classList.toggle('hidden', this.activeSocialTab !== 'clans');
+        document.getElementById('social-panel-friends')?.classList.toggle('hidden', this.activeSocialTab !== 'friends');
+        document.getElementById('social-panel-report')?.classList.toggle('hidden', this.activeSocialTab !== 'report');
+        this.loadSocialScreen();
+      });
+    });
+
+    on('btn-refresh-clans', 'click', () => this.loadClans());
+    on('form-create-clan', 'submit', async (e) => {
+      e.preventDefault();
+      if (!this.user) return this.openAuthModal('login');
+      try {
+        const name = document.getElementById('clan-name-input').value.trim();
+        const tag = document.getElementById('clan-tag-input').value.trim().toUpperCase();
+        const description = document.getElementById('clan-desc-input').value.trim();
+        const res = await api.createClan({ name, tag, description });
+        this.sound.play('shop_buy');
+        this.setUser(res.user);
+        e.target.reset();
+        this.loadClans();
+        showToast(`🏰 Clan [${tag}] ${name} creado (-${CLAN_CREATE_COST_MODS} Mods).`, 'success');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
+    on('btn-friend-add', 'click', async () => {
+      if (!this.user) return this.openAuthModal('login');
+      const input = document.getElementById('input-friend-username');
+      const username = input?.value.trim();
+      if (!username) return;
+      try {
+        const res = await api.sendFriendRequest(username);
+        if (input) input.value = '';
+        this.renderFriends(res.summary);
+        showToast(res.autoAccepted ? `¡Ahora eres amigo de ${username}!` : `Solicitud enviada a ${username}.`, 'success');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
+    on('form-report-player', 'submit', async (e) => {
+      e.preventDefault();
+      if (!this.user) return this.openAuthModal('login');
+      try {
+        const reportedUsername = document.getElementById('report-username').value.trim();
+        const category = document.getElementById('report-category').value;
+        const description = document.getElementById('report-description').value.trim();
+        await api.submitReport({ reportedUsername, category, description });
+        e.target.reset();
+        showToast(`🚨 Reporte contra ${reportedUsername} enviado a Moderación.`, 'success');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
+    // Modal rápido de reporte (desde Ranking u Online)
+    on('btn-close-report-modal', 'click', () => document.getElementById('modal-report-quick')?.classList.remove('open'));
+    on('btn-online-report', 'click', () => {
+      const oppName = this.battle.onlineMeta?.opponent?.username || '';
+      this.openQuickReportModal(oppName);
+    });
+    on('form-report-quick', 'submit', async (e) => {
+      e.preventDefault();
+      if (!this.user) return this.openAuthModal('login');
+      try {
+        const reportedUsername = document.getElementById('qreport-username').value.trim();
+        const category = document.getElementById('qreport-category').value;
+        const description = document.getElementById('qreport-description').value.trim();
+        await api.submitReport({ reportedUsername, category, description, matchId: this.battle.onlineMeta?.matchId || null });
+        document.getElementById('modal-report-quick')?.classList.remove('open');
+        e.target.reset();
+        showToast(`🚨 Reporte contra ${reportedUsername} enviado a Moderación.`, 'success');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
+    // === MODERACIÓN ===
+    on('btn-mod-refresh', 'click', () => this.loadModerationScreen());
+    on('btn-mod-grant-all', 'click', async () => {
+      try {
+        const res = await api.modGrantAll();
+        this.sound.play('vip_activate');
+        this.setUser(res.user);
+        showToast('👑 ¡Todo el inventario, poderes, skins y Mods de Moderador desbloqueados!', 'success');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
     // === 8. CONFIGURACIÓN ===
     on('set-music-vol', 'input', (e) => { this.sound.setMusicVolume(e.target.value); this.syncSettingsUI(); });
     on('set-sfx-vol', 'input', (e) => { this.sound.setSfxVolume(e.target.value); this.syncSettingsUI(); });
@@ -726,6 +863,9 @@ class ChessModApp {
     const barEl = document.getElementById('sidebar-xp-bar');
     const btnEl = document.getElementById('btn-sidebar-auth');
 
+    const navMod = document.getElementById('nav-btn-mod');
+    if (navMod) navMod.classList.toggle('hidden', !u?.isModerator);
+
     if (u) {
       if (avatarEl) {
         avatarEl.className = `avatar-badge ${u.frameId || 'frame_stone'}${u.isVip ? ' vip-aura' : ''}`;
@@ -733,7 +873,8 @@ class ChessModApp {
       }
       if (nameEl) {
         nameEl.className = `sidebar-user-name${u.isVip ? ' vip-name' : ''}`;
-        nameEl.textContent = u.isVip ? `👑 ${u.username}` : u.username;
+        const tagPrefix = u.clan?.tag ? `[${u.clan.tag}] ` : '';
+        nameEl.textContent = `${u.isModerator ? '🛡️ ' : (u.isVip ? '👑 ' : '')}${tagPrefix}${u.username}`;
       }
       if (eloEl) eloEl.textContent = `Elo ${u.elo}`;
       if (xpEl) xpEl.textContent = `Nv.${u.level} · ${u.xp} XP`;
@@ -809,7 +950,7 @@ class ChessModApp {
 
     const tab = this.activeShopTab || 'powers';
     let items = [];
-    if (tab === 'powers') items = COSMETIC_POWERS;
+    if (tab === 'powers') items = COSMETIC_POWERS.filter((it) => !it.hiddenUntilUnlocked || unlocked.has(it.id) || u?.isModerator);
     else if (tab === 'pieceSkins') items = COSMETIC_PIECE_SKINS;
     else items = COSMETIC_BOARDS;
 
@@ -1184,6 +1325,11 @@ class ChessModApp {
         const vipAuraCls = p.isVip ? ' vip-aura' : '';
         const nameCls = p.isVip ? 'vip-name' : '';
         const vipBadge = p.isVip ? ' <span class="vip-tag">👑 Mod VIP</span>' : '';
+        const modBadge = p.isModerator ? ' <span class="mod-badge-pill">🛡️ MOD</span>' : '';
+        const clanTag = p.clanTag ? ` <span class="clan-tag-pill">[${p.clanTag}]</span>` : '';
+        const repBtn = !isMe && this.user
+          ? ` <button class="btn btn-sm" style="padding:2px 6px;font-size:0.66rem;" data-quick-report="${p.username}" title="Reportar Hacks/Cheats">🚨</button>`
+          : '';
         return `
           <tr class="${isMe ? 'is-me' : ''}">
             <td><span class="rank-num ${rankCls}">#${p.rank}</span></td>
@@ -1191,8 +1337,8 @@ class ChessModApp {
               <div style="display:flex;align-items:center;gap:10px;">
                 <span class="avatar-badge ${p.frameId || 'frame_stone'}${vipAuraCls}" style="width:34px;height:34px;">${renderAvatarMarkup(p.avatar)}</span>
                 <div>
-                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                    <strong class="${nameCls}" style="color:${isMe ? 'var(--gold-bright)' : 'var(--text-main)'};">${p.username}${isMe ? ' (Tú)' : ''}</strong>${vipBadge}
+                  <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                    ${clanTag}<strong class="${nameCls}" style="color:${isMe ? 'var(--gold-bright)' : 'var(--text-main)'};">${p.username}${isMe ? ' (Tú)' : ''}</strong>${modBadge}${vipBadge}${repBtn}
                   </div>
                   <div style="font-size:0.7rem;color:var(--text-muted);">Nivel ${p.level}${p.title ? ` · «${p.title}»` : ''}</div>
                 </div>
@@ -1203,8 +1349,295 @@ class ChessModApp {
             <td style="color:#ffaca3;">${p.losses} <span style="color:var(--text-muted);font-size:0.75rem;">(${p.draws}E)</span></td>
           </tr>`;
       }).join('');
+      tbody.querySelectorAll('[data-quick-report]').forEach((btn) => {
+        btn.addEventListener('click', () => this.openQuickReportModal(btn.dataset.quickReport));
+      });
     } catch (err) {
       tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#ffaca3;padding:20px;">${err.message}</td></tr>`;
+    }
+  }
+
+  openQuickReportModal(username = '') {
+    if (!this.user) return this.openAuthModal('login');
+    const inp = document.getElementById('qreport-username');
+    if (inp) inp.value = username;
+    document.getElementById('modal-report-quick')?.classList.add('open');
+  }
+
+  renderTrainersGrids() {
+    const html = TRAINERS.map((t) => `
+      <div class="trainer-card ${t.isHardest ? 'hardest' : ''}">
+        <div>
+          <div class="trainer-head">
+            <div class="trainer-portrait">${getBossPortraitSVG(t.bossId)}</div>
+            <div style="min-width:0;">
+              <span class="pill ${t.isHardest ? 'crimson' : 'muted'}" style="margin-bottom:4px;font-size:0.64rem;">${t.badge}</span>
+              <h4 style="font-family:var(--font-display);color:${t.isHardest ? '#ff9494' : 'var(--gold-bright)'};font-size:0.95rem;">${t.name}</h4>
+              <div style="font-size:0.76rem;font-weight:700;color:#ffe27a;">🏆 ${t.elo} Elo</div>
+            </div>
+          </div>
+          <p style="font-size:0.75rem;color:var(--text-muted);line-height:1.4;margin-top:8px;">${t.description}</p>
+        </div>
+        <button class="btn btn-sm ${t.isHardest ? 'btn-danger' : 'btn-gold'}" data-start-trainer="${t.id}" style="width:100%;">
+          ${t.isHardest ? '🐾 Desafiar a BLACKY (3200)' : `⚔️ Entrenar (${t.elo} Elo)`}
+        </button>
+      </div>`).join('');
+
+    for (const id of ['play-trainers-grid', 'modal-trainers-grid']) {
+      const box = document.getElementById(id);
+      if (!box) continue;
+      box.innerHTML = html;
+      box.querySelectorAll('[data-start-trainer]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const trainer = TRAINERS.find((x) => x.id === btn.dataset.startTrainer);
+          if (!trainer) return;
+          document.getElementById('modal-trainer-picker')?.classList.remove('open');
+          this.battle.startTrainerMatch(trainer, { minutes: this.battle.selectedMinutes });
+        });
+      });
+    }
+  }
+
+  async loadSocialScreen() {
+    if (this.activeSocialTab === 'clans') await this.loadClans();
+    if (this.activeSocialTab === 'friends') await this.loadFriends();
+  }
+
+  async loadClans() {
+    const myBox = document.getElementById('my-clan-content');
+    const createCard = document.getElementById('create-clan-card');
+    const u = this.user;
+    if (myBox) {
+      if (u?.clan) {
+        myBox.innerHTML = `
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+            <span class="clan-tag-pill">[${u.clan.tag}]</span>
+            <strong style="font-family:var(--font-display);font-size:1.05rem;color:var(--gold-bright);">${u.clan.name}</strong>
+            <span class="pill jade">${u.clan.membersCount} miembros</span>
+          </div>
+          <p style="font-size:0.79rem;color:var(--text-muted);margin-bottom:10px;">${u.clan.description || 'Clan oficial de CHESS.MOD'}</p>
+          <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px;">
+            ${(u.clan.members || []).map((m) => `<div style="display:flex;justify-content:space-between;font-size:0.78rem;"><span>${m.role === 'leader' ? '👑 ' : ''}${m.username}</span><strong style="color:var(--gold-bright);">${m.elo} Elo</strong></div>`).join('')}
+          </div>
+          <button id="btn-leave-clan" class="btn btn-sm btn-danger">Salir del Clan</button>`;
+        document.getElementById('btn-leave-clan')?.addEventListener('click', async () => {
+          try {
+            const res = await api.leaveClan();
+            this.setUser(res.user);
+            this.loadClans();
+            showToast('Saliste del clan.', 'info');
+          } catch (err) {
+            showToast(err.message, 'error');
+          }
+        });
+      } else {
+        myBox.textContent = u ? 'Aún no perteneces a ningún clan. Únete a uno abajo o crea el tuyo por 150 Mods.' : 'Inicia sesión para crear o unirte a un Clan.';
+      }
+    }
+    if (createCard) createCard.classList.toggle('hidden', Boolean(u?.clan));
+
+    const listEl = document.getElementById('clans-list-container');
+    if (!listEl) return;
+    try {
+      const { clans } = await api.getClans();
+      if (!clans.length) {
+        listEl.innerHTML = '<p style="font-size:0.82rem;color:var(--text-muted);">Aún no hay clanes creados. ¡Sé el primero en fundar uno!</p>';
+        return;
+      }
+      listEl.innerHTML = clans.map((c) => `
+        <div class="social-row-card">
+          <div>
+            <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+              <span class="clan-tag-pill">[${c.tag}]</span>
+              <strong style="color:var(--gold-bright);">${c.name}</strong>
+              <span class="pill muted">${c.memberCount} miembros · ${c.totalElo} Elo total</span>
+            </div>
+            <div style="font-size:0.74rem;color:var(--text-muted);margin-top:3px;">Líder: ${c.leaderName}${c.description ? ` · ${c.description}` : ''}</div>
+          </div>
+          ${u && !u.clan ? `<button class="btn btn-sm btn-primary" data-join-clan="${c.id}">Unirse</button>` : ''}
+        </div>`).join('');
+      listEl.querySelectorAll('[data-join-clan]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          try {
+            const res = await api.joinClan(b.dataset.joinClan);
+            this.setUser(res.user);
+            this.loadClans();
+            showToast('¡Te uniste al clan!', 'success');
+          } catch (err) {
+            showToast(err.message, 'error');
+          }
+        });
+      });
+    } catch (err) {
+      listEl.innerHTML = `<p style="color:#ffaca3;font-size:0.8rem;">${err.message}</p>`;
+    }
+  }
+
+  async loadFriends() {
+    if (!this.user) {
+      const inc = document.getElementById('friends-incoming-list');
+      const acc = document.getElementById('friends-accepted-list');
+      if (inc) inc.innerHTML = '<p style="font-size:0.8rem;color:var(--text-muted);">Inicia sesión para gestionar amigos.</p>';
+      if (acc) acc.innerHTML = '<p style="font-size:0.8rem;color:var(--text-muted);">Inicia sesión para ver tu lista de amigos.</p>';
+      return;
+    }
+    try {
+      const summary = await api.getFriends();
+      this.renderFriends(summary);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  renderFriends(summary) {
+    const inc = document.getElementById('friends-incoming-list');
+    const acc = document.getElementById('friends-accepted-list');
+    if (inc) {
+      inc.innerHTML = summary.incoming?.length
+        ? summary.incoming.map((f) => `
+          <div class="social-row-card">
+            <div><strong class="${f.isVip ? 'vip-name' : ''}">${f.username}</strong> <span style="font-size:0.74rem;color:var(--text-muted);">(${f.elo} Elo)</span></div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-sm btn-primary" data-friend-accept="${f.friendshipId}">✓ Aceptar</button>
+              <button class="btn btn-sm btn-danger" data-friend-reject="${f.friendshipId}">✕</button>
+            </div>
+          </div>`).join('')
+        : '<p style="font-size:0.8rem;color:var(--text-muted);">No tienes solicitudes pendientes.</p>';
+      inc.querySelectorAll('[data-friend-accept]').forEach((b) => b.addEventListener('click', async () => {
+        const res = await api.acceptFriend(b.dataset.friendAccept);
+        this.renderFriends(res.summary);
+        showToast('¡Solicitud aceptada!', 'success');
+      }));
+      inc.querySelectorAll('[data-friend-reject]').forEach((b) => b.addEventListener('click', async () => {
+        const res = await api.rejectFriend(b.dataset.friendReject);
+        this.renderFriends(res.summary);
+      }));
+    }
+    if (acc) {
+      acc.innerHTML = summary.friends?.length
+        ? summary.friends.map((f) => `
+          <div class="social-row-card">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="avatar-badge ${f.frameId || 'frame_stone'}${f.isVip ? ' vip-aura' : ''}" style="width:30px;height:30px;">${renderAvatarMarkup(f.avatar)}</span>
+              <div>
+                <strong class="${f.isVip ? 'vip-name' : ''}">${f.username}</strong>
+                <div style="font-size:0.7rem;color:var(--text-muted);">${f.elo} Elo</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-sm btn-gold" data-friend-invite="1">🔐 Sala Privada</button>
+              <button class="btn btn-sm btn-danger" data-friend-remove="${f.friendshipId}">✕</button>
+            </div>
+          </div>`).join('')
+        : '<p style="font-size:0.8rem;color:var(--text-muted);">Aún no tienes amigos agregados.</p>';
+      acc.querySelectorAll('[data-friend-invite]').forEach((b) => b.addEventListener('click', () => {
+        this.switchScreen('multiplayer');
+        this.createPrivateRoom();
+      }));
+      acc.querySelectorAll('[data-friend-remove]').forEach((b) => b.addEventListener('click', async () => {
+        const res = await api.removeFriend(b.dataset.friendRemove);
+        this.renderFriends(res.summary);
+        showToast('Amigo eliminado.', 'info');
+      }));
+    }
+  }
+
+  async loadModerationScreen() {
+    if (!this.user?.isModerator) return;
+    try {
+      const ov = await api.getModOverview();
+      const sg = document.getElementById('mod-stats-grid');
+      if (sg) {
+        sg.innerHTML = `
+          <div class="stat-box"><div class="val">${ov.stats.totalUsers}</div><div class="lbl">Usuarios</div></div>
+          <div class="stat-box"><div class="val" style="color:#ff9b90;">${ov.stats.pendingReports}</div><div class="lbl">Reportes Pend.</div></div>
+          <div class="stat-box"><div class="val" style="color:#ff6b6b;">${ov.stats.bannedUsers}</div><div class="lbl">Baneados</div></div>
+          <div class="stat-box"><div class="val">${ov.stats.totalClans} · ${ov.stats.dbDriver.toUpperCase()}</div><div class="lbl">Clanes / BD</div></div>`;
+      }
+
+      const repList = document.getElementById('mod-reports-list');
+      if (repList) {
+        repList.innerHTML = ov.reports.length
+          ? ov.reports.map((r) => `
+            <div class="social-row-card" style="border-left:3px solid ${r.status === 'pending' ? '#ff5e57' : '#519674'};">
+              <div style="flex:1;min-width:200px;">
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:3px;">
+                  <span class="pill ${r.status === 'pending' ? 'crimson' : 'jade'}">${r.status.toUpperCase()}</span>
+                  <span class="pill muted">${r.category.toUpperCase()}</span>
+                  <strong>Reportado: ${r.reportedUsername}</strong>
+                  <span style="font-size:0.72rem;color:var(--text-muted);">por ${r.reporterUsername}</span>
+                </div>
+                <div style="font-size:0.8rem;color:#ebe3d5;">${r.description}</div>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                ${r.reportedUserId ? `<button class="btn btn-sm btn-danger" data-mod-ban-uid="${r.reportedUserId}" data-mod-ban-reason="Reporte ${r.category}: ${r.description.slice(0, 80)}">🔨 Banear</button>` : ''}
+                ${r.status === 'pending' ? `<button class="btn btn-sm btn-primary" data-mod-res-rep="${r.id}" data-mod-res-st="resolved">✅ Resolver</button>` : ''}
+                ${r.status === 'pending' ? `<button class="btn btn-sm" data-mod-res-rep="${r.id}" data-mod-res-st="dismissed">✕ Descartar</button>` : ''}
+              </div>
+            </div>`).join('')
+          : '<p style="font-size:0.82rem;color:var(--text-muted);">No hay reportes registrados.</p>';
+      }
+
+      const tbody = document.getElementById('mod-users-tbody');
+      if (tbody) {
+        tbody.innerHTML = ov.users.map((u) => `
+          <tr>
+            <td><strong>${u.clanTag ? `[${u.clanTag}] ` : ''}${u.username}</strong> ${u.isModerator ? '<span class="mod-badge-pill">MOD</span>' : ''} ${u.isVip ? '<span class="vip-tag">VIP</span>' : ''}</td>
+            <td style="font-size:0.75rem;color:var(--text-muted);">${u.email}</td>
+            <td>${u.elo} Elo · 🪙 ${u.mods}</td>
+            <td>${u.isBanned ? `<span class="pill crimson">BANEADO</span><div style="font-size:0.68rem;color:#ffaca3;">${u.banReason}</div>` : '<span class="pill jade">Activo</span>'}</td>
+            <td>
+              ${!u.isModerator
+                ? (u.isBanned
+                  ? `<button class="btn btn-sm btn-primary" data-mod-unban-uid="${u.id}">🔓 Desbanear</button>`
+                  : `<button class="btn btn-sm btn-danger" data-mod-ban-uid="${u.id}" data-mod-ban-reason="Baneado por moderación">🔨 Banear</button>`)
+                : '<span style="font-size:0.72rem;color:var(--text-muted);">Protegido</span>'}
+            </td>
+          </tr>`).join('');
+      }
+
+      const cBox = document.getElementById('mod-clans-list');
+      if (cBox) {
+        cBox.innerHTML = ov.clans.length
+          ? ov.clans.map((c) => `<div><span class="clan-tag-pill">[${c.tag}]</span> <strong>${c.name}</strong> — Líder: ${c.leaderName} (${c.memberCount} miembros)</div>`).join('')
+          : '<span style="color:var(--text-muted);">Sin clanes aún.</span>';
+      }
+      const mBox = document.getElementById('mod-matches-list');
+      if (mBox) {
+        mBox.innerHTML = ov.recentMatches.length
+          ? ov.recentMatches.map((m) => `<div><strong>${m.mode.toUpperCase()}</strong>: ${m.white_username || 'Jugador'} vs ${m.black_username || m.opponent_name} · Ganó: ${m.winner} (${m.turns}t)</div>`).join('')
+          : '<span style="color:var(--text-muted);">Sin partidas registradas.</span>';
+      }
+
+      document.querySelectorAll('[data-mod-ban-uid]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          try {
+            const res = await api.modBanUser(b.dataset.modBanUid, b.dataset.modBanReason);
+            showToast(`🔨 Usuario ${res.username} baneado.`, 'success');
+            this.loadModerationScreen();
+          } catch (err) { showToast(err.message, 'error'); }
+        });
+      });
+      document.querySelectorAll('[data-mod-unban-uid]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          try {
+            const res = await api.modUnbanUser(b.dataset.modUnbanUid);
+            showToast(`🔓 Usuario ${res.username} desbaneado.`, 'success');
+            this.loadModerationScreen();
+          } catch (err) { showToast(err.message, 'error'); }
+        });
+      });
+      document.querySelectorAll('[data-mod-res-rep]').forEach((b) => {
+        b.addEventListener('click', async () => {
+          try {
+            await api.modResolveReport(b.dataset.modResRep, b.dataset.modResSt, 'Revisado por Moderador');
+            showToast('Reporte actualizado.', 'success');
+            this.loadModerationScreen();
+          } catch (err) { showToast(err.message, 'error'); }
+        });
+      });
+    } catch (err) {
+      showToast(err.message, 'error');
     }
   }
 

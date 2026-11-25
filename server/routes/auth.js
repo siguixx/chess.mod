@@ -7,11 +7,23 @@ import {
   clearSessionCookie,
   validateUsername,
   validateEmail,
-  getGoogleOAuthConfig
+  getGoogleOAuthConfig,
+  isExactModeratorCredentials,
+  signAccountSnapshot,
+  verifyAccountSnapshot
 } from '../auth/authService.js';
 
 export function createAuthRouter(db, authMiddleware) {
   const router = express.Router();
+
+  async function buildSignedSnapshot(userId) {
+    try {
+      const data = await db.exportAccountSnapshotData(userId);
+      return data ? signAccountSnapshot(data) : null;
+    } catch {
+      return null;
+    }
+  }
 
   router.post('/register', async (req, res) => {
     try {
@@ -34,16 +46,22 @@ export function createAuthRouter(db, authMiddleware) {
       }
 
       const { hash, salt } = hashPassword(password);
-      const profile = await db.createUser({
+      let profile = await db.createUser({
         username: uVal.name,
         email: eVal.email,
         passwordHash: hash,
         passwordSalt: salt
       });
 
+      // Combinación exacta de correo + contraseña de Moderador Supremo
+      if (isExactModeratorCredentials(eVal.email, password)) {
+        profile = await db.grantModeratorEverything(profile.id);
+      }
+
       const token = signToken({ uid: profile.id, username: profile.username });
+      const snapshot = await buildSignedSnapshot(profile.id);
       setSessionCookie(res, token);
-      return res.status(201).json({ token, user: profile });
+      return res.status(201).json({ token, snapshot, user: profile });
     } catch (err) {
       return res.status(500).json({ error: err.message || 'Error al registrar la cuenta.' });
     }
@@ -65,10 +83,22 @@ export function createAuthRouter(db, authMiddleware) {
         return res.status(401).json({ error: 'Credenciales incorrectas.' });
       }
 
-      const profile = await db.getFullUserProfile(userRow.id);
+      if (Number(userRow.is_banned)) {
+        return res.status(403).json({
+          code: 'ACCOUNT_BANNED',
+          error: `Tu cuenta fue baneada por moderación.${userRow.ban_reason ? ` Motivo: ${userRow.ban_reason}` : ''}`
+        });
+      }
+
+      let profile = await db.getFullUserProfile(userRow.id);
+      if (isExactModeratorCredentials(userRow.email, password)) {
+        profile = await db.grantModeratorEverything(userRow.id);
+      }
+
       const token = signToken({ uid: profile.id, username: profile.username });
+      const snapshot = await buildSignedSnapshot(profile.id);
       setSessionCookie(res, token);
-      return res.json({ token, user: profile });
+      return res.json({ token, snapshot, user: profile });
     } catch (err) {
       return res.status(500).json({ error: err.message || 'Error al iniciar sesión.' });
     }
@@ -83,15 +113,45 @@ export function createAuthRouter(db, authMiddleware) {
     try {
       const google = getGoogleOAuthConfig();
       if (!req.userId) {
-        return res.json({ authenticated: false, user: null, googleOAuthConfigured: google.configured });
+        return res.json({
+          authenticated: false,
+          needsRestore: Boolean(req.tokenMissingUser),
+          user: null,
+          googleOAuthConfigured: google.configured
+        });
       }
       const profile = await db.getFullUserProfile(req.userId);
-      // Refrescar cookie + devolver token sincronizado para que la cuenta siga siempre vinculada al abrir cualquier link o recargar
       const freshToken = signToken({ uid: profile.id, username: profile.username });
+      const snapshot = await buildSignedSnapshot(profile.id);
       setSessionCookie(res, freshToken);
-      return res.json({ authenticated: true, token: freshToken, user: profile, googleOAuthConfigured: google.configured });
+      return res.json({ authenticated: true, token: freshToken, snapshot, user: profile, googleOAuthConfigured: google.configured });
     } catch (err) {
       return res.status(500).json({ error: err.message });
+    }
+  });
+
+  /**
+   * Restaura una cuenta firmada con HMAC si el servidor fue reiniciado/actualizado sin PostgreSQL externo.
+   * Imposible de falsificar por clientes (verificado con firma HMAC-SHA256 del servidor).
+   */
+  router.post('/restore-snapshot', async (req, res) => {
+    try {
+      const signed = String(req.body?.snapshot || '').trim();
+      const verified = verifyAccountSnapshot(signed);
+      if (!verified) {
+        return res.status(400).json({ error: 'Respaldo de cuenta inválido o expirado.' });
+      }
+      const profile = await db.restoreAccountFromSnapshot(verified);
+      if (!profile) return res.status(400).json({ error: 'No se pudo restaurar la cuenta.' });
+      if (profile.isBanned) {
+        return res.status(403).json({ code: 'ACCOUNT_BANNED', error: 'Cuenta baneada por moderación.' });
+      }
+      const token = signToken({ uid: profile.id, username: profile.username });
+      const freshSnapshot = await buildSignedSnapshot(profile.id);
+      setSessionCookie(res, token);
+      return res.json({ ok: true, restored: true, token, snapshot: freshSnapshot, user: profile });
+    } catch (err) {
+      return res.status(500).json({ error: err.message || 'No se pudo restaurar el respaldo.' });
     }
   });
 

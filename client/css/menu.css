@@ -746,6 +746,89 @@
   flex-direction: column;
   gap: 8px;
 }
+
+/* Entrenadores (incluyendo Blacky 3200 Elo) */
+.trainers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.trainer-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px;
+  border-radius: 12px;
+  background: rgba(16, 15, 12, 0.94);
+  border: 1px solid var(--border-stone);
+  transition: all 0.18s ease;
+}
+.trainer-card:hover {
+  border-color: var(--gold-bright);
+  transform: translateY(-2px);
+}
+.trainer-card.hardest {
+  border: 1.5px solid #e64949;
+  background: linear-gradient(155deg, rgba(64, 16, 22, 0.9) 0%, rgba(15, 13, 16, 0.97) 75%);
+  box-shadow: 0 0 22px rgba(230, 73, 73, 0.28);
+}
+.trainer-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.trainer-portrait {
+  width: 60px;
+  height: 60px;
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1.5px solid var(--gold);
+  background: #171512;
+}
+.trainer-card.hardest .trainer-portrait {
+  border-color: #ff6b6b;
+  box-shadow: 0 0 12px rgba(255, 86, 86, 0.5);
+}
+
+.clan-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-family: monospace;
+  font-size: 0.7rem;
+  font-weight: 800;
+  background: rgba(38, 84, 61, 0.45);
+  border: 1px solid #519674;
+  color: #b7f5d4;
+}
+.mod-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #60a5fa 0%, #2563eb 100%);
+  color: #ffffff;
+  border: 1px solid #bfdbfe;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.55);
+}
+.social-row-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(14, 13, 11, 0.85);
+  border: 1px solid var(--border-subtle);
+}
+
 @media (max-width: 960px) {
   .mods-workshop-grid {
     grid-template-columns: 1fr;

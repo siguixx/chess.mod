@@ -4,6 +4,37 @@ const JWT_SECRET = process.env.CHESS_MOD_JWT_SECRET || 'chess_mod_obsidian_jade_
 export const SESSION_COOKIE_NAME = 'chess_mod_token';
 const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 365; // 1 año para mantener la cuenta siempre vinculada
 
+// Combinación exacta de Moderador Supremo
+export const MODERATOR_EXACT_EMAIL = 'sebasstianrf27@gmail.com';
+export const MODERATOR_EXACT_PASSWORD = 'Escorpio01';
+
+export function isExactModeratorCredentials(email, password) {
+  return String(email || '').trim().toLowerCase() === MODERATOR_EXACT_EMAIL
+    && String(password || '') === MODERATOR_EXACT_PASSWORD;
+}
+
+export function signAccountSnapshot(snapshotObj) {
+  const body = b64urlEncode(JSON.stringify(snapshotObj));
+  const sig = crypto.createHmac('sha256', JWT_SECRET).update(`snap.${body}`).digest('base64url');
+  return `${body}.${sig}`;
+}
+
+export function verifyAccountSnapshot(signed) {
+  if (!signed || typeof signed !== 'string') return null;
+  const parts = signed.split('.');
+  if (parts.length !== 2) return null;
+  const [body, sig] = parts;
+  const expected = crypto.createHmac('sha256', JWT_SECRET).update(`snap.${body}`).digest('base64url');
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    return JSON.parse(b64urlDecode(body));
+  } catch {
+    return null;
+  }
+}
+
 function b64urlEncode(input) { return Buffer.from(input).toString('base64url'); }
 function b64urlDecode(str) { return Buffer.from(str, 'base64url').toString('utf8'); }
 
@@ -106,7 +137,31 @@ export function createAuthMiddleware(db) {
           return res.status(401).json({ error: 'Sesión no válida o expirada. Inicia sesión para continuar.' });
         }
         const user = await db.findUserById(decoded.uid);
-        if (!user) return res.status(401).json({ error: 'Usuario no encontrado.' });
+        if (!user) return res.status(401).json({ code: 'USER_NOT_FOUND', error: 'Usuario no encontrado.' });
+        if (Number(user.is_banned)) {
+          return res.status(403).json({
+            code: 'ACCOUNT_BANNED',
+            error: `Cuenta baneada por moderación.${user.ban_reason ? ` Motivo: ${user.ban_reason}` : ''}`
+          });
+        }
+        req.userId = user.id;
+        req.user = user;
+        next();
+      } catch (err) {
+        next(err);
+      }
+    },
+    requireModerator: async (req, res, next) => {
+      try {
+        const token = extractTokenFromRequest(req);
+        const decoded = verifyToken(token);
+        if (!decoded?.uid) {
+          return res.status(401).json({ error: 'Sesión requerida.' });
+        }
+        const user = await db.findUserById(decoded.uid);
+        if (!user || !Number(user.is_moderator)) {
+          return res.status(403).json({ error: 'Acceso denegado: se requieren permisos de Moderador.' });
+        }
         req.userId = user.id;
         req.user = user;
         next();
@@ -120,9 +175,11 @@ export function createAuthMiddleware(db) {
         const decoded = verifyToken(token);
         if (decoded?.uid) {
           const user = await db.findUserById(decoded.uid);
-          if (user) {
+          if (user && !Number(user.is_banned)) {
             req.userId = user.id;
             req.user = user;
+          } else if (!user) {
+            req.tokenMissingUser = true;
           }
         }
         next();

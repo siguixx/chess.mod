@@ -22,7 +22,7 @@ import {
   CHAPTER_ORDER
 } from '../shared/config/campaigns.js';
 import { calculateEloUpdate } from '../shared/config/elo.js';
-import { INITIAL_ELO } from '../shared/config/constants.js';
+import { INITIAL_ELO, TRAINERS, CLAN_CREATE_COST_MODS } from '../shared/config/constants.js';
 import { MOD_VIP_PLAN } from '../shared/config/cosmetics.js';
 import {
   MOD_TEMPLATES,
@@ -535,6 +535,7 @@ try {
     const repData = await repB.json();
     assert.equal(repData.unlockedExclusive, 'Domador de Blacky (Imposible)');
     assert.equal(repData.xpGained, 1500);
+    assert.equal(repData.profile.unlockedCosmetics.includes('power_blacky_claw'), true, 'Derrotar a BLACKY en /blacky debe desbloquear Zarpa Traidora de Blacky');
   });
 
   await test('Regla estricta de JAQUE MATE: nunca se mata al Rey, jaque simple no gana, ahogado es tablas y jaque mate gana', () => {
@@ -949,6 +950,153 @@ try {
 
     sAlice.disconnect();
     sBob.disconnect();
+  });
+
+  await test('Entrenadores (Blacky 3200 Elo), Poder Blacky fuera de tienda, Clanes (150 Mods), Amigos, Reportes, Snapshot y Moderador exacto', async () => {
+    // 1. Entrenadores incluyen a BLACKY con 3200 Elo y su diseño oficial
+    const blackyTrainer = TRAINERS.find((t) => t.id === 'trainer_blacky');
+    assert.ok(blackyTrainer && blackyTrainer.elo === 3200 && blackyTrainer.bossId === 'blacky_secret');
+
+    // 2. Poder de Blacky NO se puede comprar en la tienda
+    const aliceH = { Authorization: `Bearer ${aliceToken}`, 'Content-Type': 'application/json' };
+    const bobH = { Authorization: `Bearer ${bobToken}`, 'Content-Type': 'application/json' };
+    const buyBk = await fetch(`${url}/api/shop/buy`, {
+      method: 'POST',
+      headers: aliceH,
+      body: JSON.stringify({ itemId: 'power_blacky_claw' })
+    });
+    assert.equal(buyBk.status, 400, 'Zarpa Traidora de Blacky no puede comprarse en tienda');
+
+    // 3. Clanes: cuesta 150 Mods crear; Bob (100 Mods) falla con INSUFFICIENT_MODS, Alice (ya ganó Mods) SÍ puede crear y Bob se une
+    assert.equal(CLAN_CREATE_COST_MODS, 150);
+    const clanFail = await fetch(`${url}/api/clans`, {
+      method: 'POST',
+      headers: bobH,
+      body: JSON.stringify({ name: 'ClanPobre', tag: 'POB' })
+    });
+    assert.equal(clanFail.status, 400);
+    assert.equal((await clanFail.json()).code, 'INSUFFICIENT_MODS');
+
+    const clanOk = await fetch(`${url}/api/clans`, {
+      method: 'POST',
+      headers: aliceH,
+      body: JSON.stringify({ name: 'Legión Maya', tag: 'MAYA', description: 'Clan oficial' })
+    });
+    assert.equal(clanOk.status, 201);
+    const clanData = await clanOk.json();
+    assert.equal(clanData.user.clan.tag, 'MAYA');
+
+    const joinOk = await fetch(`${url}/api/clans/${clanData.clanId}/join`, { method: 'POST', headers: bobH, body: '{}' });
+    assert.equal(joinOk.status, 200);
+    assert.equal((await joinOk.json()).user.clan.tag, 'MAYA');
+
+    // 4. Sistema de Amigos: Alice envía solicitud a BobMittens y Bob la acepta
+    const frReq = await fetch(`${url}/api/friends/request`, {
+      method: 'POST',
+      headers: aliceH,
+      body: JSON.stringify({ username: 'BobMittens' })
+    });
+    assert.equal(frReq.status, 201);
+    const frId = (await frReq.json()).id;
+    const frAcc = await fetch(`${url}/api/friends/${frId}/accept`, { method: 'POST', headers: bobH, body: '{}' });
+    assert.equal(frAcc.status, 200);
+    assert.equal((await frAcc.json()).summary.friends.length, 1);
+
+    // 5. Persistencia Anti-Pérdida en Actualizaciones: snapshot firmado restaura cuenta completa tras borrado de BD
+    const snapRes = await fetch(`${url}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'PersistHero', email: 'persist@chessmod.test', password: 'Password123' })
+    });
+    const snapData = await snapRes.json();
+    assert.ok(snapData.snapshot, 'Registro debe emitir snapshot firmado HMAC');
+    await server.db.execSql('DELETE FROM users WHERE id = ?', [snapData.user.id]);
+    assert.equal(await server.db.findUserById(snapData.user.id), null);
+
+    // Snapshot falsificado es rechazado
+    const fakeSnap = await fetch(`${url}/api/auth/restore-snapshot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ snapshot: 'ZmFrZQ.invalido' })
+    });
+    assert.equal(fakeSnap.status, 400);
+
+    // Snapshot legítimo restaura la cuenta intacta
+    const restOk = await fetch(`${url}/api/auth/restore-snapshot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ snapshot: snapData.snapshot })
+    });
+    assert.equal(restOk.status, 200);
+    const restData = await restOk.json();
+    assert.equal(restData.user.username, 'PersistHero');
+    assert.equal(restData.user.mods, 100);
+
+    // 6. Moderación con combinación EXACTA (sebasstianrf27@gmail.com + Escorpio01)
+    // Jugador normal NO puede acceder a /api/mod/overview
+    const noMod = await fetch(`${url}/api/mod/overview`, { headers: aliceH });
+    assert.equal(noMod.status, 403);
+
+    // Reporte de Hacks/Cheats contra BobMittens
+    const repHack = await fetch(`${url}/api/reports`, {
+      method: 'POST',
+      headers: aliceH,
+      body: JSON.stringify({ reportedUsername: 'BobMittens', category: 'hacks', description: 'Usa motor externo en partida pública' })
+    });
+    assert.equal(repHack.status, 201);
+    const repId = (await repHack.json()).id;
+
+    // Registrar cuenta exacta de Moderador
+    const modReg = await fetch(`${url}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'SebasMod', email: 'sebasstianrf27@gmail.com', password: 'Escorpio01' })
+    });
+    assert.equal(modReg.status, 201);
+    const modData = await modReg.json();
+    assert.equal(modData.user.isModerator, true, 'Combinación exacta debe otorgar rol Moderador');
+    assert.equal(modData.user.isVip, true, 'Moderador obtiene todo incluyendo VIP');
+    assert.ok(modData.user.mods >= 99999);
+    assert.equal(modData.user.unlockedCosmetics.includes('power_blacky_claw'), true);
+    assert.equal(modData.user.unlockedCosmetics.includes('power_free_mittens'), true);
+    assert.equal(modData.user.unlockedCosmetics.includes('power_vip_golden_freeze'), true);
+
+    const modH = { Authorization: `Bearer ${modData.token}`, 'Content-Type': 'application/json' };
+    const ovRes = await fetch(`${url}/api/mod/overview`, { headers: modH });
+    assert.equal(ovRes.status, 200);
+    const ov = await ovRes.json();
+    assert.ok(ov.users.length >= 4, 'Moderador puede ver todas las cuentas');
+    assert.ok(ov.reports.some((r) => r.id === repId), 'Moderador puede ver reportes de hacks/cheats');
+    assert.ok(ov.clans.some((c) => c.tag === 'MAYA'), 'Moderador puede ver todos los clanes');
+
+    // Moderador resuelve el reporte y banea a BobMittens
+    const resRep = await fetch(`${url}/api/mod/reports/${repId}/resolve`, {
+      method: 'POST',
+      headers: modH,
+      body: JSON.stringify({ status: 'resolved', resolutionNote: 'Confirmado uso de hacks' })
+    });
+    assert.equal(resRep.status, 200);
+
+    const bobRow = await server.db.findUserByUsername('BobMittens');
+    const banRes = await fetch(`${url}/api/mod/ban`, {
+      method: 'POST',
+      headers: modH,
+      body: JSON.stringify({ userId: bobRow.id, reason: 'Uso de hacks confirmado' })
+    });
+    assert.equal(banRes.status, 200);
+
+    // Usuario baneado queda bloqueado al hacer login y en API (403 ACCOUNT_BANNED)
+    const bobBlocked = await fetch(`${url}/api/profile`, { headers: bobH });
+    assert.equal(bobBlocked.status, 403);
+    assert.equal((await bobBlocked.json()).code, 'ACCOUNT_BANNED');
+
+    const unbanRes = await fetch(`${url}/api/mod/unban`, {
+      method: 'POST',
+      headers: modH,
+      body: JSON.stringify({ userId: bobRow.id })
+    });
+    assert.equal(unbanRes.status, 200);
+    assert.equal((await fetch(`${url}/api/profile`, { headers: bobH })).status, 200);
   });
 } finally {
   await server.stop();

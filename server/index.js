@@ -10,6 +10,7 @@ import { createAuthRouter } from './routes/auth.js';
 import { createProfileRouter } from './routes/profile.js';
 import { createGameRouter } from './routes/game.js';
 import { createLeaderboardRouter } from './routes/leaderboard.js';
+import { createSocialRouter } from './routes/social.js';
 import { MultiplayerManager } from './multiplayer/matchmaking.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -40,15 +41,30 @@ export function createChessServer({
 
   // Healthcheck público para Render.com / Koyeb ($0 Free Tier)
   app.get('/health', (_req, res) => {
-    res.json({ ok: true, status: 'healthy', app: 'CHESS.MOD', db: db.driver, timestamp: new Date().toISOString() });
+    res.json({
+      ok: true,
+      status: 'healthy',
+      app: 'CHESS.MOD',
+      db: db.driver,
+      persistentDb: db.driver === 'postgres',
+      timestamp: new Date().toISOString()
+    });
   });
   app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, status: 'healthy', app: 'CHESS.MOD', db: db.driver, timestamp: new Date().toISOString() });
+    res.json({
+      ok: true,
+      status: 'healthy',
+      app: 'CHESS.MOD',
+      db: db.driver,
+      persistentDb: db.driver === 'postgres',
+      timestamp: new Date().toISOString()
+    });
   });
 
   // API routes
   app.use('/api/auth', createAuthRouter(db, authMiddleware));
   app.use('/api', createProfileRouter(db, authMiddleware));
+  app.use('/api', createSocialRouter(db, authMiddleware, multiplayer));
   app.use('/api/game', createGameRouter(db, authMiddleware));
   app.use('/api/leaderboard', createLeaderboardRouter(db));
 

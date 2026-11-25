@@ -19,6 +19,10 @@ CREATE TABLE IF NOT EXISTS users (
   mods INTEGER NOT NULL DEFAULT 100,
   vip_active INTEGER NOT NULL DEFAULT 0,
   vip_expires_at TEXT,
+  is_moderator INTEGER NOT NULL DEFAULT 0,
+  is_banned INTEGER NOT NULL DEFAULT 0,
+  ban_reason TEXT NOT NULL DEFAULT '',
+  banned_at TEXT,
   level INTEGER NOT NULL DEFAULT 1,
   wins INTEGER NOT NULL DEFAULT 0,
   losses INTEGER NOT NULL DEFAULT 0,
@@ -75,7 +79,59 @@ CREATE TABLE IF NOT EXISTS xp_transactions (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS clans (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  name_lower TEXT NOT NULL UNIQUE,
+  tag TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL DEFAULT '',
+  leader_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (leader_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS clan_members (
+  clan_id TEXT NOT NULL,
+  user_id TEXT NOT NULL UNIQUE,
+  role TEXT NOT NULL DEFAULT 'member',
+  joined_at TEXT NOT NULL,
+  PRIMARY KEY (clan_id, user_id),
+  FOREIGN KEY (clan_id) REFERENCES clans(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS friendships (
+  id TEXT PRIMARY KEY,
+  requester_id TEXT NOT NULL,
+  addressee_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(requester_id, addressee_id),
+  FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (addressee_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS reports (
+  id TEXT PRIMARY KEY,
+  reporter_id TEXT NOT NULL,
+  reported_user_id TEXT,
+  reported_username TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'hacks',
+  description TEXT NOT NULL,
+  match_id TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  resolved_by TEXT,
+  resolution_note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  resolved_at TEXT,
+  FOREIGN KEY (reporter_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_users_elo ON users(elo DESC, wins DESC);
 CREATE INDEX IF NOT EXISTS idx_matches_white ON matches(white_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_matches_black ON matches(black_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_xp_user ON xp_transactions(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_friends_req ON friendships(requester_id, status);
+CREATE INDEX IF NOT EXISTS idx_friends_addr ON friendships(addressee_id, status);

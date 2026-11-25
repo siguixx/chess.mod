@@ -13,4 +13,12 @@ services:
       - key: CHESS_MOD_JWT_SECRET
         generateValue: true
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: chessmod-db
+          property: connectionString
+
+databases:
+  - name: chessmod-db
+    plan: free
+    databaseName: chessmod
+    user: chessmod

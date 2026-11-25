@@ -42,6 +42,15 @@ export class MultiplayerManager {
     clearInterval(this.clockTimer);
   }
 
+  disconnectUserById(userId) {
+    for (const sock of this.io.sockets.sockets.values()) {
+      if (sock.userId === userId) {
+        sock.emit('match:error', { error: 'Tu cuenta ha sido baneada por moderación.' });
+        sock.disconnect(true);
+      }
+    }
+  }
+
   setupSocketAuth() {
     this.io.use(async (socket, next) => {
       try {
@@ -51,6 +60,7 @@ export class MultiplayerManager {
         if (!decoded?.uid) return next(new Error('AUTH_REQUIRED'));
         const userRow = await this.db.findUserById(decoded.uid);
         if (!userRow) return next(new Error('USER_NOT_FOUND'));
+        if (Number(userRow.is_banned)) return next(new Error('ACCOUNT_BANNED'));
         socket.userId = userRow.id;
         socket.username = userRow.username;
         next();

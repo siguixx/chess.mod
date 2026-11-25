@@ -943,6 +943,7 @@ export class BattleController {
 
   startClassicMatch({ difficulty = 3, label = 'Vs IA', minutes = this.selectedMinutes, showGuide = true, customMod = null } = {}) {
     this.mode = 'classic';
+    this.trainerMeta = null;
     this.customMod = customMod || null;
     this.bossId = 'classic_ai';
     this.bossName = customMod ? `Mod Privado: ${customMod.name}` : `${label} (IA Nv.${difficulty})`;
@@ -977,6 +978,44 @@ export class BattleController {
       this.paused = false;
       this.render();
     }
+  }
+
+  startTrainerMatch(trainerCfg, { minutes = this.selectedMinutes, showGuide = true } = {}) {
+    this.mode = 'trainer';
+    this.trainerMeta = trainerCfg;
+    this.customMod = null;
+    this.bossId = trainerCfg.bossId || 'classic_ai';
+    this.bossName = `${trainerCfg.name} (${trainerCfg.elo} Elo)`;
+    this.aiDifficulty = trainerCfg.difficulty || 3;
+    this.campaignMeta = null;
+    this.onlineMeta = null;
+    this.engine = new ClassicChessEngine(minutes);
+    this.sound.stopBossMusic();
+
+    this.showBattleScreen();
+    this.configureBattlePanels();
+    this.phase = 'PLAYER_TURN';
+    this.render();
+
+    const startNow = () => {
+      this.paused = false;
+      this.lastClockTick = performance.now();
+      if (trainerCfg.id === 'trainer_blacky') {
+        this.sound.play('blackyBark');
+        this.showBossSpeech('Grr... 3200 de Elo. Demuestra si puedes resistir contra BLACKY.');
+      }
+      this.render();
+    };
+    if (showGuide) {
+      this.showPreMatchGuide({
+        modeTag: `ENTRENADOR · ${trainerCfg.elo} ELO`,
+        title: trainerCfg.name,
+        subtitle: trainerCfg.badge || `${trainerCfg.elo} Elo`,
+        rulesHtml: `<li><strong>🎓 Entrenamiento contra ${trainerCfg.name}:</strong> ${trainerCfg.description}</li>
+          <li><strong>⚡ Poderes y Skins activos:</strong> Puedes usar tus tableros, fichas y poderes equipados de la Tienda o Mod VIP.</li>`,
+        onStart: startNow
+      });
+    } else startNow();
   }
 
   startOnlineMatch(matchPayload) {
@@ -1069,6 +1108,9 @@ export class BattleController {
     if (this.mode === 'blacky') {
       return this.startBlackySecretBoss({ playIntro: false, minutes: this.selectedMinutes });
     }
+    if (this.mode === 'trainer' && this.trainerMeta) {
+      return this.startTrainerMatch(this.trainerMeta, { minutes: this.selectedMinutes, showGuide: false });
+    }
     if (this.campaignMeta) {
       return this.startCampaignLevel(
         this.campaignMeta.campaignId,
@@ -1077,7 +1119,7 @@ export class BattleController {
         { playIntro: false, presetPower: this.campaignMeta.chosenPower || null }
       );
     }
-    this.startClassicMatch({ difficulty: this.aiDifficulty, minutes: this.selectedMinutes, showGuide: false });
+    this.startClassicMatch({ difficulty: this.aiDifficulty, minutes: this.selectedMinutes, showGuide: false, customMod: this.customMod });
   }
 
   configureBattlePanels() {
@@ -1572,6 +1614,13 @@ export class BattleController {
         const aiRes = await this.runSuperAiAsync(this.engine.cloneState(), {
           maxDepth: 5,
           thinkTimeMs: 950,
+          color: 'b'
+        });
+        bestMove = aiRes?.move || this.engine.getAllLegalMoves('b')[0] || null;
+      } else if (this.mode === 'trainer' && this.trainerMeta?.useSuperAi) {
+        const aiRes = await this.runSuperAiAsync(this.engine.cloneState(), {
+          maxDepth: this.trainerMeta.maxDepth || 4,
+          thinkTimeMs: this.trainerMeta.thinkTimeMs || 700,
           color: 'b'
         });
         bestMove = aiRes?.move || this.engine.getAllLegalMoves('b')[0] || null;
