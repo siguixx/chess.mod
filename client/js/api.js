@@ -84,6 +84,31 @@ class ApiClient {
     return res;
   }
 
+  async login2FA(challengeToken, code) {
+    const res = await this.request('/api/auth/login/2fa', { method: 'POST', body: JSON.stringify({ challengeToken, code }) });
+    if (res.token) this.setToken(res.token);
+    if (res.snapshot) this.setSnapshot(res.snapshot);
+    return res;
+  }
+
+  getSecurityStatus() { return this.request('/api/auth/security/status'); }
+  setup2FA() { return this.request('/api/auth/security/2fa/setup', { method: 'POST', body: '{}' }); }
+  verify2FA(code) { return this.request('/api/auth/security/2fa/verify', { method: 'POST', body: JSON.stringify({ code }) }); }
+  disable2FA(password, code) { return this.request('/api/auth/security/2fa/disable', { method: 'POST', body: JSON.stringify({ password, code }) }); }
+  setSecurityPin(pin) { return this.request('/api/auth/security/pin', { method: 'POST', body: JSON.stringify({ pin }) }); }
+  async changePassword(currentPassword, newPassword) {
+    const res = await this.request('/api/auth/security/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
+    if (res.token) this.setToken(res.token);
+    if (res.snapshot) this.setSnapshot(res.snapshot);
+    return res;
+  }
+  async revokeAllSessions() {
+    const res = await this.request('/api/auth/security/revoke-sessions', { method: 'POST', body: '{}' });
+    if (res.token) this.setToken(res.token);
+    if (res.snapshot) this.setSnapshot(res.snapshot);
+    return res;
+  }
+
   async logout() {
     await this.request('/api/auth/logout', { method: 'POST' }).catch(() => {});
     this.setToken('');

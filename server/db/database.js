@@ -48,7 +48,13 @@ export class ChessDatabase {
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_moderator INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_at TEXT"
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_at TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_pending_secret TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS backup_codes_json TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS security_pin_hash TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1"
       ];
       for (const sql of pgMigrations) {
         await this.pgPool.query(sql).catch(() => {});
@@ -71,7 +77,13 @@ export class ChessDatabase {
         "ALTER TABLE users ADD COLUMN is_moderator INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN is_banned INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN ban_reason TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE users ADD COLUMN banned_at TEXT"
+        "ALTER TABLE users ADD COLUMN banned_at TEXT",
+        "ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN totp_secret TEXT",
+        "ALTER TABLE users ADD COLUMN totp_pending_secret TEXT",
+        "ALTER TABLE users ADD COLUMN backup_codes_json TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE users ADD COLUMN security_pin_hash TEXT",
+        "ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1"
       ];
       for (const sql of sqliteMigrations) {
         try { this.sqlite.exec(sql); } catch {}
@@ -269,6 +281,11 @@ export class ChessDatabase {
       ...base,
       email: row.email,
       googleLinked: Boolean(row.google_id),
+      security: {
+        totpEnabled: Boolean(Number(row.totp_enabled)),
+        hasPin: Boolean(row.security_pin_hash),
+        tokenVersion: Number(row.token_version) || 1
+      },
       clan,
       campaigns,
       unlockedCosmetics,
@@ -784,7 +801,112 @@ export class ChessDatabase {
     for (const cid of everyId) {
       await this.grantExclusiveUnlock(userId, cid);
     }
+
+    // SOLO EL MODERADOR recibe los 25 niveles (5 capítulos × 5 niveles) del Modo Historia completados
+    for (const campId of CHAPTER_ORDER) {
+      for (let lv = 1; lv <= 5; lv++) {
+        const exists = await this.queryOne(
+          'SELECT level_id FROM campaign_progress WHERE user_id = ? AND campaign_id = ? AND level_id = ?',
+          [userId, campId, lv]
+        );
+        if (!exists) {
+          await this.execSql(
+            'INSERT INTO campaign_progress (user_id, campaign_id, level_id, best_turns, completions, completed_at) VALUES (?, ?, ?, 10, 1, ?)',
+            [userId, campId, lv, now]
+          );
+        }
+      }
+    }
     return this.getFullUserProfile(userId);
+  }
+
+  /* ================= SEGURIDAD AVANZADA DE CUENTAS (2FA TOTP, BACKUP, PIN, SESIONES, LOG) ================= */
+  async recordSecurityEvent(userId, eventType, { ip = '', userAgent = '', details = '' } = {}) {
+    if (!userId) return;
+    const id = `sec_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    const now = new Date().toISOString();
+    await this.execSql(
+      'INSERT INTO security_events (id, user_id, event_type, ip, user_agent, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, userId, String(eventType).slice(0, 40), String(ip).slice(0, 64), String(userAgent).slice(0, 140), String(details).slice(0, 200), now]
+    ).catch(() => {});
+  }
+
+  async getSecurityEvents(userId, limit = 15) {
+    const rows = await this.queryAll(
+      'SELECT id, event_type, ip, user_agent, details, created_at FROM security_events WHERE user_id = ? ORDER BY created_at DESC LIMIT ?',
+      [userId, limit]
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      type: r.event_type,
+      ip: r.ip,
+      userAgent: r.user_agent,
+      details: r.details,
+      createdAt: r.created_at
+    }));
+  }
+
+  async savePendingTotpSecret(userId, secret) {
+    await this.execSql(
+      'UPDATE users SET totp_pending_secret = ?, updated_at = ? WHERE id = ?',
+      [secret, new Date().toISOString(), userId]
+    );
+  }
+
+  async enableTotp(userId, secret, hashedBackupCodes) {
+    await this.execSql(
+      'UPDATE users SET totp_enabled = 1, totp_secret = ?, totp_pending_secret = NULL, backup_codes_json = ?, updated_at = ? WHERE id = ?',
+      [secret, JSON.stringify(hashedBackupCodes || []), new Date().toISOString(), userId]
+    );
+  }
+
+  async disableTotp(userId) {
+    await this.execSql(
+      "UPDATE users SET totp_enabled = 0, totp_secret = NULL, totp_pending_secret = NULL, backup_codes_json = '[]', updated_at = ? WHERE id = ?",
+      [new Date().toISOString(), userId]
+    );
+  }
+
+  async consumeBackupCode(userId, hashedCode) {
+    const row = await this.findUserById(userId);
+    if (!row) return false;
+    let codes = [];
+    try { codes = JSON.parse(row.backup_codes_json || '[]'); } catch { codes = []; }
+    const idx = codes.indexOf(hashedCode);
+    if (idx === -1) return false;
+    codes.splice(idx, 1);
+    await this.execSql(
+      'UPDATE users SET backup_codes_json = ?, updated_at = ? WHERE id = ?',
+      [JSON.stringify(codes), new Date().toISOString(), userId]
+    );
+    return true;
+  }
+
+  async setSecurityPinHash(userId, pinHash) {
+    await this.execSql(
+      'UPDATE users SET security_pin_hash = ?, updated_at = ? WHERE id = ?',
+      [pinHash || null, new Date().toISOString(), userId]
+    );
+  }
+
+  async updatePasswordAndRevoke(userId, passwordHash, passwordSalt) {
+    const row = await this.findUserById(userId);
+    const nextVer = (Number(row?.token_version) || 1) + 1;
+    await this.execSql(
+      'UPDATE users SET password_hash = ?, password_salt = ?, token_version = ?, updated_at = ? WHERE id = ?',
+      [passwordHash, passwordSalt, nextVer, new Date().toISOString(), userId]
+    );
+    return nextVer;
+  }
+
+  async revokeAllSessions(userId) {
+    const row = await this.findUserById(userId);
+    const nextVer = (Number(row?.token_version) || 1) + 1;
+    await this.execSql(
+      'UPDATE users SET token_version = ?, updated_at = ? WHERE id = ?',
+      [nextVer, new Date().toISOString(), userId]
+    );
+    return nextVer;
   }
 
   async banUser(moderatorId, targetUserId, reason = 'Infracción de normas / Hacks o Cheats') {

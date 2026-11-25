@@ -205,6 +205,14 @@ class StandaloneApiClient {
     this.setToken('standalone-local-token');
     return { token: 'standalone-local-token', user: hydrateUser(store.user, store.matches) };
   }
+  async login2FA() { throw new Error('2FA solo funciona conectado al servidor online.'); }
+  async getSecurityStatus() { return { totpEnabled: false, hasPin: false, backupCodesRemaining: 0, tokenVersion: 1, events: [] }; }
+  async setup2FA() { throw new Error('2FA requiere conexión al servidor online.'); }
+  async verify2FA() { throw new Error('2FA requiere conexión al servidor online.'); }
+  async disable2FA() { throw new Error('2FA requiere conexión al servidor online.'); }
+  async setSecurityPin() { throw new Error('PIN requiere conexión al servidor online.'); }
+  async changePassword() { throw new Error('Cambio de contraseña requiere conexión al servidor online.'); }
+  async revokeAllSessions() { throw new Error('Requiere conexión al servidor online.'); }
 
   async logout() {
     this.setToken('');

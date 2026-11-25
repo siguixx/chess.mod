@@ -127,7 +127,27 @@ export function validateEmail(raw) {
   return { ok: true, email };
 }
 
+export function sign2FAChallenge(userId) {
+  const header = b64urlEncode(JSON.stringify({ alg: 'HS256', typ: '2FA' }));
+  const now = Math.floor(Date.now() / 1000);
+  const body = b64urlEncode(JSON.stringify({ uid: userId, purpose: '2fa', iat: now, exp: now + 300 }));
+  const sig = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${body}`).digest('base64url');
+  return `${header}.${body}.${sig}`;
+}
+
+export function verify2FAChallenge(token) {
+  const dec = verifyToken(token);
+  if (!dec || dec.purpose !== '2fa' || !dec.uid) return null;
+  return dec;
+}
+
 export function createAuthMiddleware(db) {
+  const isTokenVersionValid = (decoded, user) => {
+    if (!decoded || !user) return false;
+    const userTv = Number(user.token_version) || 1;
+    const tokTv = Number(decoded.tv) || 1;
+    return tokTv === userTv;
+  };
   return {
     requireAuth: async (req, res, next) => {
       try {
@@ -138,6 +158,9 @@ export function createAuthMiddleware(db) {
         }
         const user = await db.findUserById(decoded.uid);
         if (!user) return res.status(401).json({ code: 'USER_NOT_FOUND', error: 'Usuario no encontrado.' });
+        if (!isTokenVersionValid(decoded, user)) {
+          return res.status(401).json({ code: 'SESSION_REVOKED', error: 'Esta sesión fue cerrada desde Seguridad de Cuenta. Vuelve a iniciar sesión.' });
+        }
         if (Number(user.is_banned)) {
           return res.status(403).json({
             code: 'ACCOUNT_BANNED',
@@ -159,7 +182,7 @@ export function createAuthMiddleware(db) {
           return res.status(401).json({ error: 'Sesión requerida.' });
         }
         const user = await db.findUserById(decoded.uid);
-        if (!user || !Number(user.is_moderator)) {
+        if (!user || !isTokenVersionValid(decoded, user) || !Number(user.is_moderator)) {
           return res.status(403).json({ error: 'Acceso denegado: se requieren permisos de Moderador.' });
         }
         req.userId = user.id;
@@ -175,7 +198,7 @@ export function createAuthMiddleware(db) {
         const decoded = verifyToken(token);
         if (decoded?.uid) {
           const user = await db.findUserById(decoded.uid);
-          if (user && !Number(user.is_banned)) {
+          if (user && isTokenVersionValid(decoded, user) && !Number(user.is_banned)) {
             req.userId = user.id;
             req.user = user;
           } else if (!user) {

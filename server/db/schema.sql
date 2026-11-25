@@ -23,6 +23,12 @@ CREATE TABLE IF NOT EXISTS users (
   is_banned INTEGER NOT NULL DEFAULT 0,
   ban_reason TEXT NOT NULL DEFAULT '',
   banned_at TEXT,
+  totp_enabled INTEGER NOT NULL DEFAULT 0,
+  totp_secret TEXT,
+  totp_pending_secret TEXT,
+  backup_codes_json TEXT NOT NULL DEFAULT '[]',
+  security_pin_hash TEXT,
+  token_version INTEGER NOT NULL DEFAULT 1,
   level INTEGER NOT NULL DEFAULT 1,
   wins INTEGER NOT NULL DEFAULT 0,
   losses INTEGER NOT NULL DEFAULT 0,
@@ -128,6 +134,17 @@ CREATE TABLE IF NOT EXISTS reports (
   FOREIGN KEY (reporter_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS security_events (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  ip TEXT NOT NULL DEFAULT '',
+  user_agent TEXT NOT NULL DEFAULT '',
+  details TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_users_elo ON users(elo DESC, wins DESC);
 CREATE INDEX IF NOT EXISTS idx_matches_white ON matches(white_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_matches_black ON matches(black_user_id, created_at DESC);
@@ -135,3 +152,4 @@ CREATE INDEX IF NOT EXISTS idx_xp_user ON xp_transactions(user_id, created_at DE
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_friends_req ON friendships(requester_id, status);
 CREATE INDEX IF NOT EXISTS idx_friends_addr ON friendships(addressee_id, status);
+CREATE INDEX IF NOT EXISTS idx_sec_events_user ON security_events(user_id, created_at DESC);

@@ -257,6 +257,7 @@ export class BattleController {
     on('btn-shop-power', 'click', () => this.toggleShopPowerMode());
 
     // Online buttons
+    on('btn-exit-spectate', 'click', () => this.exitBattle());
     on('btn-online-resign', 'click', () => {
       if (this.mode === 'online' && this.onlineMeta?.matchId) mpSocket.emit('match:resign', { matchId: this.onlineMeta.matchId });
     });
@@ -303,7 +304,7 @@ export class BattleController {
 
   bindOnlineEvents() {
     mpSocket.on('match:state', ({ matchId, state, powerState, events, powerEvent }) => {
-      if (this.mode !== 'online' || this.onlineMeta?.matchId !== matchId) return;
+      if ((this.mode !== 'online' && this.mode !== 'spectate') || this.onlineMeta?.matchId !== matchId) return;
       this.engine.loadState(state);
       if (powerState) this.powerState = powerState;
       this.selected = null;
@@ -313,7 +314,9 @@ export class BattleController {
       this.shopPowerTargets = [];
       this.phase = this.engine.winner
         ? 'GAME_OVER'
-        : (this.engine.turn === this.onlineMeta.yourColor ? 'PLAYER_TURN' : 'AI_THINKING');
+        : (this.mode === 'spectate'
+          ? 'AI_THINKING'
+          : (this.engine.turn === this.onlineMeta.yourColor ? 'PLAYER_TURN' : 'AI_THINKING'));
       if (powerEvent) {
         this.sound.play(powerEvent.sfx || 'power_golden_freeze');
         if (powerEvent.tr !== undefined && powerEvent.tc !== undefined) {
@@ -324,7 +327,7 @@ export class BattleController {
         if (powerEvent.logText) this.toast(powerEvent.logText, 'info');
       } else {
         const myColor = this.onlineMeta.yourColor;
-        if (events?.by === myColor) this.sound.playPieceAction(this.getActivePieceSkin().id, Boolean(events?.captured));
+        if (this.mode === 'online' && events?.by === myColor) this.sound.playPieceAction(this.getActivePieceSkin().id, Boolean(events?.captured));
         else this.sound.play(events?.captured ? 'capture' : 'move');
       }
       if (events?.to) {
@@ -336,9 +339,16 @@ export class BattleController {
     });
 
     mpSocket.on('match:clock', ({ matchId, clocks }) => {
-      if (this.mode !== 'online' || this.onlineMeta?.matchId !== matchId) return;
+      if ((this.mode !== 'online' && this.mode !== 'spectate') || this.onlineMeta?.matchId !== matchId) return;
       this.engine.clocks = clocks;
       this.renderClocks();
+    });
+
+    mpSocket.on('match:spectators', ({ matchId, count }) => {
+      if ((this.mode !== 'online' && this.mode !== 'spectate') || this.onlineMeta?.matchId !== matchId) return;
+      if (this.onlineMeta) this.onlineMeta.spectatorsCount = count;
+      const pill = document.getElementById('spectator-count-pill');
+      if (pill) pill.textContent = `${count} viendo`;
     });
 
     mpSocket.on('match:draw_offered', ({ matchId }) => {
@@ -350,16 +360,32 @@ export class BattleController {
     mpSocket.on('match:error', ({ error }) => this.toast(error || 'Jugada rechazada por el servidor.', 'error'));
 
     mpSocket.on('match:ended', (payload) => {
-      if (this.mode !== 'online' || this.onlineMeta?.matchId !== payload.matchId) return;
+      if ((this.mode !== 'online' && this.mode !== 'spectate') || this.onlineMeta?.matchId !== payload.matchId) return;
       this.engine.loadState(payload.state);
       this.phase = 'GAME_OVER';
       this.render();
+
+      if (this.mode === 'spectate') {
+        const wName = payload.whiteProfile?.username || this.onlineMeta.white?.username || 'Blancas';
+        const bName = payload.blackProfile?.username || this.onlineMeta.black?.username || 'Negras';
+        const winnerLbl = payload.winner === 'draw' ? 'Tablas' : (payload.winner === 'w' ? `Ganó ${wName}` : `Ganó ${bName}`);
+        const potRow = payload.betPot > 0
+          ? `<div style="display:flex;justify-content:space-between;margin-top:6px;"><span>🪙 Bote Apostado:</span><strong style="color:#ffd859;">${payload.betPot} Mods</strong></div>`
+          : '';
+        this.openGameOverModal({
+          title: `👁️ Fin de Partida · ${winnerLbl}`,
+          desc: payload.reason,
+          extraHtml: `<div>${wName} vs ${bName}</div>${potRow}`
+        });
+        return;
+      }
 
       const myColor = this.onlineMeta.yourColor;
       const myProfile = myColor === 'w' ? payload.whiteProfile : payload.blackProfile;
       const myDelta = myColor === 'w' ? payload.eloUpdate.whiteDelta : payload.eloUpdate.blackDelta;
       const myXp = myColor === 'w' ? payload.whiteXpGained : payload.blackXpGained;
       const myMods = myColor === 'w' ? (payload.whiteModsGained || 0) : (payload.blackModsGained || 0);
+      const myBetNet = myColor === 'w' ? (payload.whiteBetNet || 0) : (payload.blackBetNet || 0);
       if (myProfile) this.onUserUpdated(myProfile);
 
       const isWin = payload.winner === myColor;
@@ -368,6 +394,12 @@ export class BattleController {
 
       const title = isDraw ? 'Tablas' : (isWin ? '¡Victoria Online!' : 'Derrota Online');
       const eloSign = myDelta >= 0 ? `+${myDelta}` : `${myDelta}`;
+      const betHtml = payload.betMods > 0
+        ? `<div style="display:flex; justify-content:space-between; margin-top:6px;">
+            <span>🪙 Resultado Apuesta (Bote ${payload.betPot}):</span>
+            <strong style="color:${myBetNet > 0 ? '#9ce0be' : (myBetNet < 0 ? '#ffaca3' : '#ffd859')};">${myBetNet > 0 ? `+${myBetNet} Mods` : (myBetNet < 0 ? `${myBetNet} Mods` : 'Reembolsado')}</strong>
+          </div>`
+        : '';
       this.openGameOverModal({
         title,
         desc: payload.reason,
@@ -383,7 +415,8 @@ export class BattleController {
           <div style="display:flex; justify-content:space-between;">
             <span>Monedas ganadas:</span>
             <strong style="color:#ffd859;">🪙 +${myMods} Mods</strong>
-          </div>`
+          </div>
+          ${betHtml}`
       });
     });
   }
@@ -442,8 +475,8 @@ export class BattleController {
   }
 
   getEquippedShopPower() {
-    // Los poderes se pueden usar en CUALQUIER LUGAR MENOS en Modo Historia
-    if (this.isStoryMode()) return null;
+    // Los poderes se pueden usar en CUALQUIER LUGAR MENOS en Modo Historia (y en Espectador solo lectura)
+    if (this.isStoryMode() || this.mode === 'spectate') return null;
     // En Lección de Entrenador: el entrenador te presta su poder específico para que lo practiques
     if (this.mode === 'coach_lesson' && this.trainerMeta?.taughtPowerId) {
       return resolvePowerDef(this.trainerMeta.taughtPowerId, null);
@@ -735,6 +768,9 @@ export class BattleController {
     document.getElementById('app-shell')?.classList.remove('hidden');
     if (this.mode === 'online' && this.onlineMeta?.matchId && !this.engine.winner) {
       mpSocket.emit('match:resign', { matchId: this.onlineMeta.matchId });
+    }
+    if (this.mode === 'spectate' && this.onlineMeta?.matchId) {
+      mpSocket.emit('match:leave_spectate', { matchId: this.onlineMeta.matchId });
     }
     this.onExitToMenu();
   }
@@ -1304,8 +1340,45 @@ export class BattleController {
     } else launch();
   }
 
+  startSpectatorMode(payload) {
+    this.mode = 'spectate';
+    this.customMod = payload.isPrivate ? (payload.customMod || null) : null;
+    this.bossId = 'online_opponent';
+    this.bossName = `${payload.white.username} vs ${payload.black.username}`;
+    this.campaignMeta = null;
+    this.onlineMeta = {
+      matchId: payload.matchId,
+      isPrivate: Boolean(payload.isPrivate),
+      roomCode: payload.roomCode || null,
+      betMods: payload.betMods || 0,
+      betPot: payload.betPot || 0,
+      spectatorsCount: payload.spectatorsCount || 1,
+      yourColor: 'w',
+      opponent: payload.black,
+      white: payload.white,
+      black: payload.black
+    };
+    this.engine = new ClassicChessEngine(payload.timeMinutes || 10);
+    this.engine.loadState(payload.state);
+    this.sound.stopBossMusic();
+
+    this.showBattleScreen();
+    if (payload.powerState) this.powerState = payload.powerState;
+    this.configureBattlePanels();
+    this.paused = false;
+    this.phase = 'AI_THINKING';
+    const desc = document.getElementById('spectator-info-desc');
+    if (desc) {
+      desc.textContent = `Blancas: ${payload.white.username} vs Negras: ${payload.black.username}${payload.betPot > 0 ? ` · 🪙 Bote: ${payload.betPot} Mods` : ''}`;
+    }
+    const pill = document.getElementById('spectator-count-pill');
+    if (pill) pill.textContent = `${payload.spectatorsCount || 1} viendo`;
+    this.render();
+    this.toast(`👁️ Especteando en vivo: ${payload.white.username} vs ${payload.black.username}`, 'info');
+  }
+
   restartCurrentMatch() {
-    if (this.mode === 'online') return this.exitBattle();
+    if (this.mode === 'online' || this.mode === 'spectate') return this.exitBattle();
     // Al reiniciar la partida NO se vuelve a reproducir la intro de ningún jefe
     if (this.mode === 'blacky') {
       return this.startBlackySecretBoss({ playIntro: false, minutes: this.selectedMinutes });
@@ -1336,6 +1409,7 @@ export class BattleController {
     const isChessFinal = this.mode === 'chess_final';
     const isBlacky = this.mode === 'blacky';
     const isOnline = this.mode === 'online';
+    const isSpectate = this.mode === 'spectate';
     const has2x2Layer = isMayaBoss || (isGalaxy && this.engine.hasGalaxyMan) || Boolean(this.powerState?.giantUnits?.length);
 
     document.getElementById('temple-backdrop-svg')?.classList.toggle('hidden', !(isMayaBoss || isBlacky));
@@ -1348,15 +1422,16 @@ export class BattleController {
     document.getElementById('mittens-hud-card')?.classList.toggle('hidden', !isMittens);
     document.getElementById('blacky-hud-card')?.classList.toggle('hidden', !isBlacky);
     document.getElementById('online-hud-card')?.classList.toggle('hidden', !isOnline);
+    document.getElementById('spectator-banner-card')?.classList.toggle('hidden', !isSpectate);
     document.getElementById('maya-threats-card')?.classList.toggle('hidden', !(isMayaBoss || isMayaCamp || isGalaxy));
     document.getElementById('mittens-controls-card')?.classList.toggle('hidden', !(isMittens && this.engine.hasWhiteSoldiers));
     document.getElementById('chess-power-controls-card')?.classList.toggle('hidden', !(isChessFinal && this.engine.playerPower === 'galaxy'));
     document.getElementById('shop-power-controls-card')?.classList.toggle('hidden', !this.getEquippedShopPower());
     document.getElementById('online-controls-card')?.classList.toggle('hidden', !isOnline);
 
-    document.getElementById('btn-undo')?.classList.toggle('hidden', isOnline);
-    document.getElementById('btn-hint')?.classList.toggle('hidden', isOnline);
-    document.getElementById('btn-restart')?.classList.toggle('hidden', isOnline);
+    document.getElementById('btn-undo')?.classList.toggle('hidden', isOnline || isSpectate);
+    document.getElementById('btn-hint')?.classList.toggle('hidden', isOnline || isSpectate);
+    document.getElementById('btn-restart')?.classList.toggle('hidden', isOnline || isSpectate);
 
     const portraitSlot = document.getElementById('boss-portrait-slot');
     const portraitName = document.getElementById('boss-portrait-name');
@@ -1566,7 +1641,7 @@ export class BattleController {
 
   /* ================= INTERACCIÓN DE CASILLAS ================= */
   handleSquareClick(r, c) {
-    if (this.paused || this.phase !== 'PLAYER_TURN' || this.engine.winner) return;
+    if (this.mode === 'spectate' || this.paused || this.phase !== 'PLAYER_TURN' || this.engine.winner) return;
     const myColor = this.mode === 'online' ? this.onlineMeta.yourColor : 'w';
     if (this.engine.turn !== myColor) return;
 

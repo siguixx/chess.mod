@@ -14,6 +14,13 @@ import {
   isSquareBlockedByModState
 } from '../../shared/mods/modRuntime.js';
 
+export const ALLOWED_BET_AMOUNTS = [0, 25, 50, 100, 250];
+
+function sanitizeBetAmount(val) {
+  const n = Math.max(0, Math.round(Number(val) || 0));
+  return ALLOWED_BET_AMOUNTS.includes(n) ? n : 0;
+}
+
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let out = '';
@@ -28,7 +35,8 @@ export class MultiplayerManager {
     this.queue = [];
     this.matches = new Map();
     this.socketToMatch = new Map();
-    this.privateRooms = new Map(); // code -> { code, hostSocketId, hostUserId, hostProfile, timeMinutes, customMod, createdAt }
+    this.socketToSpectate = new Map(); // socketId -> matchId
+    this.privateRooms = new Map();
 
     this.setupSocketAuth();
     this.setupHandlers();
@@ -51,6 +59,42 @@ export class MultiplayerManager {
     }
   }
 
+  getLiveMatchesSummary() {
+    const list = [];
+    for (const room of this.matches.values()) {
+      if (room.finished) continue;
+      list.push({
+        matchId: room.id,
+        isPrivate: Boolean(room.isPrivate),
+        roomCode: room.roomCode || null,
+        customModName: room.customMod?.name || null,
+        betMods: room.betMods || 0,
+        betPot: room.betPot || 0,
+        turnNumber: room.engine.turnNumber,
+        spectatorsCount: room.spectators.size,
+        white: {
+          username: room.white.profile.username,
+          elo: room.white.profile.elo,
+          isVip: room.white.profile.isVip,
+          avatar: room.white.profile.avatar,
+          frameId: room.white.profile.frameId
+        },
+        black: {
+          username: room.black.profile.username,
+          elo: room.black.profile.elo,
+          isVip: room.black.profile.isVip,
+          avatar: room.black.profile.avatar,
+          frameId: room.black.profile.frameId
+        }
+      });
+    }
+    return list;
+  }
+
+  broadcastLiveMatches() {
+    this.io.emit('live:matches', { matches: this.getLiveMatchesSummary() });
+  }
+
   setupSocketAuth() {
     this.io.use(async (socket, next) => {
       try {
@@ -60,6 +104,9 @@ export class MultiplayerManager {
         if (!decoded?.uid) return next(new Error('AUTH_REQUIRED'));
         const userRow = await this.db.findUserById(decoded.uid);
         if (!userRow) return next(new Error('USER_NOT_FOUND'));
+        if ((Number(decoded.tv) || 1) !== (Number(userRow.token_version) || 1)) {
+          return next(new Error('SESSION_REVOKED'));
+        }
         if (Number(userRow.is_banned)) return next(new Error('ACCOUNT_BANNED'));
         socket.userId = userRow.id;
         socket.username = userRow.username;
@@ -76,9 +123,53 @@ export class MultiplayerManager {
         onlineCount: this.io.sockets.sockets.size,
         queueCount: this.queue.length
       });
+      socket.emit('live:matches', { matches: this.getLiveMatchesSummary() });
 
-      // === COLA PÚBLICA (SOLO PODERES OFICIALES DEL JUEGO — NUNCA MODS CUSTOM) ===
-      socket.on('queue:join', async ({ timeMinutes = 10, customMod = null } = {}) => {
+      socket.on('live:list', () => {
+        socket.emit('live:matches', { matches: this.getLiveMatchesSummary() });
+      });
+
+      // === MODO ESPECTADOR EN VIVO (SOLO PARTIDAS ENTRE JUGADORES REALES) ===
+      socket.on('match:spectate', ({ matchId } = {}) => {
+        const room = this.matches.get(matchId);
+        if (!room || room.finished) {
+          socket.emit('spectate:error', { error: 'La partida ya finalizó o no existe.' });
+          return;
+        }
+        if (this.socketToMatch.has(socket.id)) {
+          socket.emit('spectate:error', { error: 'No puedes espectear mientras estás jugando una partida.' });
+          return;
+        }
+        this.leaveSpectate(socket);
+        socket.join(room.id);
+        room.spectators.add(socket.id);
+        this.socketToSpectate.set(socket.id, room.id);
+
+        socket.emit('match:spectate_start', {
+          matchId: room.id,
+          isPrivate: Boolean(room.isPrivate),
+          roomCode: room.roomCode || null,
+          customMod: room.customMod || null,
+          betMods: room.betMods || 0,
+          betPot: room.betPot || 0,
+          timeMinutes: room.timeMinutes || 10,
+          white: room.white.profile,
+          black: room.black.profile,
+          state: room.engine.cloneState(),
+          powerState: room.powerState,
+          spectatorsCount: room.spectators.size
+        });
+
+        this.io.to(room.id).emit('match:spectators', { matchId: room.id, count: room.spectators.size });
+        this.broadcastLiveMatches();
+      });
+
+      socket.on('match:leave_spectate', () => {
+        this.leaveSpectate(socket);
+      });
+
+      // === COLA PÚBLICA (SOLO PODERES OFICIALES + APUESTA DE MODS OPCIONAL) ===
+      socket.on('queue:join', async ({ timeMinutes = 10, betMods = 0, customMod = null } = {}) => {
         if (customMod) {
           socket.emit('queue:error', { error: 'Los Mods personalizados con código solo están permitidos en Salas Privadas. En públicas se usan solo los poderes oficiales del juego.' });
           return;
@@ -90,6 +181,13 @@ export class MultiplayerManager {
         const user = await this.db.findUserById(socket.userId);
         if (!user) return;
 
+        const cleanBet = sanitizeBetAmount(betMods);
+        if (cleanBet > 0 && (Number(user.mods) || 0) < cleanBet) {
+          socket.emit('queue:error', { error: `No tienes suficientes Mods para apostar ${cleanBet} Mods (tienes ${Number(user.mods) || 0}).` });
+          return;
+        }
+
+        this.leaveSpectate(socket);
         this.removePrivateRoomBySocket(socket.id);
         this.removeFromQueueByUserId(user.id);
         const allowedMins = [1, 3, 5, 10, 15].includes(Number(timeMinutes)) ? Number(timeMinutes) : 10;
@@ -99,6 +197,7 @@ export class MultiplayerManager {
           username: user.username,
           elo: Number(user.elo) || 0,
           timeMinutes: allowedMins,
+          betMods: cleanBet,
           joinedAt: Date.now()
         });
 
@@ -106,6 +205,7 @@ export class MultiplayerManager {
           inQueue: true,
           elo: Number(user.elo) || 0,
           timeMinutes: allowedMins,
+          betMods: cleanBet,
           queueSize: this.queue.length
         });
 
@@ -117,8 +217,8 @@ export class MultiplayerManager {
         socket.emit('queue:status', { inQueue: false, queueSize: this.queue.length });
       });
 
-      // === SALAS PRIVADAS (PERMITEN MODS DE CÓDIGO ABIERTO CREADOS O IMPORTADOS) ===
-      socket.on('private:create', async ({ timeMinutes = 10, customMod = null } = {}) => {
+      // === SALAS PRIVADAS (PERMITEN MODS DE CÓDIGO ABIERTO + APUESTA DE MODS OPCIONAL) ===
+      socket.on('private:create', async ({ timeMinutes = 10, betMods = 0, customMod = null } = {}) => {
         if (this.socketToMatch.has(socket.id)) {
           socket.emit('private:error', { error: 'Ya estás en una partida activa.' });
           return;
@@ -133,13 +233,20 @@ export class MultiplayerManager {
           normalizedMod = check.mod;
         }
 
+        const row = await this.db.ensureFreshVipState(await this.db.findUserById(socket.userId));
+        if (!row) return;
+
+        const cleanBet = sanitizeBetAmount(betMods);
+        if (cleanBet > 0 && (Number(row.mods) || 0) < cleanBet) {
+          socket.emit('private:error', { error: `No tienes ${cleanBet} Mods para crear la sala con esa apuesta.` });
+          return;
+        }
+
+        this.leaveSpectate(socket);
         this.removeFromQueue(socket.id);
         this.removePrivateRoomBySocket(socket.id);
 
-        const row = await this.db.ensureFreshVipState(await this.db.findUserById(socket.userId));
-        if (!row) return;
         const allowedMins = [1, 3, 5, 10, 15].includes(Number(timeMinutes)) ? Number(timeMinutes) : 10;
-
         let code = generateRoomCode();
         while (this.privateRooms.has(code)) code = generateRoomCode();
 
@@ -149,6 +256,7 @@ export class MultiplayerManager {
           hostUserId: row.id,
           hostProfile: this.db.formatPublicUser(row),
           timeMinutes: allowedMins,
+          betMods: cleanBet,
           customMod: normalizedMod,
           createdAt: Date.now()
         };
@@ -157,6 +265,7 @@ export class MultiplayerManager {
         socket.emit('private:created', {
           code,
           timeMinutes: allowedMins,
+          betMods: cleanBet,
           customMod: normalizedMod
         });
       });
@@ -181,6 +290,13 @@ export class MultiplayerManager {
           socket.emit('private:error', { error: 'No puedes unirte a tu propia sala con la misma cuenta.' });
           return;
         }
+        const guestRow = await this.db.findUserById(socket.userId);
+        if (waiting.betMods > 0 && (Number(guestRow?.mods) || 0) < waiting.betMods) {
+          socket.emit('private:error', {
+            error: `Esta Sala Privada tiene apuesta de ${waiting.betMods} Mods (tienes ${Number(guestRow?.mods) || 0} Mods).`
+          });
+          return;
+        }
         const hostSock = this.io.sockets.sockets.get(waiting.hostSocketId);
         if (!hostSock) {
           this.privateRooms.delete(cleanCode);
@@ -189,12 +305,13 @@ export class MultiplayerManager {
         }
 
         this.privateRooms.delete(cleanCode);
+        this.leaveSpectate(socket);
         this.removeFromQueue(socket.id);
 
         await this.createMatch(
-          { socketId: waiting.hostSocketId, userId: waiting.hostUserId, timeMinutes: waiting.timeMinutes },
-          { socketId: socket.id, userId: socket.userId, timeMinutes: waiting.timeMinutes },
-          { isPrivate: true, roomCode: cleanCode, customMod: waiting.customMod }
+          { socketId: waiting.hostSocketId, userId: waiting.hostUserId, timeMinutes: waiting.timeMinutes, betMods: waiting.betMods },
+          { socketId: socket.id, userId: socket.userId, timeMinutes: waiting.timeMinutes, betMods: waiting.betMods },
+          { isPrivate: true, roomCode: cleanCode, customMod: waiting.customMod, betMods: waiting.betMods }
         );
       });
 
@@ -209,7 +326,7 @@ export class MultiplayerManager {
         const expectedColor = room.white.socketId === socket.id ? 'w'
           : (room.black.socketId === socket.id ? 'b' : null);
 
-        if (!expectedColor) return socket.emit('match:error', { error: 'No perteneces a esta partida.' });
+        if (!expectedColor) return socket.emit('match:error', { error: 'Solo los jugadores de la partida pueden mover piezas (modo espectador es solo lectura).' });
         if (room.engine.turn !== expectedColor) return socket.emit('match:error', { error: 'No es tu turno.' });
 
         const mover = room.engine.board[fr]?.[fc];
@@ -224,7 +341,6 @@ export class MultiplayerManager {
         const result = room.engine.validateAndExecuteMove(fr, fc, tr, tc, promoType, true);
         if (!result.ok) return socket.emit('match:error', { error: result.error });
 
-        // Asimilación 1:1 de Free Mittens si el jugador tiene el buff activo
         if (capturedBefore) {
           applyMittensAssimilationIfActive(room.engine, room.powerState, expectedColor, fr, fc, capturedBefore);
         }
@@ -244,7 +360,7 @@ export class MultiplayerManager {
         }
       });
 
-      // === EJECUCIÓN DE PODERES OFICIALES (PÚBLICAS) O MODS CUSTOM (SALAS PRIVADAS) ===
+      // === PODERES OFICIALES (PÚBLICAS) O MODS CUSTOM (SALAS PRIVADAS) ===
       socket.on('match:use_power', ({ matchId, fr, fc, tr, tc } = {}) => {
         const room = this.matches.get(matchId);
         if (!room || room.finished) {
@@ -319,6 +435,7 @@ export class MultiplayerManager {
       socket.on('disconnect', () => {
         this.removeFromQueue(socket.id);
         this.removePrivateRoomBySocket(socket.id);
+        this.leaveSpectate(socket);
         const matchId = this.socketToMatch.get(socket.id);
         if (matchId) {
           const room = this.matches.get(matchId);
@@ -330,6 +447,19 @@ export class MultiplayerManager {
         }
       });
     });
+  }
+
+  leaveSpectate(socket) {
+    const prevMatchId = this.socketToSpectate.get(socket.id);
+    if (!prevMatchId) return;
+    this.socketToSpectate.delete(socket.id);
+    socket.leave(prevMatchId);
+    const room = this.matches.get(prevMatchId);
+    if (room) {
+      room.spectators.delete(socket.id);
+      this.io.to(room.id).emit('match:spectators', { matchId: room.id, count: room.spectators.size });
+      this.broadcastLiveMatches();
+    }
   }
 
   removePrivateRoomBySocket(socketId) {
@@ -366,6 +496,7 @@ export class MultiplayerManager {
         const b = this.queue[j];
         if (a.userId === b.userId) continue;
         if (a.timeMinutes !== b.timeMinutes) continue;
+        if ((a.betMods || 0) !== (b.betMods || 0)) continue;
 
         const waitSecB = (now - b.joinedAt) / 1000;
         const rangeB = 100 + Math.floor(waitSecB / 2.5) * 50;
@@ -388,12 +519,12 @@ export class MultiplayerManager {
     if (matchedIndices.size > 0) {
       this.queue = this.queue.filter((_, idx) => !matchedIndices.has(idx));
       for (const [entryA, entryB] of pairs) {
-        await this.createMatch(entryA, entryB, { isPrivate: false });
+        await this.createMatch(entryA, entryB, { isPrivate: false, betMods: entryA.betMods || 0 });
       }
     }
   }
 
-  async createMatch(entryA, entryB, { isPrivate = false, roomCode = null, customMod = null } = {}) {
+  async createMatch(entryA, entryB, { isPrivate = false, roomCode = null, customMod = null, betMods = 0 } = {}) {
     const sockA = this.io.sockets.sockets.get(entryA.socketId);
     const sockB = this.io.sockets.sockets.get(entryB.socketId);
     if (!sockA || !sockB) return;
@@ -406,8 +537,25 @@ export class MultiplayerManager {
 
     const whiteRow = await this.db.ensureFreshVipState(await this.db.findUserById(whiteEntry.userId));
     const blackRow = await this.db.ensureFreshVipState(await this.db.findUserById(blackEntry.userId));
-    const whiteProfile = this.db.formatPublicUser(whiteRow);
-    const blackProfile = this.db.formatPublicUser(blackRow);
+    if (!whiteRow || !blackRow) return;
+
+    // Retener apuesta (escrow) de ambos jugadores si betMods > 0
+    let activeBet = sanitizeBetAmount(betMods);
+    if (activeBet > 0) {
+      if ((Number(whiteRow.mods) || 0) < activeBet || (Number(blackRow.mods) || 0) < activeBet) {
+        whiteSock.emit('queue:error', { error: 'Uno de los jugadores ya no tiene suficientes Mods para cubrir la apuesta.' });
+        blackSock.emit('queue:error', { error: 'Uno de los jugadores ya no tiene suficientes Mods para cubrir la apuesta.' });
+        return;
+      }
+      await this.db.addMods(whiteEntry.userId, -activeBet);
+      await this.db.addMods(blackEntry.userId, -activeBet);
+    }
+    const betPot = activeBet * 2;
+
+    const freshWhite = await this.db.findUserById(whiteEntry.userId);
+    const freshBlack = await this.db.findUserById(blackEntry.userId);
+    const whiteProfile = this.db.formatPublicUser(freshWhite);
+    const blackProfile = this.db.formatPublicUser(freshBlack);
 
     const matchId = `${isPrivate ? 'priv' : 'room'}_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
     const engine = new ClassicChessEngine(whiteEntry.timeMinutes);
@@ -416,12 +564,13 @@ export class MultiplayerManager {
     }
 
     const powerState = createInitialPowerState();
+    const betStr = activeBet > 0 ? ` · 🪙 Bote en juego: ${betPot} Mods` : '';
     engine.logs = [{
       turn: 0,
       type: 'special',
       text: isPrivate
-        ? `Sala Privada ${roomCode || ''} iniciada${customMod ? ` con Mod Abierto «${customMod.name}»` : ''}: ${whiteProfile.username} vs ${blackProfile.username}.`
-        : `Partida Pública Oficial iniciada: ${whiteProfile.username} (${whiteProfile.elo} Elo) vs ${blackProfile.username} (${blackProfile.elo} Elo). Poderes oficiales activos.`
+        ? `Sala Privada ${roomCode || ''} iniciada${customMod ? ` con Mod Abierto «${customMod.name}»` : ''}: ${whiteProfile.username} vs ${blackProfile.username}${betStr}.`
+        : `Partida Pública Oficial iniciada: ${whiteProfile.username} (${whiteProfile.elo} Elo) vs ${blackProfile.username} (${blackProfile.elo} Elo)${betStr}.`
     }];
 
     const room = {
@@ -429,6 +578,10 @@ export class MultiplayerManager {
       isPrivate,
       roomCode,
       customMod: isPrivate ? customMod : null,
+      timeMinutes: whiteEntry.timeMinutes,
+      betMods: activeBet,
+      betPot,
+      spectators: new Set(),
       engine,
       powerState,
       white: { socketId: whiteSock.id, userId: whiteEntry.userId, profile: whiteProfile },
@@ -451,6 +604,8 @@ export class MultiplayerManager {
       isPrivate,
       roomCode,
       customMod: room.customMod,
+      betMods: activeBet,
+      betPot,
       timeMinutes: whiteEntry.timeMinutes,
       white: whiteProfile,
       black: blackProfile,
@@ -460,6 +615,7 @@ export class MultiplayerManager {
 
     whiteSock.emit('match:found', { ...basePayload, yourColor: 'w', opponent: blackProfile });
     blackSock.emit('match:found', { ...basePayload, yourColor: 'b', opponent: whiteProfile });
+    this.broadcastLiveMatches();
   }
 
   tickClocks() {
@@ -488,10 +644,27 @@ export class MultiplayerManager {
     room.engine.winReason = reason;
 
     try {
+      // Liquidación de Apuesta de Mods (escrow): ganador se lleva todo el bote; tablas reembolsa a ambos
+      let whiteBetNet = 0;
+      let blackBetNet = 0;
+      if (room.betMods > 0) {
+        if (winner === 'w') {
+          await this.db.addMods(room.white.userId, room.betPot);
+          whiteBetNet = room.betMods;
+          blackBetNet = -room.betMods;
+        } else if (winner === 'b') {
+          await this.db.addMods(room.black.userId, room.betPot);
+          whiteBetNet = -room.betMods;
+          blackBetNet = room.betMods;
+        } else {
+          await this.db.addMods(room.white.userId, room.betMods);
+          await this.db.addMods(room.black.userId, room.betMods);
+        }
+      }
+
       const wRow = await this.db.findUserById(room.white.userId);
       const bRow = await this.db.findUserById(room.black.userId);
 
-      // Las Salas Privadas con Mods NO alteran el Elo competitivo público (para proteger el Ranking Global)
       const eloUpdate = room.isPrivate
         ? {
           whiteBefore: Number(wRow.elo) || 0,
@@ -518,6 +691,10 @@ export class MultiplayerManager {
       this.io.to(room.id).emit('match:ended', {
         matchId: room.id,
         isPrivate: room.isPrivate,
+        betMods: room.betMods || 0,
+        betPot: room.betPot || 0,
+        whiteBetNet,
+        blackBetNet,
         winner,
         reason,
         eloUpdate,
@@ -531,9 +708,15 @@ export class MultiplayerManager {
         powerState: room.powerState
       });
     } finally {
+      for (const specSockId of room.spectators) {
+        this.socketToSpectate.delete(specSockId);
+        const s = this.io.sockets.sockets.get(specSockId);
+        if (s) s.leave(room.id);
+      }
       this.socketToMatch.delete(room.white.socketId);
       this.socketToMatch.delete(room.black.socketId);
       this.matches.delete(room.id);
+      this.broadcastLiveMatches();
     }
   }
 }

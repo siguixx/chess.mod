@@ -102,6 +102,9 @@ class ChessModApp {
     this.selectedTimedMinutes = 3;
     this.inQueue = false;
     this.queueTimeMinutes = 10;
+    this.queueBetMods = 0;
+    this.livePvpMatches = [];
+    this.pending2FAChallengeToken = null;
     this.queueTimerInterval = null;
     this.queueStartedAt = 0;
 
@@ -255,16 +258,36 @@ class ChessModApp {
     if (screenName === 'social') this.loadSocialScreen();
     if (screenName === 'moderation') this.loadModerationScreen();
     if (screenName === 'customize') this.renderCosmeticsScreen();
-    if (screenName === 'profile') this.renderProfileScreen();
+    if (screenName === 'profile') {
+      this.renderProfileScreen();
+      this.loadSecurityPanel();
+    }
     if (screenName === 'stats') this.renderStatsScreen();
-    if (screenName === 'multiplayer') this.renderMultiplayerScreen();
+    if (screenName === 'multiplayer') {
+      this.renderMultiplayerScreen();
+      if (this.user) {
+        mpSocket.connect();
+        mpSocket.emit('live:list');
+      }
+    }
   }
 
   bindMenuEvents() {
     const on = (id, ev, fn) => { const el = document.getElementById(id); if (el) el.addEventListener(ev, fn); };
 
     document.querySelectorAll('.nav-btn').forEach((btn) => {
-      btn.addEventListener('click', () => this.switchScreen(btn.dataset.screen));
+      btn.addEventListener('click', () => {
+        this.switchScreen(btn.dataset.screen);
+        btn.scrollIntoView?.({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      });
+    });
+
+    // Flechas táctiles de desplazamiento horizontal del menú en celular
+    on('btn-nav-left', 'click', () => {
+      document.getElementById('main-nav-bar')?.scrollBy({ left: -160, behavior: 'smooth' });
+    });
+    on('btn-nav-right', 'click', () => {
+      document.getElementById('main-nav-bar')?.scrollBy({ left: 160, behavior: 'smooth' });
     });
 
     // === 1. JUGAR (EXACTAMENTE 3 MODOS: Partida Rápida, Vs IA, Contra el Tiempo) ===
@@ -298,15 +321,27 @@ class ChessModApp {
       this.battle.startClassicMatch({ difficulty: 3, label: `Contra el Tiempo (${tag})`, minutes: this.selectedTimedMinutes });
     });
 
-    // === 2. MULTIJUGADOR ===
+    // === 2. MULTIJUGADOR (APUESTAS DE MODS + ESPECTEAR EN VIVO) ===
     document.querySelectorAll('#mp-time-pills .time-opt').forEach((b) => {
       b.addEventListener('click', () => {
         this.queueTimeMinutes = parseInt(b.dataset.mins, 10);
         document.querySelectorAll('#mp-time-pills .time-opt').forEach((x) => x.classList.toggle('active', x === b));
       });
     });
+    document.querySelectorAll('#mp-bet-pills .time-opt').forEach((b) => {
+      b.addEventListener('click', () => {
+        this.queueBetMods = parseInt(b.dataset.bet, 10) || 0;
+        document.querySelectorAll('#mp-bet-pills .time-opt').forEach((x) => x.classList.toggle('active', x === b));
+      });
+    });
     on('btn-mp-find', 'click', () => this.toggleMatchmaking());
     on('btn-mp-open-auth', 'click', () => this.openAuthModal('login'));
+    on('btn-refresh-live-matches', 'click', () => {
+      if (this.user) {
+        mpSocket.connect();
+        mpSocket.emit('live:list');
+      }
+    });
 
     // === 4. PERFIL Y AUTENTICACIÓN ===
     on('btn-sidebar-auth', 'click', () => this.user ? this.switchScreen('profile') : this.openAuthModal('login'));
@@ -485,6 +520,14 @@ class ChessModApp {
         const identifier = document.getElementById('login-identifier').value.trim();
         const password = document.getElementById('login-password').value;
         const res = await api.login({ identifier, password });
+        if (res.requires2FA && res.challengeToken) {
+          this.pending2FAChallengeToken = res.challengeToken;
+          document.getElementById('form-login')?.classList.add('hidden');
+          document.getElementById('form-login-2fa')?.classList.remove('hidden');
+          document.getElementById('login-2fa-code')?.focus();
+          showToast('🔐 Ingresa tu código 2FA (6 dígitos) o un código de respaldo.', 'info');
+          return;
+        }
         this.setUser(res.user);
         mpSocket.connect();
         document.getElementById('modal-auth')?.classList.remove('open');
@@ -492,6 +535,129 @@ class ChessModApp {
       } catch (err) {
         showToast(err.message, 'error');
       }
+    });
+    on('btn-cancel-2fa', 'click', () => {
+      this.pending2FAChallengeToken = null;
+      document.getElementById('form-login-2fa')?.classList.add('hidden');
+      document.getElementById('form-login')?.classList.remove('hidden');
+    });
+    on('form-login-2fa', 'submit', async (e) => {
+      e.preventDefault();
+      try {
+        const code = document.getElementById('login-2fa-code').value.trim();
+        const res = await api.login2FA(this.pending2FAChallengeToken, code);
+        this.pending2FAChallengeToken = null;
+        document.getElementById('form-login-2fa')?.classList.add('hidden');
+        document.getElementById('form-login')?.classList.remove('hidden');
+        document.getElementById('login-2fa-code').value = '';
+        this.setUser(res.user);
+        mpSocket.connect();
+        document.getElementById('modal-auth')?.classList.remove('open');
+        showToast(`🔐 Acceso 2FA verificado. ¡Bienvenido, ${res.user.username}!`, 'success');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
+    // Medidor en vivo de fortaleza de contraseña al registrar
+    on('reg-password', 'input', (e) => {
+      const pw = e.target.value || '';
+      const el = document.getElementById('reg-pw-strength');
+      if (!el) return;
+      const okLen = pw.length >= 8;
+      const okUp = /[A-Z]/.test(pw);
+      const okLo = /[a-z]/.test(pw);
+      const okNum = /[0-9]/.test(pw);
+      const okSym = /[^A-Za-z0-9]/.test(pw);
+      if (okLen && okUp && okLo && okNum && okSym) {
+        el.innerHTML = '<span style="color:#7ae0ad;">🛡️ Fortaleza: MUY ALTA (Excelente)</span>';
+      } else if (okLen && okUp && okLo && okNum) {
+        el.innerHTML = '<span style="color:#ffd859;">🔒 Fortaleza: SEGURA (Aprobada)</span>';
+      } else {
+        const missing = [];
+        if (!okLen) missing.push('8+ chars');
+        if (!okUp) missing.push('Mayúscula');
+        if (!okLo) missing.push('minúscula');
+        if (!okNum) missing.push('número');
+        el.innerHTML = `<span style="color:#ffaca3;">⚠️ Falta: ${missing.join(', ')}</span>`;
+      }
+    });
+
+    // === SEGURIDAD AVANZADA EN PERFIL (2FA, PIN, CONTRASEÑA, CERRAR TODAS LAS SESIONES) ===
+    on('btn-sec-setup-2fa', 'click', async () => {
+      try {
+        const res = await api.setup2FA();
+        const txt = document.getElementById('sec-2fa-secret-txt');
+        if (txt) txt.textContent = res.secret;
+        document.getElementById('sec-2fa-setup-box')?.classList.remove('hidden');
+        showToast('Clave 2FA generada. Agrégala en Google Authenticator o Authy y confirma con el código.', 'info');
+      } catch (err) { showToast(err.message, 'error'); }
+    });
+    on('btn-sec-copy-secret', 'click', () => {
+      const txt = document.getElementById('sec-2fa-secret-txt')?.textContent?.trim();
+      if (txt) {
+        navigator.clipboard?.writeText(txt).catch(() => {});
+        showToast('Clave secreta 2FA copiada.', 'success');
+      }
+    });
+    on('btn-sec-verify-2fa', 'click', async () => {
+      try {
+        const code = document.getElementById('sec-2fa-verify-code')?.value.trim();
+        const res = await api.verify2FA(code);
+        this.setUser(res.user);
+        document.getElementById('sec-2fa-setup-box')?.classList.add('hidden');
+        const bList = document.getElementById('sec-backup-codes-list');
+        if (bList && res.backupCodes) {
+          bList.innerHTML = res.backupCodes.map((c) => `<div>• ${c}</div>`).join('');
+          document.getElementById('sec-backup-codes-box')?.classList.remove('hidden');
+        }
+        this.loadSecurityPanel();
+        showToast('🛡️ ¡2FA activado! Guarda tus 6 códigos de respaldo en un lugar seguro.', 'success');
+      } catch (err) { showToast(err.message, 'error'); }
+    });
+    on('btn-sec-disable-2fa', 'click', async () => {
+      const password = window.prompt('Ingresa tu contraseña actual para desactivar 2FA:');
+      if (!password) return;
+      const code = window.prompt('Ingresa un código 2FA actual (6 dígitos) o código de respaldo:');
+      if (!code) return;
+      try {
+        const res = await api.disable2FA(password, code);
+        this.setUser(res.user);
+        this.loadSecurityPanel();
+        showToast('2FA desactivado.', 'info');
+      } catch (err) { showToast(err.message, 'error'); }
+    });
+    on('btn-save-sec-pin', 'click', async () => {
+      try {
+        const pin = document.getElementById('input-sec-pin')?.value.trim() || '';
+        const res = await api.setSecurityPin(pin);
+        document.getElementById('input-sec-pin').value = '';
+        this.setUser(res.user);
+        this.loadSecurityPanel();
+        showToast(res.hasPin ? '🔑 PIN de seguridad guardado.' : 'PIN de seguridad eliminado.', 'success');
+      } catch (err) { showToast(err.message, 'error'); }
+    });
+    on('form-change-password', 'submit', async (e) => {
+      e.preventDefault();
+      try {
+        const cur = document.getElementById('input-cur-pw').value;
+        const nw = document.getElementById('input-new-pw').value;
+        const res = await api.changePassword(cur, nw);
+        e.target.reset();
+        this.setUser(res.user);
+        this.loadSecurityPanel();
+        showToast('🔒 Contraseña actualizada y sesiones antiguas cerradas.', 'success');
+      } catch (err) { showToast(err.message, 'error'); }
+    });
+    on('btn-revoke-sessions', 'click', async () => {
+      try {
+        const res = await api.revokeAllSessions();
+        this.setUser(res.user);
+        mpSocket.disconnect();
+        mpSocket.connect();
+        this.loadSecurityPanel();
+        showToast('🔒 Todas las sesiones en otros dispositivos han sido cerradas.', 'success');
+      } catch (err) { showToast(err.message, 'error'); }
     });
     on('form-register', 'submit', async (e) => {
       e.preventDefault();
@@ -678,6 +844,19 @@ class ChessModApp {
     mpSocket.on('private:error', ({ error }) => {
       showToast(error || 'Error en Sala Privada.', 'error');
     });
+
+    mpSocket.on('live:matches', ({ matches }) => {
+      this.livePvpMatches = Array.isArray(matches) ? matches : [];
+      this.renderLiveMatchesList();
+    });
+
+    mpSocket.on('match:spectate_start', (payload) => {
+      this.battle.startSpectatorMode(payload);
+    });
+
+    mpSocket.on('spectate:error', ({ error }) => {
+      showToast(error || 'No se pudo espectear la partida.', 'error');
+    });
   }
 
   parseEditorMod() {
@@ -704,8 +883,67 @@ class ChessModApp {
       const selVal = document.getElementById('private-mod-select')?.value || '';
       if (selVal) chosenMod = this.savedMods.find((m) => m.id === selVal) || null;
     }
+    const betMods = parseInt(document.getElementById('private-bet-select')?.value || '0', 10) || 0;
     mpSocket.connect();
-    mpSocket.emit('private:create', { timeMinutes: this.queueTimeMinutes, customMod: chosenMod });
+    mpSocket.emit('private:create', { timeMinutes: this.queueTimeMinutes, betMods, customMod: chosenMod });
+  }
+
+  async loadSecurityPanel() {
+    if (!this.user) return;
+    try {
+      const st = await api.getSecurityStatus();
+      const b2 = document.getElementById('sec-2fa-badge');
+      const bp = document.getElementById('sec-pin-badge');
+      if (b2) {
+        b2.textContent = st.totpEnabled ? `2FA: ACTIVO (${st.backupCodesRemaining} resp.)` : '2FA: Desactivado';
+        b2.className = `pill ${st.totpEnabled ? 'jade' : 'muted'}`;
+      }
+      if (bp) {
+        bp.textContent = st.hasPin ? 'PIN: Activo' : 'PIN: Sin PIN';
+        bp.className = `pill ${st.hasPin ? 'jade' : 'muted'}`;
+      }
+      document.getElementById('btn-sec-setup-2fa')?.classList.toggle('hidden', Boolean(st.totpEnabled));
+      document.getElementById('btn-sec-disable-2fa')?.classList.toggle('hidden', !st.totpEnabled);
+
+      const evBox = document.getElementById('sec-events-list');
+      if (evBox) {
+        evBox.innerHTML = st.events?.length
+          ? st.events.map((ev) => `<div style="padding:5px 8px;border-radius:6px;background:rgba(12,11,9,0.7);border-left:2px solid var(--gold);"><strong>${ev.type}</strong> · ${ev.details} <span style="color:var(--text-muted);font-size:0.68rem;">(${new Date(ev.createdAt).toLocaleString('es-PE')})</span></div>`).join('')
+          : '<span style="color:var(--text-muted);">Sin eventos registrados aún.</span>';
+      }
+    } catch {}
+  }
+
+  renderLiveMatchesList() {
+    const card = document.getElementById('mp-live-spectate-card');
+    const list = document.getElementById('mp-live-matches-list');
+    if (card) card.classList.toggle('hidden', !this.user);
+    if (!list) return;
+    if (!this.livePvpMatches.length) {
+      list.innerHTML = '<p style="font-size:0.8rem;color:var(--text-muted);">No hay partidas PvP en curso en este instante. Cuando dos jugadores se enfrenten aparecerán aquí para espectear.</p>';
+      return;
+    }
+    list.innerHTML = this.livePvpMatches.map((m) => `
+      <div class="social-row-card">
+        <div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <strong>${m.white.username} (${m.white.elo})</strong>
+            <span style="color:var(--gold);">vs</span>
+            <strong>${m.black.username} (${m.black.elo})</strong>
+            ${m.betPot > 0 ? `<span class="pill">🪙 Bote ${m.betPot}</span>` : ''}
+            ${m.customModName ? `<span class="pill muted">🧩 ${m.customModName}</span>` : ''}
+          </div>
+          <div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px;">Turno ${m.turnNumber} · 👁️ ${m.spectatorsCount} espectando</div>
+        </div>
+        <button class="btn btn-sm btn-gold" data-spectate-match="${m.matchId}">👁️ Espectear</button>
+      </div>`).join('');
+
+    list.querySelectorAll('[data-spectate-match]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        mpSocket.connect();
+        mpSocket.emit('match:spectate', { matchId: btn.dataset.spectateMatch });
+      });
+    });
   }
 
   renderModsWorkshop() {
@@ -768,7 +1006,7 @@ class ChessModApp {
       this.renderMultiplayerScreen();
     } else {
       mpSocket.connect();
-      mpSocket.emit('queue:join', { timeMinutes: this.queueTimeMinutes });
+      mpSocket.emit('queue:join', { timeMinutes: this.queueTimeMinutes, betMods: this.queueBetMods || 0 });
     }
   }
 
@@ -1080,6 +1318,7 @@ class ChessModApp {
     const codeDisp = document.getElementById('private-room-code-display');
     if (waitBox) waitBox.classList.toggle('hidden', !this.activePrivateRoomCode);
     if (codeDisp && this.activePrivateRoomCode) codeDisp.textContent = this.activePrivateRoomCode;
+    this.renderLiveMatchesList();
   }
 
   renderCampaignScreen() {

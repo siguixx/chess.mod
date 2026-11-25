@@ -394,6 +394,9 @@ html, body {
     position: sticky !important;
     top: 0 !important;
     z-index: 60 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
     height: auto !important;
     flex-direction: column !important;
     border-right: none !important;
@@ -401,11 +404,15 @@ html, body {
     padding: 8px 10px 6px !important;
     gap: 8px !important;
     background: rgba(14, 13, 11, 0.97) !important;
+    box-sizing: border-box !important;
   }
   .menu-sidebar > div:first-child {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
   }
   .brand-logo-header {
     padding: 0 0 6px !important;
@@ -421,6 +428,8 @@ html, body {
     flex-direction: row !important;
     align-items: center !important;
     justify-content: space-between !important;
+    width: 100% !important;
+    min-width: 0 !important;
   }
   .sidebar-user-top {
     flex: 1;
@@ -435,25 +444,64 @@ html, body {
     font-size: 0.72rem !important;
     flex-shrink: 0;
   }
+  .nav-scroll-wrap {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .nav-scroll-arrow {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 32px;
+    border-radius: 7px;
+    border: 1px solid var(--border-stone);
+    background: rgba(28, 25, 20, 0.96);
+    color: var(--gold-bright);
+    font-size: 1rem;
+    font-weight: 800;
+    flex: 0 0 auto;
+    cursor: pointer;
+    user-select: none;
+  }
   .main-nav {
     display: flex !important;
     flex-direction: row !important;
     flex-wrap: nowrap !important;
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
     overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch;
-    gap: 5px !important;
-    padding-bottom: 2px !important;
-    scrollbar-width: none;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-x !important;
+    overscroll-behavior-x: contain !important;
+    gap: 6px !important;
+    padding: 2px 2px 6px !important;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(207, 166, 76, 0.55) transparent;
   }
   .main-nav::-webkit-scrollbar {
-    display: none;
+    height: 4px;
+    display: block !important;
+  }
+  .main-nav::-webkit-scrollbar-thumb {
+    background: rgba(207, 166, 76, 0.55);
+    border-radius: 99px;
   }
   .nav-btn {
     white-space: nowrap !important;
     flex: 0 0 auto !important;
-    padding: 7px 10px !important;
+    width: auto !important;
+    padding: 7px 11px !important;
     font-size: 0.76rem !important;
     gap: 6px !important;
+    touch-action: pan-x !important;
   }
   .nav-ico {
     width: auto !important;

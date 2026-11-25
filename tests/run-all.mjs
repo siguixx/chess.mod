@@ -33,6 +33,7 @@ import {
   applyMittensAssimilationIfActive
 } from '../shared/mods/modRuntime.js';
 import { createChessServer } from '../server/index.js';
+import { generateTotpCode } from '../server/auth/securityService.js';
 
 let passed = 0;
 let failed = 0;
@@ -1087,6 +1088,12 @@ try {
     assert.equal(modData.user.unlockedCosmetics.includes('power_blacky_claw'), true);
     assert.equal(modData.user.unlockedCosmetics.includes('power_free_mittens'), true);
     assert.equal(modData.user.unlockedCosmetics.includes('power_vip_golden_freeze'), true);
+    // SOLO el Moderador tiene los 25 niveles (5 capítulos × 5) del Modo Historia completados
+    const modStoryDone = CHAPTER_ORDER.reduce((sum, cid) => sum + (modData.user.campaigns?.[cid]?.completedLevels?.length || 0), 0);
+    assert.equal(modStoryDone, 25, 'El Moderador debe tener los 25 niveles del Modo Historia completados');
+    const bobProfileCheck = await (await fetch(`${url}/api/profile`, { headers: bobH })).json();
+    const bobStoryDone = CHAPTER_ORDER.reduce((sum, cid) => sum + (bobProfileCheck.user.campaigns?.[cid]?.completedLevels?.length || 0), 0);
+    assert.equal(bobStoryDone, 0, 'Un jugador normal NO debe tener el Modo Historia completado');
 
     const modH = { Authorization: `Bearer ${modData.token}`, 'Content-Type': 'application/json' };
     const ovRes = await fetch(`${url}/api/mod/overview`, { headers: modH });
@@ -1124,6 +1131,160 @@ try {
     });
     assert.equal(unbanRes.status, 200);
     assert.equal((await fetch(`${url}/api/profile`, { headers: bobH })).status, 200);
+  });
+
+  await test('Seguridad Avanzada (contraseña fuerte, 2FA TOTP + códigos de respaldo, cerrar todas las sesiones y anti fuerza bruta)', async () => {
+    // Contraseña débil rechazada con 400 WEAK_PASSWORD
+    const weakReg = await fetch(`${url}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'WeakUser', email: 'weak@chessmod.test', password: 'abc' })
+    });
+    assert.equal(weakReg.status, 400);
+    assert.equal((await weakReg.json()).code, 'WEAK_PASSWORD');
+
+    // Crear cuenta segura + configurar 2FA TOTP real
+    const secReg = await fetch(`${url}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'SecMaster', email: 'secmaster@chessmod.test', password: 'SecurePass99' })
+    });
+    assert.equal(secReg.status, 201);
+    const { token: secTok1 } = await secReg.json();
+    const secH1 = { Authorization: `Bearer ${secTok1}`, 'Content-Type': 'application/json' };
+
+    const setupRes = await (await fetch(`${url}/api/auth/security/2fa/setup`, { method: 'POST', headers: secH1, body: '{}' })).json();
+    assert.ok(setupRes.secret && setupRes.otpauthUrl.startsWith('otpauth://totp/'));
+
+    const liveCode = generateTotpCode(setupRes.secret);
+    const verRes = await fetch(`${url}/api/auth/security/2fa/verify`, {
+      method: 'POST',
+      headers: secH1,
+      body: JSON.stringify({ code: liveCode })
+    });
+    assert.equal(verRes.status, 200);
+    const verData = await verRes.json();
+    assert.equal(verData.backupCodes.length, 6);
+
+    // Login exige 2FA -> código TOTP o código de respaldo concede acceso
+    const lStep1 = await (await fetch(`${url}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: 'SecMaster', password: 'SecurePass99' })
+    })).json();
+    assert.equal(lStep1.requires2FA, true);
+    assert.ok(lStep1.challengeToken);
+
+    const lStep2 = await fetch(`${url}/api/auth/login/2fa`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challengeToken: lStep1.challengeToken, code: verData.backupCodes[0] })
+    });
+    assert.equal(lStep2.status, 200);
+    const l2Data = await lStep2.json();
+    assert.equal(l2Data.usedBackup, true);
+
+    // Cerrar todas las sesiones invalida el token anterior (secTok1 -> 401 SESSION_REVOKED)
+    const revRes = await fetch(`${url}/api/auth/security/revoke-sessions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${l2Data.token}`, 'Content-Type': 'application/json' },
+      body: '{}'
+    });
+    assert.equal(revRes.status, 200);
+    const oldTokFail = await fetch(`${url}/api/profile`, { headers: secH1 });
+    assert.equal(oldTokFail.status, 401);
+    assert.equal((await oldTokFail.json()).code, 'SESSION_REVOKED');
+
+    // Anti fuerza bruta: 6 intentos fallidos -> 7mo devuelve 429 RATE_LIMITED
+    for (let i = 0; i < 6; i++) {
+      const fail = await fetch(`${url}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: 'SecMaster', password: 'WrongPassword1' })
+      });
+      assert.equal(fail.status, 401);
+    }
+    const locked = await fetch(`${url}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: 'SecMaster', password: 'SecurePass99' })
+    });
+    assert.equal(locked.status, 429);
+    assert.equal((await locked.json()).code, 'RATE_LIMITED');
+  });
+
+  await test('Apuestas de Mods (escrow PvP) y Modo Espectador EN VIVO (solo contra otros jugadores, solo lectura)', async () => {
+    const rP1 = await (await fetch(`${url}/api/auth/register`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'BetterOne', email: 'better1@chessmod.test', password: 'Password123' })
+    })).json();
+    const rP2 = await (await fetch(`${url}/api/auth/register`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'BetterTwo', email: 'better2@chessmod.test', password: 'Password123' })
+    })).json();
+    const rSpec = await (await fetch(`${url}/api/auth/register`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'SpectatorPro', email: 'spec@chessmod.test', password: 'Password123' })
+    })).json();
+
+    const s1 = ioClient(url, { auth: { token: rP1.token }, transports: ['websocket'] });
+    const s2 = ioClient(url, { auth: { token: rP2.token }, transports: ['websocket'] });
+    const sSpec = ioClient(url, { auth: { token: rSpec.token }, transports: ['websocket'] });
+    await Promise.all([
+      new Promise((res) => s1.on('connect', res)),
+      new Promise((res) => s2.on('connect', res)),
+      new Promise((res) => sSpec.on('connect', res))
+    ]);
+
+    // 1. Partida PvP con apuesta de 50 Mods (bote total = 100 Mods)
+    const pF1 = new Promise((res) => s1.once('match:found', res));
+    const pF2 = new Promise((res) => s2.once('match:found', res));
+    s1.emit('queue:join', { timeMinutes: 10, betMods: 50 });
+    s2.emit('queue:join', { timeMinutes: 10, betMods: 50 });
+    const [m1, m2] = await Promise.all([pF1, pF2]);
+    assert.equal(m1.betMods, 50);
+    assert.equal(m1.betPot, 100);
+    assert.equal(m1.white.mods, 50, 'Al iniciar se retienen 50 Mods de escrow (100 - 50 = 50)');
+    assert.equal(m1.black.mods, 50);
+
+    // 2. Espectador lista partidas PvP en vivo y entra a espectear
+    const pLive = new Promise((res) => sSpec.once('live:matches', res));
+    sSpec.emit('live:list');
+    const liveData = await pLive;
+    assert.ok(liveData.matches.some((x) => x.matchId === m1.matchId && x.betPot === 100));
+
+    const pSpecStart = new Promise((res) => sSpec.once('match:spectate_start', res));
+    sSpec.emit('match:spectate', { matchId: m1.matchId });
+    const specStart = await pSpecStart;
+    assert.equal(specStart.matchId, m1.matchId);
+    assert.equal(specStart.spectatorsCount, 1);
+
+    // Espectador NO puede mover piezas (solo lectura)
+    const pSpecErr = new Promise((res) => sSpec.once('match:error', res));
+    sSpec.emit('match:move', { matchId: m1.matchId, fr: 6, fc: 4, tr: 4, tc: 4 });
+    const specErr = await pSpecErr;
+    assert.ok(specErr.error.includes('espectador') || specErr.error.includes('jugadores'));
+
+    // Espectador SÍ recibe movimientos reales en vivo
+    const wSock = m1.yourColor === 'w' ? s1 : s2;
+    const bSock = m1.yourColor === 'b' ? s1 : s2;
+    const pSpecMove = new Promise((res) => sSpec.once('match:state', res));
+    wSock.emit('match:move', { matchId: m1.matchId, fr: 6, fc: 4, tr: 4, tc: 4 });
+    const specSt = await pSpecMove;
+    assert.equal(specSt.state.board[4][4]?.type, 'P', 'El espectador ve la jugada en tiempo real');
+
+    // Negras se rinden -> Blancas ganan todo el bote (+100 Mods del escrow -> saldo final 150 + mods base de victoria)
+    const pEndW = new Promise((res) => wSock.once('match:ended', res));
+    bSock.emit('match:resign', { matchId: m1.matchId });
+    const endW = await pEndW;
+    assert.equal(endW.whiteBetNet, 50);
+    assert.equal(endW.blackBetNet, -50);
+    assert.equal(endW.whiteProfile.mods, 100 + 50 + endW.whiteModsGained);
+    assert.equal(endW.blackProfile.mods, 100 - 50 + endW.blackModsGained);
+
+    s1.disconnect();
+    s2.disconnect();
+    sSpec.disconnect();
   });
 } finally {
   await server.stop();
