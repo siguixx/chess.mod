@@ -37,6 +37,113 @@ function chessVisorEyes(eyeColor = '#efd083', angryColor = '#ff5b49') {
 }
 
 export function getBossPortraitSVG(bossId) {
+  // === ENTRENADOR INICIAL: YAM — GATO SIAMÉS ===
+  if (bossId === 'trainer_yam') {
+    return `
+      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Retrato de Yam, Entrenador Gato Siamés">
+        <defs>
+          <radialGradient id="yamBg" cx="50%" cy="38%" r="65%">
+            <stop offset="0%" stop-color="#3c2f24"/>
+            <stop offset="100%" stop-color="#17120e"/>
+          </radialGradient>
+          <radialGradient id="yamFaceMask" cx="50%" cy="54%" r="48%">
+            <stop offset="0%" stop-color="#3a281d"/>
+            <stop offset="68%" stop-color="#5c4130"/>
+            <stop offset="100%" stop-color="#e8d6be" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <rect width="240" height="240" fill="url(#yamBg)"/>
+        <circle class="portrait-aura-ring" cx="120" cy="118" r="94" fill="none" stroke="rgba(239,208,131,0.34)" stroke-width="2" stroke-dasharray="9 6"/>
+        <!-- Cuerpo crema elegante de Gato Siamés con pañuelo/collar dorado -->
+        <path d="M44 240 C52 184 80 166 120 166 C160 166 188 184 196 240 Z" fill="#eadbc4" stroke="#5a402e" stroke-width="2.2"/>
+        <path d="M84 172 Q120 192 156 172 L152 184 Q120 202 88 184 Z" fill="#cfa64c" stroke="#473210" stroke-width="1.8"/>
+        <circle cx="120" cy="196" r="10" fill="#ffd859" stroke="#3b280b" stroke-width="1.8"/>
+        <text x="120" y="201" text-anchor="middle" font-size="13" fill="#231705">♟</text>
+        <!-- Orejas puntiagudas marrón chocolate típicas de Gato Siamés -->
+        <g class="portrait-float-part">
+          <polygon points="62,102 48,34 102,68" fill="#3b281c" stroke="#22150e" stroke-width="2.2" stroke-linejoin="round"/>
+          <polygon points="64,92 56,48 92,72" fill="#8b6650" opacity="0.55"/>
+          <polygon points="178,102 192,34 138,68" fill="#3b281c" stroke="#22150e" stroke-width="2.2" stroke-linejoin="round"/>
+          <polygon points="176,92 184,48 148,72" fill="#8b6650" opacity="0.55"/>
+          <!-- Cabeza crema suave + máscara siamesa oscura en hocico y ojos -->
+          <ellipse cx="120" cy="116" rx="58" ry="52" fill="#f2e4ce" stroke="#4d3526" stroke-width="2.4"/>
+          <ellipse cx="120" cy="126" rx="44" ry="34" fill="url(#yamFaceMask)"/>
+          <!-- Naricita triangular oscura y boquita amable :3 -->
+          <polygon points="113,129 127,129 120,137" fill="#2b1b12"/>
+          <path d="M120 137 Q114 146 106 142 M120 137 Q126 146 134 142" fill="none" stroke="#2b1b12" stroke-width="2.2" stroke-linecap="round"/>
+          <!-- Bigotes finos -->
+          <path d="M78 128 L52 124 M78 135 L50 138 M162 128 L188 124 M162 135 L190 138" stroke="#f7efe2" stroke-width="1.6" stroke-linecap="round" opacity="0.85"/>
+        </g>
+        <!-- Ojos azul zafiro brillantes característicos del Siamés -->
+        <g class="boss-pupil-group js-tracked-eyes">
+          <ellipse cx="96" cy="110" rx="13" ry="11" fill="#38bdf8" stroke="#1b263b" stroke-width="2"/>
+          <ellipse cx="144" cy="110" rx="13" ry="11" fill="#38bdf8" stroke="#1b263b" stroke-width="2"/>
+          <ellipse cx="96" cy="110" rx="6" ry="8" fill="#0d1b2a"/>
+          <ellipse cx="144" cy="110" rx="6" ry="8" fill="#0d1b2a"/>
+          <circle cx="92" cy="106" r="3" fill="#ffffff"/>
+          <circle cx="140" cy="106" r="3" fill="#ffffff"/>
+        </g>
+      </svg>`;
+  }
+
+  // === ENTRENADOR 2: KAEL — GUARDIÁN TÁCTICO MAYA ===
+  if (bossId === 'trainer_kael') {
+    return `
+      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Retrato de Kael, Entrenador Maya">
+        <rect width="240" height="240" fill="#13221a"/>
+        <circle class="portrait-aura-ring" cx="120" cy="120" r="92" fill="none" stroke="rgba(81,150,116,0.38)" stroke-width="2.2" stroke-dasharray="10 6"/>
+        <path d="M36 240 L62 174 H178 L204 240 Z" fill="#1f4432" stroke="#efd083" stroke-width="2.2"/>
+        <path d="M90 176 L120 210 L150 176" fill="none" stroke="#ffd859" stroke-width="3"/>
+        <g class="portrait-float-part">
+          <path d="M64 88 L82 40 L108 62 L120 26 L132 62 L158 40 L176 88 Z" fill="#3c825f" stroke="#efd083" stroke-width="2.2"/>
+          <circle cx="120" cy="64" r="9" fill="#ffd859" stroke="#182b21" stroke-width="2"/>
+          <rect x="74" y="88" width="92" height="82" rx="22" fill="#2c3e33" stroke="#cfa64c" stroke-width="2.6"/>
+          <path d="M96 150 Q120 160 144 150" fill="none" stroke="#efd083" stroke-width="2.6" stroke-linecap="round"/>
+        </g>
+        ${chessVisorEyes('#7ae0ad', '#ffd859')}
+      </svg>`;
+  }
+
+  // === ENTRENADOR 3: PIXEL — INGENIERA GLITCH ===
+  if (bossId === 'trainer_pixel') {
+    return `
+      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Retrato de Pixel, Entrenadora Glitch">
+        <rect width="240" height="240" fill="#111226"/>
+        <path d="M0 40 H240 M0 190 H240" stroke="#22d3ee" stroke-width="1.5" opacity="0.28"/>
+        <circle class="portrait-aura-ring" cx="120" cy="120" r="90" fill="none" stroke="#c026d3" stroke-width="2" stroke-dasharray="12 6"/>
+        <path d="M38 240 L66 172 H174 L202 240 Z" fill="#1e1b4b" stroke="#38bdf8" stroke-width="2.2"/>
+        <g class="portrait-float-part">
+          <path d="M68 100 C68 50 92 38 120 38 C148 38 172 50 172 100 L180 146 L160 132 L156 168 L120 178 L84 168 L80 132 L60 146 Z" fill="#2e1065" stroke="#c084fc" stroke-width="2.4"/>
+          <rect x="74" y="96" width="92" height="34" rx="10" fill="#090d1f" stroke="#22d3ee" stroke-width="2.6"/>
+          <path d="M100 152 Q120 160 140 152" fill="none" stroke="#38bdf8" stroke-width="2.4" stroke-linecap="round"/>
+        </g>
+        ${chessVisorEyes('#38f8ff', '#f472b6')}
+      </svg>`;
+  }
+
+  // === ENTRENADOR 5: ASTRA — NAVEGANTE GALÁCTICA ===
+  if (bossId === 'trainer_astra') {
+    return `
+      <svg class="boss-portrait-svg" viewBox="0 0 240 240" aria-label="Retrato de Astra, Entrenadora Galáctica">
+        <defs>
+          <radialGradient id="astraBg" cx="50%" cy="40%" r="65%">
+            <stop offset="0%" stop-color="#3b2780"/>
+            <stop offset="100%" stop-color="#0b081c"/>
+          </radialGradient>
+        </defs>
+        <rect width="240" height="240" fill="url(#astraBg)"/>
+        <circle cx="38" cy="46" r="2.2" fill="#fff7cc"/><circle cx="204" cy="54" r="2" fill="#c4b5fd"/><circle cx="192" cy="182" r="2.2" fill="#fff"/>
+        <ellipse class="portrait-aura-ring" cx="120" cy="116" rx="92" ry="26" fill="none" stroke="#efd083" stroke-width="2" transform="rotate(-18 120 116)"/>
+        <path d="M36 240 C48 180 78 164 120 164 C162 164 192 180 204 240 Z" fill="#1e154a" stroke="#a78bfa" stroke-width="2.2"/>
+        <g class="portrait-float-part">
+          <path d="M72 90 L98 34 L120 56 L142 34 L168 90 Z" fill="#4c1d95" stroke="#ffd859" stroke-width="2"/>
+          <circle cx="120" cy="116" r="46" fill="#2e1e6b" stroke="#ddd6fe" stroke-width="2.6"/>
+          <circle cx="120" cy="64" r="6" fill="#ffd859"/>
+        </g>
+        ${chessVisorEyes('#fde68a', '#c084fc')}
+      </svg>`;
+  }
+
   // === CAP. 2 NIVEL 5: FREE MITTENS — SABIO ANCESTRAL DE LA GALAXIA CON CADENAS ROTAS ===
   if (bossId === 'free_mittens') {
     return `

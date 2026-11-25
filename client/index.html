@@ -125,16 +125,26 @@
           </div>
         </div>
 
-        <!-- ENTRENADORES OFICIALES (INCLUYENDO BLACKY 3200 ELO) -->
+        <!-- ENTRENADORES MENTORES (ENSEÑAN A JUGAR Y A USAR CADA PODER · STARTER: YAM GATO SIAMÉS) -->
         <div class="panel-card" style="margin-top:18px;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
             <div>
-              <div class="screen-kicker" style="margin-bottom:2px;">ELIGE TU ENTRENADOR · 400 A 3200 ELO</div>
-              <h2 style="font-family:var(--font-display);color:var(--gold-bright);font-size:1.2rem;">🎓 Entrenadores de CHESS.MOD</h2>
+              <div class="screen-kicker" style="margin-bottom:2px;">MENTORES QUE ENSEÑAN · CON PODER INCLUIDO PARA PRACTICAR</div>
+              <h2 style="font-family:var(--font-display);color:var(--gold-bright);font-size:1.2rem;">🎓 Tus Entrenadores (No pelean contra ti, te enseñan)</h2>
             </div>
-            <button id="btn-open-trainer-modal" class="btn btn-sm btn-gold">🐾 Ver selector completo</button>
+            <button id="btn-open-trainer-modal" class="btn btn-sm btn-gold">🐱 Cambiar Entrenador</button>
           </div>
           <div id="play-trainers-grid" class="trainers-grid"></div>
+        </div>
+
+        <!-- MODOS DE JUEGO ESPECIALES Y ABSURDOS (6×6, PODERES RANDOM, DAMAS, TERREMOTO, TITANES 2×2) -->
+        <div class="panel-card" style="margin-top:18px;">
+          <div style="margin-bottom:12px;">
+            <div class="screen-kicker" style="margin-bottom:2px;">MODOS ESPECIALES Y ABSURDOS</div>
+            <h2 style="font-family:var(--font-display);color:var(--gold-bright);font-size:1.2rem;">🎲 Modos de Juego Locos (6×6, Poderes Random y Más)</h2>
+            <p style="font-size:0.8rem;color:var(--text-muted);margin-top:3px;">Tableros alternativos, ruleta de poderes OP cada turno, lluvia de Damas, terremotos y guerra de Fichas Grandes 2×2.</p>
+          </div>
+          <div id="special-modes-grid" class="trainers-grid"></div>
         </div>
       </section>
 
@@ -1054,15 +1064,15 @@
     </div>
   </div>
 
-  <!-- SELECTOR DE ENTRENADORES AL ENTRAR (INCLUYE BLACKY 3200 ELO) -->
+  <!-- SELECTOR DE ENTRENADORES AL ENTRAR (STARTER: YAM GATO SIAMÉS · ENSEÑAN PODERES) -->
   <div id="modal-trainer-picker" class="modal-backdrop">
-    <div class="modal-box" style="max-width:760px;text-align:left;">
+    <div class="modal-box" style="max-width:780px;text-align:left;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
         <span class="pill">🎓 BIENVENIDO A CHESS.MOD</span>
         <button id="btn-close-trainer-modal" class="btn btn-sm">Ir al Menú ✕</button>
       </div>
-      <h2 style="text-align:left;margin-bottom:4px;">ELIGE TU ENTRENADOR</h2>
-      <p style="text-align:left;margin-bottom:14px;">Selecciona un entrenador para jugar de inmediato — desde 400 Elo hasta <strong>BLACKY (3200 Elo · El más difícil)</strong> — o salta al menú principal.</p>
+      <h2 style="text-align:left;margin-bottom:4px;">ELIGE TU ENTRENADOR MENTOR</h2>
+      <p style="text-align:left;margin-bottom:14px;">Tus entrenadores <strong>te enseñan a jugar con consejos en vivo y pistas gratis</strong> (no luchan contra ti). Cada uno incluye un poder distinto para que te acostumbres — empieza con <strong>🐱 Yam (Gato Siamés)</strong> o entrena hasta con <strong>🐾 BLACKY (3200 Elo)</strong>.</p>
       <div id="modal-trainers-grid" class="trainers-grid"></div>
     </div>
   </div>

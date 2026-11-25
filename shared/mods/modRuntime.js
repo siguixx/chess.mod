@@ -319,13 +319,12 @@ export function computePowerTargets(engine, powerState, side, powerDef, sourcePo
     return targets;
   }
 
-  // 4. Zarpa Traidora de Blacky / Control Mental (power_blacky_claw / corrupt_steal): roba pieza rival (no Rey; en oficial no Dama)
+  // 4. Dominio Abismal de Blacky (ULTRA OP: roba incluso Damas) / Control Mental
   if (eff === 'power_blacky_claw' || eff === 'corrupt_steal') {
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 8; c++) {
         const p = engine.board[r]?.[c];
         if (!p || p.color !== enemy || p.type === 'K') continue;
-        if (eff === 'power_blacky_claw' && p.type === 'Q') continue;
         targets.push({ tr: r, tc: c, effect: eff });
       }
     }
@@ -545,16 +544,52 @@ export function executeBattlePowerAction(engine, powerState, side, powerDef, act
     logText = `⚡ ${powerDef.name.toUpperCase()}: Una Grieta Glitch engulle a ${PIECE_NAMES[victim.type]} en ${toAlg(chosen.tr, chosen.tc)} y sella la casilla por ${powerDef.duration || 3} turnos!`;
   }
 
-  // === 6. ZARPA TRAIDORA DE BLACKY / CONTROL MENTAL (ROBO DE FICHA) ===
+  // === 6. DOMINIO ABISMAL DE BLACKY (ULTRA OP: ROBA INCLUSO DAMAS + INVOCA CABALLO + SELLA 2 CASILLAS) ===
   else if (eff === 'power_blacky_claw' || eff === 'corrupt_steal') {
     const victim = engine.board[chosen.tr][chosen.tc];
     victim.color = side;
     victim.betrayed = true;
     victim.hasMoved = true;
     delete powerState.frozenPieces[victim.id];
+
+    let extraInfo = '';
+    if (eff === 'power_blacky_claw') {
+      // Invocar un Caballo aliado en una casilla vacía cercana
+      let summonedSq = null;
+      for (let dist = 1; dist <= 3 && !summonedSq; dist++) {
+        for (let dr = -dist; dr <= dist && !summonedSq; dr++) {
+          for (let dc = -dist; dc <= dist && !summonedSq; dc++) {
+            const nr = chosen.tr + dr;
+            const nc = chosen.tc + dc;
+            if (inBounds(nr, nc) && !engine.board[nr][nc] && !isSquareBlockedByModState(powerState, nr, nc)) {
+              engine.board[nr][nc] = {
+                id: `bkAlly_${side}_${Date.now()}_${Math.floor(Math.random() * 999)}`,
+                color: side,
+                type: 'N',
+                hasMoved: true
+              };
+              summonedSq = toAlg(nr, nc);
+            }
+          }
+        }
+      }
+      // Sellar 2 casillas vacías en campo rival durante 3 turnos
+      let sealedCount = 0;
+      const sealRows = side === 'w' ? [1, 2, 3] : [6, 5, 4];
+      for (const sr of sealRows) {
+        for (let sc = 1; sc <= 6 && sealedCount < 2; sc++) {
+          if (!engine.board[sr][sc] && !isSquareBlockedByModState(powerState, sr, sc)) {
+            powerState.modRifts.push({ r: sr, c: sc, turnsLeft: 3, owner: side });
+            sealedCount++;
+          }
+        }
+      }
+      extraInfo = `${summonedSq ? ` + Caballo invocado en ${summonedSq}` : ''}${sealedCount > 0 ? ` + ${sealedCount} casillas selladas (3t)` : ''}`;
+    }
+
     sfx = 'blackyBetray';
     engine.lastMoveSquares = [[chosen.tr, chosen.tc]];
-    logText = `${powerDef.icon || '🐾'} ${powerDef.name.toUpperCase()}: ¡${PIECE_NAMES[victim.type]} en ${toAlg(chosen.tr, chosen.tc)} traiciona al rival y ahora pelea por ti!`;
+    logText = `${powerDef.icon || '🐾'} ${powerDef.name.toUpperCase()}: ¡${PIECE_NAMES[victim.type]} en ${toAlg(chosen.tr, chosen.tc)} ahora pelea por ti${extraInfo}!`;
   }
 
   // === 7. INVOCACIÓN DE PIEZA CUSTOM ===

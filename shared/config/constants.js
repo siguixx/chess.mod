@@ -22,71 +22,146 @@ export const CLAN_CREATE_COST_MODS = 150;
 
 export const TRAINERS = [
   {
-    id: 'trainer_maya_novice',
-    name: 'Aprendiz Maya',
+    id: 'trainer_yam',
+    name: 'Yam (Gato Siamés)',
+    role: 'Entrenador Inicial · Fundamentos',
     elo: 400,
-    difficulty: 1,
-    useSuperAi: false,
-    bossId: 'maya_lvl1',
-    badge: 'PRINCIPIANTE',
-    description: 'Ideal para aprender movimientos, aperturas y ganar tus primeros Mods.'
+    isStarter: true,
+    practiceAiDifficulty: 1,
+    bossId: 'trainer_yam',
+    taughtPowerId: 'power_maya_arrows',
+    taughtPowerLabel: '🏹 Lluvia de Flechas Maya',
+    badge: 'STARTER · GATO SIAMÉS',
+    description: '¡Miau! Tu entrenador inicial. Te enseña los movimientos básicos del tablero y cómo disparar ataques a distancia con Lluvia de Flechas.',
+    tips: [
+      '¡Miau! Empieza dominando el centro (e4 o d4) y desarrolla tus Caballos y Alfiles.',
+      'Prueba tu botón «🏹 Lluvia de Flechas Maya»: toca una pieza tuya y dispara a un enemigo sin moverte.',
+      'Recuerda enrocar pronto para mantener a tu Rey seguro mientras atacas con tus poderes.'
+    ]
   },
   {
-    id: 'trainer_sentinel',
-    name: 'Centinela del Templo',
+    id: 'trainer_kael',
+    name: 'Kael (Guardián Maya)',
+    role: 'Mentor de Fichas Grandes 2×2',
     elo: 900,
-    difficulty: 2,
-    useSuperAi: false,
-    bossId: 'maya_lvl2',
-    badge: 'BÁSICO',
-    description: 'Defiende el centro con orden y castiga piezas desprotegidas.'
+    practiceAiDifficulty: 2,
+    bossId: 'trainer_kael',
+    taughtPowerId: 'power_maya_pyramid',
+    taughtPowerLabel: '🏛️ Pirámide Aplastadora 2×2',
+    badge: 'FICHAS GRANDES 2×2',
+    description: 'Te enseña a controlar bloques enteros del tablero y a aplastar grupos enemigos con la Pirámide 2×2.',
+    tips: [
+      'Busca concentraciones de 2 o más piezas enemigas para aplastarlas de golpe con la Pirámide 2×2.',
+      'La Pirámide bloquea esas 4 casillas por 2 turnos: úsala para cortar ataques rivales.',
+      'Protege siempre tus piezas pesadas y aprovecha el bloqueo para coronar peones.'
+    ]
   },
   {
-    id: 'trainer_jade',
-    name: 'Estratega de Jade',
+    id: 'trainer_pixel',
+    name: 'Pixel (Ingeniera Glitch)',
+    role: 'Mentora de Grietas y Control',
     elo: 1400,
-    difficulty: 3,
-    useSuperAi: false,
-    bossId: 'maya_lvl3',
-    badge: 'INTERMEDIO',
-    description: 'Combina táctica ágil con ataques directos al enroque.'
+    practiceAiDifficulty: 2,
+    bossId: 'trainer_pixel',
+    taughtPowerId: 'power_glitch_rift',
+    taughtPowerLabel: '⚡ Grieta Destructora Glitch',
+    badge: 'CONTROL DE CASILLAS',
+    description: 'Te enseña táctica intermedia, horquillas y cómo destruir y sellar casillas críticas con Grietas Glitch.',
+    tips: [
+      'Usa la Grieta Glitch sobre una pieza enemiga clave (Torre o Alfil activo) para borrarla y cerrar su columna.',
+      'Aprovecha las casillas selladas como muros para encerrar al Rey enemigo.',
+      'Antes de mover, revisa si el rival dejó alguna pieza sin defensa.'
+    ]
   },
   {
     id: 'trainer_mittens',
     name: 'Sabio Mittens',
+    role: 'Mentor de Asimilación 1:1',
     elo: 2000,
-    difficulty: 4,
-    useSuperAi: true,
-    maxDepth: 3,
-    thinkTimeMs: 420,
+    practiceAiDifficulty: 3,
     bossId: 'free_mittens',
-    badge: 'MAESTRO',
-    description: 'Cálculo sereno y finales milimétricos. Te obliga a pensar 3 jugadas adelante.'
+    taughtPowerId: 'power_free_mittens',
+    taughtPowerLabel: '⛓️ Poder de Free Mittens',
+    badge: 'MAESTRO · ASIMILACIÓN',
+    description: 'El Sabio te entrena en intercambios tácticos y en el arte de la Asimilación 1:1 y el Chorro de Agua.',
+    tips: [
+      'Activa el Poder de Free Mittens antes de capturar una pieza fuerte: ¡renacerá como tuya en tu origen!',
+      'Si empujas una pieza enemiga con el Chorro de Agua contra el borde o contra otra pieza, queda destruida.',
+      'Calcula 2 jugadas por adelantado antes de iniciar un intercambio.'
+    ]
   },
   {
-    id: 'trainer_galaxy',
-    name: 'Maestro Galáctico',
+    id: 'trainer_astra',
+    name: 'Astra (Navegante Galáctica)',
+    role: 'Mentora de Combos Orbitales',
     elo: 2600,
-    difficulty: 5,
-    useSuperAi: true,
-    maxDepth: 4,
-    thinkTimeMs: 700,
-    bossId: 'galaxy_entity',
+    practiceAiDifficulty: 3,
+    bossId: 'trainer_astra',
+    taughtPowerId: 'power_galaxy_titan',
+    taughtPowerLabel: '🌌 Coloso Galáctico 2×2',
     badge: 'GRAN MAESTRO',
-    description: 'Súper IA táctica con libro de aperturas profesional y presión constante.'
+    description: 'Te enseña combinaciones de Gran Maestro y cómo maximizar el impacto del Coloso Galáctico 2×2 + Onda Orbital.',
+    tips: [
+      'Despliega el Coloso Galáctico 2×2 junto a peones rivales: su onda orbital destruye una pieza menor extra.',
+      'Coordina tus Torres en columnas abiertas junto con la presión del Coloso.',
+      'Cada jaque fuerza la respuesta del rival; úsalos para ganar tiempos decisivos.'
+    ]
   },
   {
     id: 'trainer_blacky',
-    name: 'BLACKY (Supremo)',
+    name: 'BLACKY (Maestro 3200)',
+    role: 'Mentor Supremo de Estrategia Extrema',
     elo: 3200,
-    difficulty: 5,
-    useSuperAi: true,
-    maxDepth: 5,
-    thinkTimeMs: 1150,
-    bossId: 'blacky_secret',
-    badge: '3200 ELO · EL MÁS DIFÍCIL',
     isHardest: true,
-    description: 'El entrenador más fuerte de CHESS.MOD (3200 Elo). Súper IA al límite con el diseño oficial de Blacky.'
+    practiceAiDifficulty: 4,
+    bossId: 'blacky_secret',
+    taughtPowerId: 'power_blacky_claw',
+    taughtPowerLabel: '🐾 Dominio Abismal de Blacky (OP)',
+    badge: '3200 ELO · MAESTRO SUPREMO',
+    description: 'El entrenador más exigente (3200 Elo) con el diseño oficial de Blacky. Te enseña cálculo extremo y el poder más OP: robar incluso la Dama rival.',
+    tips: [
+      'Grr... no desperdicies Dominio Abismal en un peón: roba la Dama o una Torre activa enemiga.',
+      'Al robar una pieza, el Caballo invocado y las 2 casillas selladas crean redes de mate imparables.',
+      'En el enlace secreto /blacky no tendré piedad contigo: practica aquí tus mejores combos.'
+    ]
+  }
+];
+
+export const SPECIAL_GAME_MODES = [
+  {
+    id: 'special_6x6',
+    name: 'Mini-Tablero 6×6',
+    icon: '📐',
+    badge: 'TABLERO 6×6',
+    description: '¡Tablero compacto 6×6! El borde exterior desaparece en el vacío: Rey, Dama, 2 Torres, Alfil, Caballo y 6 Peones en combates relámpago.'
+  },
+  {
+    id: 'special_random_powers',
+    name: 'Ruleta de Poderes Random',
+    icon: '🎰',
+    badge: 'CAOS TOTAL · CD 1t',
+    description: '¡Cada turno recibes un poder OP ALEATORIO distinto (Pirámide 2×2, Tormenta Dorada, Blacky, Mittens, Coloso, Grietas)! ¡Locura absoluta!'
+  },
+  {
+    id: 'special_all_queens',
+    name: 'Invasión de Damas',
+    icon: '👑',
+    badge: 'ABSURDO',
+    description: 'Todos tus peones y piezas menores son DAMAS (8 Damas + 2 Torres + Rey vs ejército igual). ¡Lluvia absurda de jaques desde el turno 1!'
+  },
+  {
+    id: 'special_earthquake',
+    name: 'Tablero Terremoto',
+    icon: '🌋',
+    badge: 'EVENTOS LOCOS',
+    description: 'Cada 2 turnos un terremoto abre grietas, teletransporta piezas al azar a otras casillas y muta peones en Torres, Caballos o Alfiles.'
+  },
+  {
+    id: 'special_giants_clash',
+    name: 'Guerra de Titanes 2×2',
+    icon: '🏛️',
+    badge: 'FICHAS GRANDES',
+    description: 'Ambos ejércitos comienzan con una Ficha Grande 2×2 en el centro del tablero y poder de aplastamiento 2×2 cada 2 turnos.'
   }
 ];
 

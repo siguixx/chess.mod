@@ -5,7 +5,7 @@ import {
   isCampaignLevelUnlocked,
   getCampaignUnlockReason
 } from '/shared/config/campaigns.js';
-import { TRAINERS, CLAN_CREATE_COST_MODS } from '/shared/config/constants.js';
+import { TRAINERS, SPECIAL_GAME_MODES, CLAN_CREATE_COST_MODS } from '/shared/config/constants.js';
 import {
   COSMETIC_AVATARS,
   COSMETIC_FRAMES,
@@ -141,6 +141,7 @@ class ChessModApp {
     api.getVipStatus().then((st) => { this.vipBillingStatus = st || {}; this.syncVipBillingUI(); }).catch(() => {});
     this.initModsWorkshopEditor();
     this.renderTrainersGrids();
+    this.renderSpecialModesGrid();
     const openedSecret = this.checkSecretBossUrl();
     if (!openedSecret && !sessionStorage.getItem('chess_mod_trainer_prompt_seen')) {
       sessionStorage.setItem('chess_mod_trainer_prompt_seen', '1');
@@ -1365,23 +1366,30 @@ class ChessModApp {
   }
 
   renderTrainersGrids() {
-    const html = TRAINERS.map((t) => `
-      <div class="trainer-card ${t.isHardest ? 'hardest' : ''}">
+    const selectedId = localStorage.getItem('chess_mod_selected_trainer') || 'trainer_yam';
+    const html = TRAINERS.map((t) => {
+      const isSelected = t.id === selectedId;
+      return `
+      <div class="trainer-card ${t.isHardest ? 'hardest' : ''}" style="${isSelected ? 'border-color:#ffd859;box-shadow:0 0 18px rgba(255,216,89,0.22);' : ''}">
         <div>
           <div class="trainer-head">
             <div class="trainer-portrait">${getBossPortraitSVG(t.bossId)}</div>
             <div style="min-width:0;">
-              <span class="pill ${t.isHardest ? 'crimson' : 'muted'}" style="margin-bottom:4px;font-size:0.64rem;">${t.badge}</span>
-              <h4 style="font-family:var(--font-display);color:${t.isHardest ? '#ff9494' : 'var(--gold-bright)'};font-size:0.95rem;">${t.name}</h4>
-              <div style="font-size:0.76rem;font-weight:700;color:#ffe27a;">🏆 ${t.elo} Elo</div>
+              <span class="pill ${t.isHardest ? 'crimson' : (t.isStarter ? 'jade' : 'muted')}" style="margin-bottom:4px;font-size:0.62rem;">${t.badge}</span>
+              <h4 style="font-family:var(--font-display);color:${t.isHardest ? '#ff9494' : 'var(--gold-bright)'};font-size:0.94rem;">${t.name}</h4>
+              <div style="font-size:0.72rem;font-weight:700;color:#ffe27a;">🎓 Mentor · ${t.elo} Elo</div>
             </div>
           </div>
-          <p style="font-size:0.75rem;color:var(--text-muted);line-height:1.4;margin-top:8px;">${t.description}</p>
+          <div style="margin-top:8px;padding:5px 8px;border-radius:7px;background:rgba(207,166,76,0.12);border:1px solid rgba(207,166,76,0.3);font-size:0.72rem;color:#ffe799;">
+            <strong>Enseña:</strong> ${t.taughtPowerLabel}
+          </div>
+          <p style="font-size:0.74rem;color:var(--text-muted);line-height:1.4;margin-top:6px;">${t.description}</p>
         </div>
         <button class="btn btn-sm ${t.isHardest ? 'btn-danger' : 'btn-gold'}" data-start-trainer="${t.id}" style="width:100%;">
-          ${t.isHardest ? '🐾 Desafiar a BLACKY (3200)' : `⚔️ Entrenar (${t.elo} Elo)`}
+          ${t.isStarter ? '🐱 Aprender con Yam' : `🎓 Aprender con ${t.name.split(' ')[0]}`}
         </button>
-      </div>`).join('');
+      </div>`;
+    }).join('');
 
     for (const id of ['play-trainers-grid', 'modal-trainers-grid']) {
       const box = document.getElementById(id);
@@ -1391,11 +1399,37 @@ class ChessModApp {
         btn.addEventListener('click', () => {
           const trainer = TRAINERS.find((x) => x.id === btn.dataset.startTrainer);
           if (!trainer) return;
+          try { localStorage.setItem('chess_mod_selected_trainer', trainer.id); } catch {}
           document.getElementById('modal-trainer-picker')?.classList.remove('open');
+          this.renderTrainersGrids();
           this.battle.startTrainerMatch(trainer, { minutes: this.battle.selectedMinutes });
         });
       });
     }
+  }
+
+  renderSpecialModesGrid() {
+    const box = document.getElementById('special-modes-grid');
+    if (!box) return;
+    box.innerHTML = SPECIAL_GAME_MODES.map((m) => `
+      <div class="trainer-card">
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
+            <span style="font-size:1.75rem;">${m.icon}</span>
+            <span class="pill">${m.badge}</span>
+          </div>
+          <h4 style="font-family:var(--font-display);color:var(--gold-bright);font-size:0.98rem;margin-bottom:5px;">${m.name}</h4>
+          <p style="font-size:0.76rem;color:var(--text-muted);line-height:1.45;">${m.description}</p>
+        </div>
+        <button class="btn btn-sm btn-primary" data-start-special="${m.id}" style="width:100%;">🎲 Jugar ${m.name}</button>
+      </div>`).join('');
+
+    box.querySelectorAll('[data-start-special]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const cfg = SPECIAL_GAME_MODES.find((x) => x.id === btn.dataset.startSpecial);
+        if (cfg) this.battle.startSpecialMode(cfg, { minutes: this.battle.selectedMinutes });
+      });
+    });
   }
 
   async loadSocialScreen() {

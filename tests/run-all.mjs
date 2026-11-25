@@ -22,7 +22,7 @@ import {
   CHAPTER_ORDER
 } from '../shared/config/campaigns.js';
 import { calculateEloUpdate } from '../shared/config/elo.js';
-import { INITIAL_ELO, TRAINERS, CLAN_CREATE_COST_MODS } from '../shared/config/constants.js';
+import { INITIAL_ELO, TRAINERS, SPECIAL_GAME_MODES, CLAN_CREATE_COST_MODS } from '../shared/config/constants.js';
 import { MOD_VIP_PLAN } from '../shared/config/cosmetics.js';
 import {
   MOD_TEMPLATES,
@@ -953,9 +953,36 @@ try {
   });
 
   await test('Entrenadores (Blacky 3200 Elo), Poder Blacky fuera de tienda, Clanes (150 Mods), Amigos, Reportes, Snapshot y Moderador exacto', async () => {
-    // 1. Entrenadores incluyen a BLACKY con 3200 Elo y su diseño oficial
+    // 1. Entrenadores mentores: Starter Yam (Gato Siamés) + cada uno enseña un poder + BLACKY 3200 Elo
+    const yamTrainer = TRAINERS[0];
+    assert.ok(yamTrainer && yamTrainer.id === 'trainer_yam' && yamTrainer.isStarter === true && yamTrainer.bossId === 'trainer_yam');
+    assert.ok(TRAINERS.every((t) => Boolean(t.taughtPowerId && t.bossId && Array.isArray(t.tips) && t.tips.length >= 2)), 'Todos los entrenadores deben tener diseño propio, poder a enseñar y consejos');
     const blackyTrainer = TRAINERS.find((t) => t.id === 'trainer_blacky');
     assert.ok(blackyTrainer && blackyTrainer.elo === 3200 && blackyTrainer.bossId === 'blacky_secret');
+
+    // Modos Especiales Absurdos: 6x6, Ruleta de Poderes Random, Invasión de Damas, Terremoto y Titanes 2x2
+    assert.ok(SPECIAL_GAME_MODES.some((m) => m.id === 'special_6x6'));
+    assert.ok(SPECIAL_GAME_MODES.some((m) => m.id === 'special_random_powers'));
+    assert.ok(SPECIAL_GAME_MODES.length >= 5);
+
+    // Boss Secreto BLACKY Súper Extremo: empieza con 2 Damas Negras y poder equipable Dominio Abismal roba hasta Dama + invoca Caballo + sella 2 casillas
+    const bkExt = new BlackySecretEngine(10);
+    let bkQueens = 0;
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) if (bkExt.board[r][c]?.color === 'b' && bkExt.board[r][c]?.type === 'Q') bkQueens++;
+    assert.equal(bkQueens, 2, 'Boss Secreto BLACKY Súper Extremo debe iniciar con 2 Damas Negras');
+
+    const eBkPow = new ClassicChessEngine(10);
+    const psBkPow = createInitialPowerState();
+    eBkPow.board = Array.from({ length: 8 }, () => Array(8).fill(null));
+    eBkPow.board[0][4] = { id: 'bK', color: 'b', type: 'K' };
+    eBkPow.board[7][4] = { id: 'wK', color: 'w', type: 'K' };
+    eBkPow.board[3][3] = { id: 'bQ_target', color: 'b', type: 'Q' };
+    const bkPowDef = resolvePowerDef('power_blacky_claw');
+    const bkPowRes = executeBattlePowerAction(eBkPow, psBkPow, 'w', bkPowDef, { tr: 3, tc: 3 });
+    assert.equal(bkPowRes.ok, true);
+    assert.equal(eBkPow.board[3][3]?.color, 'w', 'Dominio Abismal de Blacky roba incluso la Dama rival');
+    assert.equal(psBkPow.modRifts.length, 2, 'Dominio Abismal de Blacky sella 2 casillas enemigas');
+    assert.ok(eBkPow.countPieces('w') >= 3, 'Dominio Abismal de Blacky además invoca un Caballo aliado');
 
     // 2. Poder de Blacky NO se puede comprar en la tienda
     const aliceH = { Authorization: `Bearer ${aliceToken}`, 'Content-Type': 'application/json' };

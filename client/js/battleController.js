@@ -444,12 +444,102 @@ export class BattleController {
   getEquippedShopPower() {
     // Los poderes se pueden usar en CUALQUIER LUGAR MENOS en Modo Historia
     if (this.isStoryMode()) return null;
+    // En Lección de Entrenador: el entrenador te presta su poder específico para que lo practiques
+    if (this.mode === 'coach_lesson' && this.trainerMeta?.taughtPowerId) {
+      return resolvePowerDef(this.trainerMeta.taughtPowerId, null);
+    }
+    // En Ruleta de Poderes Random: cada turno tienes un poder OP aleatorio con CD 1
+    if (this.mode === 'special' && this.specialMeta?.id === 'special_random_powers' && this.randomRolledPower) {
+      return this.randomRolledPower;
+    }
+    // En Guerra de Titanes 2×2: otorga Pirámide 2×2 con CD 2t
+    if (this.mode === 'special' && this.specialMeta?.id === 'special_giants_clash') {
+      const base = resolvePowerDef('power_maya_pyramid', null);
+      return base ? { ...base, cooldown: 2 } : null;
+    }
     if (this.customMod?.power) return this.customMod.power;
     const id = this.userProfile?.equippedPowerId || 'power_none';
     const p = resolvePowerDef(id, null);
     if (!p) return null;
     if (p.vipOnly && !this.userProfile?.isVip) return null;
     return p;
+  }
+
+  isVoid6x6Square(r, c) {
+    return this.mode === 'special' && this.specialMeta?.id === 'special_6x6'
+      && (r === 0 || r === 7 || c === 0 || c === 7);
+  }
+
+  rollRandomSpecialPower() {
+    const pool = COSMETIC_POWERS.filter((p) => p.id !== 'power_none');
+    const chosen = pool[Math.floor(Math.random() * pool.length)];
+    this.randomRolledPower = chosen ? { ...chosen, cooldown: 1 } : null;
+    if (this.randomRolledPower && this.powerState) {
+      this.powerState.cooldowns.w = 0;
+    }
+    return this.randomRolledPower;
+  }
+
+  triggerEarthquakeChaos() {
+    if (!this.engine || !this.powerState || this.engine.winner) return;
+    const logParts = [];
+    // 1. Abrir 2 grietas aleatorias en casillas vacías centrales
+    let riftsAdded = 0;
+    for (let tries = 0; tries < 24 && riftsAdded < 2; tries++) {
+      const r = 2 + Math.floor(Math.random() * 4);
+      const c = Math.floor(Math.random() * 8);
+      if (!this.engine.board[r][c] && !isSquareBlockedByModState(this.powerState, r, c)) {
+        this.powerState.modRifts.push({ r, c, turnsLeft: 3, owner: 'neutral' });
+        this.vfx.spawnGlitchTear(r, c);
+        riftsAdded++;
+      }
+    }
+    if (riftsAdded > 0) logParts.push(`${riftsAdded} grietas abiertas`);
+
+    // 2. Teletransportar 1 pieza al azar (no Rey) a otra casilla vacía segura
+    const movable = [];
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const p = this.engine.board[r][c];
+        if (p && p.type !== 'K') movable.push({ r, c, p });
+      }
+    }
+    if (movable.length > 0) {
+      const pick = movable[Math.floor(Math.random() * movable.length)];
+      for (let tries = 0; tries < 20; tries++) {
+        const nr = 1 + Math.floor(Math.random() * 6);
+        const nc = Math.floor(Math.random() * 8);
+        if (!this.engine.board[nr][nc] && !isSquareBlockedByModState(this.powerState, nr, nc)) {
+          this.engine.board[nr][nc] = pick.p;
+          this.engine.board[pick.r][pick.c] = null;
+          if (!this.engine.isKingInCheck('w') && !this.engine.isKingInCheck('b')) {
+            this.vfx.spawnGalaxyPortal(nr, nc);
+            logParts.push(`${PIECE_NAMES[pick.p.type]} movido a ${toAlg(nr, nc)}`);
+            break;
+          }
+          this.engine.board[pick.r][pick.c] = pick.p;
+          this.engine.board[nr][nc] = null;
+        }
+      }
+    }
+
+    // 3. Mutar 1 peón aleatorio en Caballo, Alfil o Torre
+    const pawns = movable.filter((x) => x.p.type === 'P' && this.engine.board[x.r][x.c] === x.p);
+    if (pawns.length > 0) {
+      const mut = pawns[Math.floor(Math.random() * pawns.length)];
+      const newTypes = ['N', 'B', 'R'];
+      mut.p.type = newTypes[Math.floor(Math.random() * newTypes.length)];
+      this.vfx.spawnConversionBurst(mut.r, mut.c);
+      logParts.push(`Peón mutó en ${PIECE_NAMES[mut.p.type]}`);
+    }
+
+    if (logParts.length > 0) {
+      this.sound.play('crush');
+      this.vfx.triggerBoardShake(true);
+      const msg = `🌋 ¡TERREMOTO ABSURDO!: ${logParts.join(' · ')}.`;
+      this.engine.logs.unshift({ turn: this.engine.turnNumber, type: 'special', text: msg });
+      this.toast(msg, 'info');
+    }
   }
 
   resetShopPowerMatchState() {
@@ -981,15 +1071,24 @@ export class BattleController {
   }
 
   startTrainerMatch(trainerCfg, { minutes = this.selectedMinutes, showGuide = true } = {}) {
-    this.mode = 'trainer';
+    // Los Entrenadores ENSEÑAN (Lección Práctica Guiada con consejos + poder prestado), NO pelean como enemigos
+    this.mode = 'coach_lesson';
     this.trainerMeta = trainerCfg;
+    this.specialMeta = null;
+    this.randomRolledPower = null;
     this.customMod = null;
-    this.bossId = trainerCfg.bossId || 'classic_ai';
-    this.bossName = `${trainerCfg.name} (${trainerCfg.elo} Elo)`;
-    this.aiDifficulty = trainerCfg.difficulty || 3;
+    this.bossId = trainerCfg.bossId || 'trainer_yam';
+    this.bossName = `Entrenador: ${trainerCfg.name}`;
+    this.aiDifficulty = trainerCfg.practiceAiDifficulty || 1;
     this.campaignMeta = null;
     this.onlineMeta = null;
+    this.coachTipIdx = 0;
     this.engine = new ClassicChessEngine(minutes);
+    this.engine.logs = [{
+      turn: 0,
+      type: 'special',
+      text: `🎓 LECCIÓN CON ${trainerCfg.name.toUpperCase()}: Te enseña a jugar y a dominar ${trainerCfg.taughtPowerLabel}. ¡Pistas de tu entrenador GRATIS!`
+    }];
     this.sound.stopBossMusic();
 
     this.showBattleScreen();
@@ -1000,22 +1099,125 @@ export class BattleController {
     const startNow = () => {
       this.paused = false;
       this.lastClockTick = performance.now();
-      if (trainerCfg.id === 'trainer_blacky') {
-        this.sound.play('blackyBark');
-        this.showBossSpeech('Grr... 3200 de Elo. Demuestra si puedes resistir contra BLACKY.');
-      }
+      if (trainerCfg.id === 'trainer_yam') this.sound.play('meow');
+      else if (trainerCfg.id === 'trainer_blacky') this.sound.play('blackyBark');
+      else this.sound.play('hint');
+      this.showCoachTip(trainerCfg.tips?.[0] || `¡Hola! Soy ${trainerCfg.name}. Toca una pieza blanca o usa tu poder ${trainerCfg.taughtPowerLabel} para practicar.`);
+      this.showFreeCoachArrow();
       this.render();
     };
     if (showGuide) {
       this.showPreMatchGuide({
-        modeTag: `ENTRENADOR · ${trainerCfg.elo} ELO`,
-        title: trainerCfg.name,
-        subtitle: trainerCfg.badge || `${trainerCfg.elo} Elo`,
-        rulesHtml: `<li><strong>🎓 Entrenamiento contra ${trainerCfg.name}:</strong> ${trainerCfg.description}</li>
-          <li><strong>⚡ Poderes y Skins activos:</strong> Puedes usar tus tableros, fichas y poderes equipados de la Tienda o Mod VIP.</li>`,
+        modeTag: `LECCIÓN DE ENTRENADOR · ${trainerCfg.role || 'MENTOR'}`,
+        title: `Aprendiendo con ${trainerCfg.name}`,
+        subtitle: `Poder de práctica incluido: ${trainerCfg.taughtPowerLabel}`,
+        rulesHtml: `
+          <li><strong>🎓 Modo Enseñanza (No es combate a muerte):</strong> ${trainerCfg.name} te guía paso a paso en un tablero de práctica, te da <strong>consejos en vivo</strong> y <strong>pistas GRATIS (0 XP)</strong> con flechas verdes.</li>
+          <li><strong>⚡ Poder prestado para practicar:</strong> Durante esta lección tienes desbloqueado <strong>${trainerCfg.taughtPowerLabel}</strong> para que te acostumbres a usarlo en batalla.</li>`,
         onStart: startNow
       });
     } else startNow();
+  }
+
+  showCoachTip(text) {
+    if (!text) return;
+    const wrap = document.getElementById('boss-speech-wrap');
+    const spk = document.getElementById('boss-speech-speaker');
+    const txt = document.getElementById('boss-speech-text');
+    if (!wrap || !txt) return;
+    if (spk && this.trainerMeta) spk.textContent = `🎓 ${this.trainerMeta.name}`;
+    txt.textContent = text;
+    wrap.classList.add('visible');
+    if (this.speechTimer) clearTimeout(this.speechTimer);
+    this.speechTimer = setTimeout(() => wrap.classList.remove('visible'), 6500);
+  }
+
+  showFreeCoachArrow() {
+    if (this.mode !== 'coach_lesson' || this.engine.winner) return;
+    try {
+      const hint = HintEngine.analyze(this.engine);
+      if (hint?.from && hint?.to) {
+        this.hintSquares = { from: hint.from, to: hint.to };
+        const txt = document.getElementById('hint-text');
+        if (txt) txt.textContent = `🎓 ${this.trainerMeta?.name || 'Entrenador'} sugiere: ${hint.text}`;
+        document.getElementById('hint-banner')?.classList.add('visible');
+      }
+    } catch {}
+  }
+
+  startSpecialMode(specialCfg, { minutes = this.selectedMinutes, showGuide = true } = {}) {
+    this.mode = 'special';
+    this.specialMeta = specialCfg;
+    this.trainerMeta = null;
+    this.customMod = null;
+    this.randomRolledPower = null;
+    this.bossId = 'classic_ai';
+    this.bossName = `${specialCfg.icon} ${specialCfg.name}`;
+    this.aiDifficulty = 3;
+    this.campaignMeta = null;
+    this.onlineMeta = null;
+    this.engine = new ClassicChessEngine(minutes);
+
+    // Configurar tablero según el Modo Especial Absurdo
+    if (specialCfg.id === 'special_6x6') {
+      this.engine.board = Array.from({ length: 8 }, () => Array(8).fill(null));
+      const row6 = ['R', 'N', 'Q', 'K', 'B', 'R'];
+      for (let i = 0; i < 6; i++) {
+        const c = i + 1;
+        this.engine.board[1][c] = { id: `m6b_${i}`, color: 'b', type: row6[i], hasMoved: true };
+        this.engine.board[2][c] = { id: `m6bp_${i}`, color: 'b', type: 'P', hasMoved: true };
+        this.engine.board[5][c] = { id: `m6wp_${i}`, color: 'w', type: 'P', hasMoved: true };
+        this.engine.board[6][c] = { id: `m6w_${i}`, color: 'w', type: row6[i], hasMoved: true };
+      }
+    } else if (specialCfg.id === 'special_all_queens') {
+      for (let c = 0; c < 8; c++) {
+        if (c !== 4 && c !== 0 && c !== 7) {
+          this.engine.board[0][c].type = 'Q';
+          this.engine.board[7][c].type = 'Q';
+        }
+        this.engine.board[1][c].type = 'Q';
+        this.engine.board[6][c].type = 'Q';
+      }
+    }
+
+    this.engine.logs = [{
+      turn: 0,
+      type: 'special',
+      text: `${specialCfg.icon} MODO ESPECIAL: ${specialCfg.name} — ${specialCfg.description}`
+    }];
+    this.sound.stopBossMusic();
+
+    this.showBattleScreen();
+    if (specialCfg.id === 'special_random_powers') {
+      const rolled = this.rollRandomSpecialPower();
+      if (rolled) {
+        this.engine.logs.unshift({ turn: 1, type: 'special', text: `🎰 Poder de este turno: ${rolled.icon} ${rolled.name}!` });
+      }
+    } else if (specialCfg.id === 'special_giants_clash') {
+      this.powerState.giantUnits = [
+        { id: 'giant_b_init', owner: 'b', r: 2, c: 1, turnsLeft: 6, kind: 'galaxy', name: 'Coloso Rival', color: '#9d8df2' },
+        { id: 'giant_w_init', owner: 'w', r: 4, c: 5, turnsLeft: 6, kind: 'pyramid', name: 'Pirámide Aliada', color: '#ffd859' }
+      ];
+    }
+
+    this.configureBattlePanels();
+    this.phase = 'PLAYER_TURN';
+    this.render();
+
+    const go = () => {
+      this.paused = false;
+      this.lastClockTick = performance.now();
+      this.render();
+    };
+    if (showGuide) {
+      this.showPreMatchGuide({
+        modeTag: `MODO ESPECIAL · ${specialCfg.badge}`,
+        title: `${specialCfg.icon} ${specialCfg.name}`,
+        subtitle: 'Reglas locas y absurdas de CHESS.MOD',
+        rulesHtml: `<li><strong>🎲 Regla Especial:</strong> ${specialCfg.description}</li>`,
+        onStart: go
+      });
+    } else go();
   }
 
   startOnlineMatch(matchPayload) {
@@ -1108,8 +1310,11 @@ export class BattleController {
     if (this.mode === 'blacky') {
       return this.startBlackySecretBoss({ playIntro: false, minutes: this.selectedMinutes });
     }
-    if (this.mode === 'trainer' && this.trainerMeta) {
+    if ((this.mode === 'trainer' || this.mode === 'coach_lesson') && this.trainerMeta) {
       return this.startTrainerMatch(this.trainerMeta, { minutes: this.selectedMinutes, showGuide: false });
+    }
+    if (this.mode === 'special' && this.specialMeta) {
+      return this.startSpecialMode(this.specialMeta, { minutes: this.selectedMinutes, showGuide: false });
     }
     if (this.campaignMeta) {
       return this.startCampaignLevel(
@@ -1303,9 +1508,21 @@ export class BattleController {
     }, 18000);
   }
 
-  /* ================= PISTA CON COSTE REAL DE 25 XP ================= */
+  /* ================= PISTA CON COSTE REAL DE 25 XP (GRATIS EN LECCIÓN DE ENTRENADOR) ================= */
   async requestHint() {
     if (this.mode === 'online' || this.paused || this.phase !== 'PLAYER_TURN' || this.engine.winner) return;
+    if (this.mode === 'coach_lesson') {
+      const hint = HintEngine.analyze(this.engine);
+      if (!hint) return;
+      this.hintSquares = { from: hint.from, to: hint.to };
+      document.getElementById('hint-text').textContent = `🎓 (GRATIS) ${this.trainerMeta?.name || 'Entrenador'}: ${hint.text}`;
+      document.getElementById('hint-banner')?.classList.add('visible');
+      this.sound.play('hint');
+      this.vfx.spawnShockwave(hint.from[0], hint.from[1], '#ffd966', 44);
+      this.vfx.spawnShockwave(hint.to[0], hint.to[1], '#4ce098', 44);
+      this.render();
+      return;
+    }
     if (!api.getToken()) {
       this.toast(`Inicia sesión para usar pistas tácticas (cuestan ${HINT_XP_COST} XP).`, 'error');
       return;
@@ -1361,7 +1578,8 @@ export class BattleController {
     const chosen = this.legalMoves.find((m) => m.tr === r && m.tc === c);
     if (chosen) {
       const piece = this.engine.board[chosen.fr][chosen.fc];
-      const promoRank = myColor === 'w' ? 0 : 7;
+      const is6x6 = this.mode === 'special' && this.specialMeta?.id === 'special_6x6';
+      const promoRank = is6x6 ? (myColor === 'w' ? 1 : 6) : (myColor === 'w' ? 0 : 7);
       if (!chosen.isWaterShot && !chosen.isPlayerTeleport && piece?.type === 'P' && chosen.tr === promoRank) {
         this.pendingPromoMove = chosen;
         document.getElementById('modal-promo')?.classList.add('open');
@@ -1428,7 +1646,7 @@ export class BattleController {
         this.legalMoves = ((this.mode === 'mittens' || this.mode === 'chess_final')
           ? this.engine.getLegalMovesForPiece(r, c, false)
           : this.engine.getLegalMovesForPiece(r, c))
-          .filter((m) => !isSquareBlockedByModState(this.powerState, m.tr, m.tc, myColor));
+          .filter((m) => !isSquareBlockedByModState(this.powerState, m.tr, m.tc, myColor) && !this.isVoid6x6Square(m.tr, m.tc));
         this.sound.play('select');
         const [vr, vc] = this.toVisualCoords(r, c);
         this.vfx.spawnShockwave(vr, vc, '#efd083', 26);
@@ -1613,26 +1831,24 @@ export class BattleController {
       } else if (this.mode === 'blacky') {
         const aiRes = await this.runSuperAiAsync(this.engine.cloneState(), {
           maxDepth: 5,
-          thinkTimeMs: 950,
+          thinkTimeMs: 1300,
+          blunderChance: 0,
           color: 'b'
         });
         bestMove = aiRes?.move || this.engine.getAllLegalMoves('b')[0] || null;
-      } else if (this.mode === 'trainer' && this.trainerMeta?.useSuperAi) {
-        const aiRes = await this.runSuperAiAsync(this.engine.cloneState(), {
-          maxDepth: this.trainerMeta.maxDepth || 4,
-          thinkTimeMs: this.trainerMeta.thinkTimeMs || 700,
-          color: 'b'
-        });
-        bestMove = aiRes?.move || this.engine.getAllLegalMoves('b')[0] || null;
+      } else if (this.mode === 'special' && this.specialMeta?.id === 'special_6x6') {
+        const legal6 = this.engine.getAllLegalMoves('b').filter((m) => !this.isVoid6x6Square(m.tr, m.tc));
+        legal6.sort((a, b) => (this.engine.board[b.tr]?.[b.tc] ? 10 : 0) - (this.engine.board[a.tr]?.[a.tc] ? 10 : 0) + (Math.random() - 0.5));
+        bestMove = legal6[0] || null;
       } else {
         bestMove = ClassicAI.chooseBestMove(this.engine, this.aiDifficulty, 'b');
       }
 
       if (this.paused || this.engine.winner) return;
-      // Respetar Congelación Dorada (3 turnos) y Escudo Solar (2 turnos)
-      if (bestMove && this.isAiMoveBlockedByShopPowers(bestMove)) {
+      // Respetar Congelación Dorada, Grietas, Fichas 2x2 y bordes del Mini-Tablero 6x6
+      if (bestMove && (this.isAiMoveBlockedByShopPowers(bestMove) || this.isVoid6x6Square(bestMove.tr, bestMove.tc))) {
         const allBlackMoves = this.engine.getAllLegalMoves('b');
-        const allowed = allBlackMoves.filter((m) => !this.isAiMoveBlockedByShopPowers(m));
+        const allowed = allBlackMoves.filter((m) => !this.isAiMoveBlockedByShopPowers(m) && !this.isVoid6x6Square(m.tr, m.tc));
         if (allowed.length > 0) {
           // Preferir captura legal no bloqueada o un movimiento válido seguro
           allowed.sort((a, b) => (this.engine.board[b.tr]?.[b.tc] ? 1 : 0) - (this.engine.board[a.tr]?.[a.tc] ? 1 : 0));
@@ -1813,11 +2029,38 @@ export class BattleController {
 
   finishAITurn() {
     this.tickBattlePowerStatesAfterEnemyTurn();
+    // Eventos especiales tras el turno rival
+    if (!this.engine.winner && this.mode === 'special') {
+      if (this.specialMeta?.id === 'special_random_powers') {
+        const rolled = this.rollRandomSpecialPower();
+        if (rolled) {
+          this.toast(`🎰 Nuevo poder aleatorio: ${rolled.icon} ${rolled.name}`, 'info');
+          this.engine.logs.unshift({ turn: this.engine.turnNumber, type: 'special', text: `🎰 Ruleta: ahora tienes ${rolled.icon} ${rolled.name}!` });
+        }
+      } else if (this.specialMeta?.id === 'special_earthquake' && this.engine.turnNumber % 2 === 0) {
+        this.triggerEarthquakeChaos();
+      } else if (this.specialMeta?.id === 'special_6x6') {
+        // Coronación automática en fila 6 para negras / fila 1 para blancas en 6x6
+        for (let c = 1; c <= 6; c++) {
+          if (this.engine.board[1][c]?.color === 'w' && this.engine.board[1][c].type === 'P') this.engine.board[1][c].type = 'Q';
+          if (this.engine.board[6][c]?.color === 'b' && this.engine.board[6][c].type === 'P') this.engine.board[6][c].type = 'Q';
+        }
+      }
+    }
     if (this.engine.winner) {
       this.handleSinglePlayerGameOver();
     } else {
       this.phase = 'PLAYER_TURN';
       this.sound.play('turnChange');
+      this.configureBattlePanels();
+      if (this.mode === 'coach_lesson' && this.trainerMeta) {
+        const tips = this.trainerMeta.tips || [];
+        if (tips.length > 0) {
+          this.coachTipIdx = ((this.coachTipIdx || 0) + 1) % tips.length;
+          this.showCoachTip(tips[this.coachTipIdx]);
+        }
+        this.showFreeCoachArrow();
+      }
       this.render();
       this.resetIdleTauntTimer();
     }
@@ -2082,6 +2325,8 @@ export class BattleController {
         const key = `${r},${c}`;
 
         const isModRift = (this.powerState?.modRifts || []).some((rf) => rf.r === r && rf.c === c);
+        const isVoid6x6 = this.isVoid6x6Square(r, c);
+        if (isVoid6x6) sq.classList.add('void-6x6');
         if (this.mode === 'mittens' && this.engine.isSprinkler(r, c)) sq.classList.add('sprinkler-sq');
         if ((this.mode === 'glitch' && this.engine.isRift(r, c)) || isModRift) sq.classList.add('glitch-rift');
         if (this.mode === 'blacky' && this.engine.isSealed(r, c)) sq.classList.add('blacky-sealed');

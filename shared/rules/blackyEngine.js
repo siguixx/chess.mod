@@ -36,20 +36,22 @@ export class BlackySecretEngine {
       this.board[7][c] = { id: `wB_${c}`, color: 'w', type: back[c], hasMoved: false };
       this.board[6][c] = { id: `wP_${c}`, color: 'w', type: 'P', hasMoved: false };
     }
+    // MODO SÚPER EXTREMO: Blacky comienza con una 2da Dama Negra en d7 y Caballo reforzado en e6
+    this.board[1][3] = { id: 'bkQ_extra', color: 'b', type: 'Q', hasMoved: false };
 
     this.sealedSquares = []; // [{ r, c, turnsLeft }]
     this.cooldowns = {
-      seal: 2,
-      summon: 3,
-      absorb: 4,
-      betray: 5
+      seal: 1,
+      summon: 2,
+      absorb: 2,
+      betray: 3
     };
     this.stats = {
       sealedTotal: 0,
       summonedTotal: 0,
       absorbedTotal: 0,
       betrayedTotal: 0,
-      lastPowerLabel: 'Acechando en las sombras...'
+      lastPowerLabel: 'Modo Súper Extremo desatado...'
     };
     this.blackMaterialBaseline = 16;
     this.uidCounter = 1;
@@ -192,10 +194,10 @@ export class BlackySecretEngine {
     if (candidates.length === 0) return null;
     candidates.sort((a, b) => b.score - a.score);
 
-    // Dama posible si el jugador resiste más de 12 turnos
-    let pool = ['P', 'P', 'N', 'B', 'R'];
-    if (this.turnNumber > 12) pool = ['N', 'B', 'R', 'Q'];
-    else if (this.turnNumber > 7) pool = ['P', 'N', 'B', 'R'];
+    // MODO SÚPER EXTREMO: invoca piezas poderosas desde temprano (incluyendo Damas tras turno 6)
+    let pool = ['N', 'B', 'R'];
+    if (this.turnNumber >= 6) pool = ['N', 'B', 'R', 'Q', 'Q'];
+    else if (this.turnNumber >= 3) pool = ['N', 'B', 'R', 'Q'];
     const chosenType = pool[Math.floor(Math.random() * pool.length)];
 
     // Elegir casilla que no deje al Rey negro en jaque (ni cause error)
@@ -485,33 +487,35 @@ export class BlackySecretEngine {
       const blackLostMaterial = this.countPieces('b') < this.blackMaterialBaseline;
       this.blackMaterialBaseline = this.countPieces('b');
 
-      // Ejecutar hasta 1 poder principal por turno (y sellado cada 2 turnos) para mantener caos legible e intenso
+      // MODO SÚPER EXTREMO: Blacky puede encadenar múltiples poderes caóticos en el mismo turno
       if (this.cooldowns.betray === 0) {
         const res = this.corruptWhitePiece();
         if (res) {
-          this.cooldowns.betray = 4 + (Math.random() < 0.5 ? 1 : 0);
+          this.cooldowns.betray = 3;
           events.blackyPowers.push({ type: 'betray', ...res });
           this.logs.unshift({
             turn: this.turnNumber,
             type: 'special',
-            text: `🐾 TRAICIÓN DE BLACKY: Tu ${PIECE_NAMES[res.piece.type]} en ${toAlg(res.r, res.c)} ahora lucha contra ti.`
+            text: `🐾 TRAICIÓN EXTREMA DE BLACKY: Tu ${PIECE_NAMES[res.piece.type]} en ${toAlg(res.r, res.c)} ahora lucha contra ti.`
           });
         }
-      } else if (this.cooldowns.absorb === 0) {
+      }
+      if (this.cooldowns.absorb === 0) {
         const res = this.absorbWhitePiece();
         if (res) {
-          this.cooldowns.absorb = 4;
+          this.cooldowns.absorb = 3;
           events.blackyPowers.push({ type: 'absorb', ...res });
           this.logs.unshift({
             turn: this.turnNumber,
             type: 'special',
-            text: `🌑 DEVORACIÓN SOMBRÍA: Blacky absorbe tu ${PIECE_NAMES[res.piece.type]} en ${toAlg(res.r, res.c)}.`
+            text: `🌑 DEVORACIÓN SOMBRÍA EXTREMA: Blacky absorbe tu ${PIECE_NAMES[res.piece.type]} en ${toAlg(res.r, res.c)}.`
           });
         }
-      } else if (this.cooldowns.summon === 0 || blackLostMaterial) {
+      }
+      if (this.cooldowns.summon === 0 || blackLostMaterial) {
         const res = this.summonPieceFromVoid();
         if (res) {
-          this.cooldowns.summon = 3;
+          this.cooldowns.summon = 2;
           this.blackMaterialBaseline = this.countPieces('b');
           events.blackyPowers.push({ type: 'summon', ...res });
           this.logs.unshift({
@@ -523,15 +527,15 @@ export class BlackySecretEngine {
       }
 
       if (this.cooldowns.seal === 0) {
-        const count = 2 + Math.floor(Math.random() * 3); // 2 a 4 casillas
+        const count = 3 + (Math.random() < 0.5 ? 1 : 0); // 3 a 4 casillas selladas
         const sealed = this.sealBoardSquares(count);
         if (sealed.length > 0) {
-          this.cooldowns.seal = 2;
+          this.cooldowns.seal = 1;
           events.blackyPowers.push({ type: 'seal', squares: sealed });
           this.logs.unshift({
             turn: this.turnNumber,
             type: 'special',
-            text: `🐾 SELLO DE ZARPA: Casillas deshabilitadas en ${sealed.map((s) => toAlg(s.r, s.c)).join(', ')}.`
+            text: `🐾 SELLO DE ZARPA EXTREMO: Casillas deshabilitadas en ${sealed.map((s) => toAlg(s.r, s.c)).join(', ')}.`
           });
         }
       }
