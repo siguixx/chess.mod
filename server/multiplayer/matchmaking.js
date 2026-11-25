@@ -2,6 +2,24 @@ import crypto from 'node:crypto';
 import { ClassicChessEngine } from '../../shared/rules/classicEngine.js';
 import { calculateEloUpdate } from '../../shared/config/elo.js';
 import { verifyToken, extractTokenFromCookieHeader } from '../auth/authService.js';
+import {
+  validateAndNormalizeMod,
+  applyCustomModSetupToEngine,
+  createInitialPowerState,
+  resolvePowerDef,
+  executeBattlePowerAction,
+  applyMittensAssimilationIfActive,
+  tickPowerStateForSide,
+  isPieceFrozen,
+  isSquareBlockedByModState
+} from '../../shared/mods/modRuntime.js';
+
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let out = '';
+  for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
 
 export class MultiplayerManager {
   constructor(io, db) {
@@ -10,6 +28,7 @@ export class MultiplayerManager {
     this.queue = [];
     this.matches = new Map();
     this.socketToMatch = new Map();
+    this.privateRooms = new Map(); // code -> { code, hostSocketId, hostUserId, hostProfile, timeMinutes, customMod, createdAt }
 
     this.setupSocketAuth();
     this.setupHandlers();
@@ -48,7 +67,12 @@ export class MultiplayerManager {
         queueCount: this.queue.length
       });
 
-      socket.on('queue:join', async ({ timeMinutes = 10 } = {}) => {
+      // === COLA PÚBLICA (SOLO PODERES OFICIALES DEL JUEGO — NUNCA MODS CUSTOM) ===
+      socket.on('queue:join', async ({ timeMinutes = 10, customMod = null } = {}) => {
+        if (customMod) {
+          socket.emit('queue:error', { error: 'Los Mods personalizados con código solo están permitidos en Salas Privadas. En públicas se usan solo los poderes oficiales del juego.' });
+          return;
+        }
         if (this.socketToMatch.has(socket.id)) {
           socket.emit('queue:error', { error: 'Ya estás en una partida activa.' });
           return;
@@ -56,6 +80,7 @@ export class MultiplayerManager {
         const user = await this.db.findUserById(socket.userId);
         if (!user) return;
 
+        this.removePrivateRoomBySocket(socket.id);
         this.removeFromQueueByUserId(user.id);
         const allowedMins = [1, 3, 5, 10, 15].includes(Number(timeMinutes)) ? Number(timeMinutes) : 10;
         this.queue.push({
@@ -82,6 +107,88 @@ export class MultiplayerManager {
         socket.emit('queue:status', { inQueue: false, queueSize: this.queue.length });
       });
 
+      // === SALAS PRIVADAS (PERMITEN MODS DE CÓDIGO ABIERTO CREADOS O IMPORTADOS) ===
+      socket.on('private:create', async ({ timeMinutes = 10, customMod = null } = {}) => {
+        if (this.socketToMatch.has(socket.id)) {
+          socket.emit('private:error', { error: 'Ya estás en una partida activa.' });
+          return;
+        }
+        let normalizedMod = null;
+        if (customMod) {
+          const check = validateAndNormalizeMod(customMod);
+          if (!check.ok) {
+            socket.emit('private:error', { error: check.error });
+            return;
+          }
+          normalizedMod = check.mod;
+        }
+
+        this.removeFromQueue(socket.id);
+        this.removePrivateRoomBySocket(socket.id);
+
+        const row = await this.db.ensureFreshVipState(await this.db.findUserById(socket.userId));
+        if (!row) return;
+        const allowedMins = [1, 3, 5, 10, 15].includes(Number(timeMinutes)) ? Number(timeMinutes) : 10;
+
+        let code = generateRoomCode();
+        while (this.privateRooms.has(code)) code = generateRoomCode();
+
+        const entry = {
+          code,
+          hostSocketId: socket.id,
+          hostUserId: row.id,
+          hostProfile: this.db.formatPublicUser(row),
+          timeMinutes: allowedMins,
+          customMod: normalizedMod,
+          createdAt: Date.now()
+        };
+        this.privateRooms.set(code, entry);
+
+        socket.emit('private:created', {
+          code,
+          timeMinutes: allowedMins,
+          customMod: normalizedMod
+        });
+      });
+
+      socket.on('private:cancel', () => {
+        this.removePrivateRoomBySocket(socket.id);
+        socket.emit('private:closed', { ok: true });
+      });
+
+      socket.on('private:join', async ({ code = '' } = {}) => {
+        if (this.socketToMatch.has(socket.id)) {
+          socket.emit('private:error', { error: 'Ya estás en una partida activa.' });
+          return;
+        }
+        const cleanCode = String(code || '').trim().toUpperCase();
+        const waiting = this.privateRooms.get(cleanCode);
+        if (!waiting) {
+          socket.emit('private:error', { error: `No existe ninguna Sala Privada activa con código "${cleanCode}".` });
+          return;
+        }
+        if (waiting.hostUserId === socket.userId) {
+          socket.emit('private:error', { error: 'No puedes unirte a tu propia sala con la misma cuenta.' });
+          return;
+        }
+        const hostSock = this.io.sockets.sockets.get(waiting.hostSocketId);
+        if (!hostSock) {
+          this.privateRooms.delete(cleanCode);
+          socket.emit('private:error', { error: 'El anfitrión cerró la sala privada.' });
+          return;
+        }
+
+        this.privateRooms.delete(cleanCode);
+        this.removeFromQueue(socket.id);
+
+        await this.createMatch(
+          { socketId: waiting.hostSocketId, userId: waiting.hostUserId, timeMinutes: waiting.timeMinutes },
+          { socketId: socket.id, userId: socket.userId, timeMinutes: waiting.timeMinutes },
+          { isPrivate: true, roomCode: cleanCode, customMod: waiting.customMod }
+        );
+      });
+
+      // === MOVIMIENTO EN PARTIDA ===
       socket.on('match:move', ({ matchId, fr, fc, tr, tc, promoType = 'Q' } = {}) => {
         const room = this.matches.get(matchId);
         if (!room || room.finished) {
@@ -95,15 +202,71 @@ export class MultiplayerManager {
         if (!expectedColor) return socket.emit('match:error', { error: 'No perteneces a esta partida.' });
         if (room.engine.turn !== expectedColor) return socket.emit('match:error', { error: 'No es tu turno.' });
 
+        const mover = room.engine.board[fr]?.[fc];
+        if (isPieceFrozen(room.powerState, mover)) {
+          return socket.emit('match:error', { error: '❄️ Esa pieza está congelada en dorado y no puede moverse.' });
+        }
+        if (isSquareBlockedByModState(room.powerState, tr, tc, expectedColor)) {
+          return socket.emit('match:error', { error: 'Esa casilla está bloqueada por una Grieta o Ficha Grande 2×2.' });
+        }
+
+        const capturedBefore = room.engine.board[tr]?.[tc] ? { ...room.engine.board[tr][tc] } : null;
         const result = room.engine.validateAndExecuteMove(fr, fc, tr, tc, promoType, true);
         if (!result.ok) return socket.emit('match:error', { error: result.error });
+
+        // Asimilación 1:1 de Free Mittens si el jugador tiene el buff activo
+        if (capturedBefore) {
+          applyMittensAssimilationIfActive(room.engine, room.powerState, expectedColor, fr, fc, capturedBefore);
+        }
+
+        tickPowerStateForSide(room.powerState, expectedColor);
+        room.lastMoveAt = Date.now();
+        this.io.to(room.id).emit('match:state', {
+          matchId: room.id,
+          state: room.engine.cloneState(),
+          powerState: room.powerState,
+          lastMove: { fr, fc, tr, tc, promoType, by: expectedColor },
+          events: result.events
+        });
+
+        if (room.engine.winner) {
+          this.finishMatch(room, room.engine.winner, room.engine.winReason);
+        }
+      });
+
+      // === EJECUCIÓN DE PODERES OFICIALES (PÚBLICAS) O MODS CUSTOM (SALAS PRIVADAS) ===
+      socket.on('match:use_power', ({ matchId, fr, fc, tr, tc } = {}) => {
+        const room = this.matches.get(matchId);
+        if (!room || room.finished) {
+          socket.emit('match:error', { error: 'Partida no encontrada o ya finalizada.' });
+          return;
+        }
+        const expectedColor = room.white.socketId === socket.id ? 'w'
+          : (room.black.socketId === socket.id ? 'b' : null);
+        if (!expectedColor) return socket.emit('match:error', { error: 'No perteneces a esta partida.' });
+        if (room.engine.turn !== expectedColor) return socket.emit('match:error', { error: 'No es tu turno.' });
+
+        const playerObj = expectedColor === 'w' ? room.white : room.black;
+        const powerDef = room.isPrivate && room.customMod?.power
+          ? room.customMod.power
+          : resolvePowerDef(playerObj.profile.equippedPowerId, null);
+
+        if (!powerDef) {
+          return socket.emit('match:error', { error: 'No tienes ningún poder equipado para esta partida.' });
+        }
+        if (powerDef.vipOnly && !playerObj.profile.isVip) {
+          return socket.emit('match:error', { error: 'Este poder requiere suscripción Mod VIP activa.' });
+        }
+
+        const res = executeBattlePowerAction(room.engine, room.powerState, expectedColor, powerDef, { fr, fc, tr, tc });
+        if (!res.ok) return socket.emit('match:error', { error: res.error });
 
         room.lastMoveAt = Date.now();
         this.io.to(room.id).emit('match:state', {
           matchId: room.id,
           state: room.engine.cloneState(),
-          lastMove: { fr, fc, tr, tc, promoType, by: expectedColor },
-          events: result.events
+          powerState: room.powerState,
+          powerEvent: { ...res.events, by: expectedColor, sfx: res.sfx, logText: res.logText }
         });
 
         if (room.engine.winner) {
@@ -145,6 +308,7 @@ export class MultiplayerManager {
 
       socket.on('disconnect', () => {
         this.removeFromQueue(socket.id);
+        this.removePrivateRoomBySocket(socket.id);
         const matchId = this.socketToMatch.get(socket.id);
         if (matchId) {
           const room = this.matches.get(matchId);
@@ -156,6 +320,12 @@ export class MultiplayerManager {
         }
       });
     });
+  }
+
+  removePrivateRoomBySocket(socketId) {
+    for (const [code, entry] of this.privateRooms.entries()) {
+      if (entry.hostSocketId === socketId) this.privateRooms.delete(code);
+    }
   }
 
   removeFromQueue(socketId) {
@@ -208,38 +378,49 @@ export class MultiplayerManager {
     if (matchedIndices.size > 0) {
       this.queue = this.queue.filter((_, idx) => !matchedIndices.has(idx));
       for (const [entryA, entryB] of pairs) {
-        await this.createMatch(entryA, entryB);
+        await this.createMatch(entryA, entryB, { isPrivate: false });
       }
     }
   }
 
-  async createMatch(entryA, entryB) {
+  async createMatch(entryA, entryB, { isPrivate = false, roomCode = null, customMod = null } = {}) {
     const sockA = this.io.sockets.sockets.get(entryA.socketId);
     const sockB = this.io.sockets.sockets.get(entryB.socketId);
     if (!sockA || !sockB) return;
 
-    const flip = Math.random() < 0.5;
-    const whiteEntry = flip ? entryA : entryB;
-    const blackEntry = flip ? entryB : entryA;
-    const whiteSock = flip ? sockA : sockB;
-    const blackSock = flip ? sockB : sockA;
+    const flip = isPrivate ? false : (Math.random() < 0.5);
+    const whiteEntry = flip ? entryB : entryA;
+    const blackEntry = flip ? entryA : entryB;
+    const whiteSock = flip ? sockB : sockA;
+    const blackSock = flip ? sockA : sockB;
 
     const whiteRow = await this.db.ensureFreshVipState(await this.db.findUserById(whiteEntry.userId));
     const blackRow = await this.db.ensureFreshVipState(await this.db.findUserById(blackEntry.userId));
     const whiteProfile = this.db.formatPublicUser(whiteRow);
     const blackProfile = this.db.formatPublicUser(blackRow);
 
-    const matchId = `room_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    const matchId = `${isPrivate ? 'priv' : 'room'}_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
     const engine = new ClassicChessEngine(whiteEntry.timeMinutes);
+    if (isPrivate && customMod) {
+      applyCustomModSetupToEngine(engine, customMod);
+    }
+
+    const powerState = createInitialPowerState();
     engine.logs = [{
       turn: 0,
       type: 'special',
-      text: `Partida online iniciada: ${whiteProfile.username} (${whiteProfile.elo} Elo) vs ${blackProfile.username} (${blackProfile.elo} Elo).`
+      text: isPrivate
+        ? `Sala Privada ${roomCode || ''} iniciada${customMod ? ` con Mod Abierto «${customMod.name}»` : ''}: ${whiteProfile.username} vs ${blackProfile.username}.`
+        : `Partida Pública Oficial iniciada: ${whiteProfile.username} (${whiteProfile.elo} Elo) vs ${blackProfile.username} (${blackProfile.elo} Elo). Poderes oficiales activos.`
     }];
 
     const room = {
       id: matchId,
+      isPrivate,
+      roomCode,
+      customMod: isPrivate ? customMod : null,
       engine,
+      powerState,
       white: { socketId: whiteSock.id, userId: whiteEntry.userId, profile: whiteProfile },
       black: { socketId: blackSock.id, userId: blackEntry.userId, profile: blackProfile },
       createdAt: Date.now(),
@@ -257,10 +438,14 @@ export class MultiplayerManager {
 
     const basePayload = {
       matchId,
+      isPrivate,
+      roomCode,
+      customMod: room.customMod,
       timeMinutes: whiteEntry.timeMinutes,
       white: whiteProfile,
       black: blackProfile,
-      state: engine.cloneState()
+      state: engine.cloneState(),
+      powerState
     };
 
     whiteSock.emit('match:found', { ...basePayload, yourColor: 'w', opponent: blackProfile });
@@ -295,22 +480,34 @@ export class MultiplayerManager {
     try {
       const wRow = await this.db.findUserById(room.white.userId);
       const bRow = await this.db.findUserById(room.black.userId);
-      const eloUpdate = calculateEloUpdate(wRow.elo, bRow.elo, winner, {
-        whiteGames: Number(wRow.games_played) || 0,
-        blackGames: Number(bRow.games_played) || 0
-      });
+
+      // Las Salas Privadas con Mods NO alteran el Elo competitivo público (para proteger el Ranking Global)
+      const eloUpdate = room.isPrivate
+        ? {
+          whiteBefore: Number(wRow.elo) || 0,
+          whiteAfter: Number(wRow.elo) || 0,
+          whiteDelta: 0,
+          blackBefore: Number(bRow.elo) || 0,
+          blackAfter: Number(bRow.elo) || 0,
+          blackDelta: 0
+        }
+        : calculateEloUpdate(wRow.elo, bRow.elo, winner, {
+          whiteGames: Number(wRow.games_played) || 0,
+          blackGames: Number(bRow.games_played) || 0
+        });
 
       const saved = await this.db.recordOnlineMatch({
         whiteUserId: room.white.userId,
         blackUserId: room.black.userId,
         winner,
-        resultReason: reason,
+        resultReason: room.isPrivate ? `[Sala Privada] ${reason}` : reason,
         eloResult: eloUpdate,
         turns: room.engine.turnNumber
       });
 
       this.io.to(room.id).emit('match:ended', {
         matchId: room.id,
+        isPrivate: room.isPrivate,
         winner,
         reason,
         eloUpdate,
@@ -320,7 +517,8 @@ export class MultiplayerManager {
         blackXpGained: saved.blackXpGained,
         whiteModsGained: saved.whiteModsGained,
         blackModsGained: saved.blackModsGained,
-        state: room.engine.cloneState()
+        state: room.engine.cloneState(),
+        powerState: room.powerState
       });
     } finally {
       this.socketToMatch.delete(room.white.socketId);

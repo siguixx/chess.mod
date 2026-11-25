@@ -215,6 +215,9 @@ class StandaloneApiClient {
     return { avatars: COSMETIC_AVATARS, frames: COSMETIC_FRAMES, boards: COSMETIC_BOARDS, pieceSkins: COSMETIC_PIECE_SKINS, powers: COSMETIC_POWERS, vipPlan: MOD_VIP_PLAN };
   }
   async getShop() { return this.getCosmetics(); }
+  async getVipStatus() {
+    return { plan: MOD_VIP_PLAN, billingConfigured: false, stripeConfigured: false, paymentLinkConfigured: false };
+  }
 
   async buyShopItem(itemId) {
     const store = loadStore();
@@ -222,7 +225,8 @@ class StandaloneApiClient {
     const s = loadStore();
     const item = findShopItem(itemId);
     if (!item) throw new Error('Artículo no encontrado.');
-    if (item.vipOnly) throw new Error('Exclusivo de Mod VIP (S/ 15 / mes).');
+    if (item.vipOnly) throw new Error('Exclusivo de Mod VIP ($5 USD / mes).');
+    if (item.bossUnlock) throw new Error(item.exclusiveReason || 'Se desbloquea venciendo al Jefe.');
     const price = Number(item.priceMods) || 0;
     if ((s.user.mods || 0) < price) throw new Error(\`Necesitas \${price} Mods (tienes \${s.user.mods || 0} Mods).\`);
     s.user.mods = (s.user.mods || 0) - price;
@@ -236,18 +240,12 @@ class StandaloneApiClient {
     return { ok: true, item, pricePaid: price, user: hydrateUser(s.user, s.matches) };
   }
 
-  async subscribeModVip() {
-    const store = loadStore();
-    if (!store.user) await this.me();
-    const s = loadStore();
-    s.user.vipActive = true;
-    s.user.vipExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    s.user.frameId = 'frame_vip_gold';
-    s.user.boardThemeId = 'board_vip_gold_black';
-    s.user.pieceSkinId = 'pieces_vip_gold';
-    s.user.equippedPowerId = 'power_vip_golden_freeze';
-    saveStore(s);
-    return { ok: true, vipExpiresAt: s.user.vipExpiresAt, user: hydrateUser(s.user, s.matches) };
+  async startModVipCheckout() {
+    throw new Error('Mod VIP ($5 USD/mes) requiere cobro real en la versión web online del servidor.');
+  }
+
+  async verifyModVipPayment() {
+    throw new Error('La verificación de pagos reales solo funciona en la versión web online.');
   }
 
   async cancelModVip() {
@@ -350,6 +348,11 @@ class StandaloneApiClient {
         const list = new Set(u.campaigns[campaignId]?.completedLevels || []);
         list.add(Number(levelId));
         u.campaigns[campaignId] = { completedLevels: [...list].sort((a, b) => a - b) };
+        if (campaignId === 'mittens' && Number(levelId) === 5) {
+          const unl = new Set(u.unlockedCosmetics || []);
+          unl.add('power_free_mittens');
+          u.unlockedCosmetics = [...unl];
+        }
         if (campaignId === 'chess' && Number(levelId) === 5) {
           u.customTitle = 'Vencedor de Chess';
           const unl = new Set(u.unlockedCosmetics || []);

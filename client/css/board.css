@@ -802,18 +802,81 @@
   filter: drop-shadow(0 0 26px rgba(201, 75, 60, 0.45));
 }
 
-/* ================= SKINS DE FICHAS Y PODERES DE TIENDA / MOD VIP ================= */
+/* ================= SKINS DE FICHAS, TEXTURAS DE TABLERO Y PODERES OP ================= */
 .piece-wrap.piece-skin-jade .piece-svg {
   filter: drop-shadow(0 0 5px rgba(84, 219, 152, 0.75)) hue-rotate(82deg) saturate(1.35);
 }
 .piece-wrap.piece-skin-obsidian .piece-svg {
   filter: drop-shadow(0 0 6px rgba(255, 134, 64, 0.8)) contrast(1.18) sepia(0.32) saturate(1.4);
 }
+.piece-wrap.piece-skin-magma .piece-svg {
+  filter: sepia(1) saturate(4.2) hue-rotate(-26deg) brightness(1.02) contrast(1.22) drop-shadow(0 0 8px rgba(255, 86, 34, 0.95));
+}
+.piece-wrap.piece-skin-ice .piece-svg {
+  filter: sepia(0.8) saturate(2.5) hue-rotate(155deg) brightness(1.16) drop-shadow(0 0 8px rgba(125, 226, 255, 0.95));
+}
 .piece-wrap.piece-skin-cosmic .piece-svg {
   filter: drop-shadow(0 0 7px rgba(170, 146, 255, 0.9)) hue-rotate(235deg) saturate(1.55);
 }
+.piece-wrap.piece-skin-glitch .piece-svg {
+  filter: hue-rotate(175deg) saturate(2.4) contrast(1.28) drop-shadow(-2px 0 0 rgba(255, 0, 110, 0.85)) drop-shadow(2px 0 0 rgba(0, 245, 255, 0.85));
+}
 .piece-wrap.piece-skin-vip-gold .piece-svg {
   filter: sepia(1) saturate(3.2) hue-rotate(8deg) brightness(1.08) contrast(1.12) drop-shadow(0 0 7px rgba(255, 215, 64, 0.95));
+}
+
+/* Texturas ricas por tablero */
+.board-inner.texture-temple-gold .square.dark {
+  background-image: repeating-linear-gradient(45deg, rgba(255, 216, 110, 0.08) 0 6px, transparent 6px 12px);
+}
+.board-inner.texture-velvet .square.dark {
+  background-image: radial-gradient(circle at 30% 30%, rgba(255, 180, 180, 0.12), rgba(0, 0, 0, 0.22));
+}
+.board-inner.texture-magma .square.dark {
+  background-image:
+    linear-gradient(125deg, transparent 42%, rgba(255, 102, 26, 0.36) 47%, rgba(255, 204, 64, 0.25) 50%, transparent 54%),
+    radial-gradient(circle at 70% 70%, rgba(255, 72, 0, 0.24), transparent 65%);
+}
+.board-inner.texture-magma .square.light {
+  background-image: radial-gradient(circle at 40% 40%, rgba(255, 180, 110, 0.25), rgba(140, 48, 18, 0.12));
+}
+.board-inner.texture-jade .square.dark {
+  background-image: linear-gradient(135deg, rgba(110, 226, 168, 0.16) 0%, transparent 50%, rgba(0, 0, 0, 0.18) 100%);
+}
+.board-inner.texture-ice .square.dark,
+.board-inner.texture-ice .square.light {
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.24) 0%, transparent 45%, rgba(125, 226, 255, 0.16) 100%);
+}
+.board-inner.texture-glitch .square.dark {
+  background-image:
+    repeating-linear-gradient(0deg, rgba(56, 248, 255, 0.09) 0 2px, transparent 2px 5px),
+    linear-gradient(90deg, rgba(192, 38, 211, 0.12), transparent 60%);
+}
+.board-inner.texture-glitch .square.light {
+  background-image: repeating-linear-gradient(0deg, rgba(34, 211, 238, 0.07) 0 2px, transparent 2px 6px);
+}
+.board-inner.texture-nebula .square.dark {
+  background-image:
+    radial-gradient(1.5px 1.5px at 22% 28%, rgba(255, 255, 255, 0.65), transparent),
+    radial-gradient(1.5px 1.5px at 74% 66%, rgba(196, 181, 253, 0.7), transparent),
+    radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.22), transparent 72%);
+}
+.board-inner.texture-marble-gold .square.light {
+  background-image: linear-gradient(118deg, transparent 35%, rgba(207, 166, 76, 0.24) 48%, transparent 56%);
+}
+.board-inner.texture-marble-gold .square.dark {
+  background-image: linear-gradient(122deg, transparent 40%, rgba(239, 208, 131, 0.22) 50%, transparent 58%);
+}
+.board-inner.texture-void .square.dark {
+  background-image: radial-gradient(circle at 50% 50%, rgba(201, 75, 60, 0.22) 0%, rgba(0, 0, 0, 0.4) 80%);
+}
+.board-inner.texture-vip-gold .square.light {
+  background-image: linear-gradient(135deg, rgba(255, 248, 204, 0.42) 0%, rgba(212, 160, 36, 0.12) 50%, rgba(255, 224, 102, 0.34) 100%);
+}
+.board-inner.texture-vip-gold .square.dark {
+  background-image:
+    repeating-linear-gradient(135deg, rgba(255, 215, 64, 0.08) 0 4px, transparent 4px 12px),
+    radial-gradient(circle at 50% 50%, rgba(255, 215, 64, 0.08), rgba(0, 0, 0, 0.35));
 }
 
 /* Congelación Dorada (Poder Mod VIP: 3 turnos en color dorado) */

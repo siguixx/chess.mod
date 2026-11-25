@@ -40,6 +40,7 @@
           <button class="nav-btn" data-screen="multiplayer"><span class="nav-ico">🌐</span><span>Multijugador</span></button>
           <button class="nav-btn" data-screen="story"><span class="nav-ico">📜</span><span>Modo Historia</span></button>
           <button class="nav-btn" data-screen="shop"><span class="nav-ico">🛒</span><span>Tienda</span></button>
+          <button class="nav-btn" data-screen="mods"><span class="nav-ico">🧩</span><span>Taller de Mods</span></button>
           <button class="nav-btn" data-screen="profile"><span class="nav-ico">👤</span><span>Perfil</span></button>
           <button class="nav-btn" data-screen="customize"><span class="nav-ico">🎨</span><span>Personalización</span></button>
           <button class="nav-btn" data-screen="ranking"><span class="nav-ico">🏆</span><span>Ranking Global</span></button>
@@ -143,8 +144,9 @@
         <div id="mp-queue-controls" class="matchmaking-hero hidden">
           <div class="panel-card" style="display:flex;flex-direction:column;gap:16px;">
             <div>
-              <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;">Cola de Matchmaking Competitivo</h3>
-              <p style="font-size:0.84rem;color:var(--text-muted);">Empareja jugadores reales con Elo similar ampliando rango progresivamente si hay espera.</p>
+              <span class="pill jade" style="margin-bottom:6px;">PÚBLICAS · ELO OFICIAL</span>
+              <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;">Cola Pública Competitiva</h3>
+              <p style="font-size:0.84rem;color:var(--text-muted);">En partidas públicas se usan exclusivamente los <strong>poderes oficiales del juego</strong> (Tienda, Free Mittens y Mod VIP). Los Mods de código abierto están restringidos a Salas Privadas.</p>
             </div>
 
             <div>
@@ -158,7 +160,7 @@
               </div>
             </div>
 
-            <button id="btn-mp-find" class="btn btn-gold" style="padding:13px 20px;font-size:0.95rem;">⚔️ Buscar Partida Online</button>
+            <button id="btn-mp-find" class="btn btn-gold" style="padding:13px 20px;font-size:0.95rem;">⚔️ Buscar Partida Pública</button>
 
             <div id="mp-queue-status" class="hidden" style="display:flex;align-items:center;gap:14px;padding:12px;border-radius:10px;background:rgba(207,166,76,0.1);border:1px solid var(--gold);">
               <div class="queue-spinner"></div>
@@ -169,14 +171,36 @@
             </div>
           </div>
 
-          <div class="panel-card">
-            <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:10px;">Fórmula Elo Real desde 0</h3>
-            <ul style="padding-left:18px;display:flex;flex-direction:column;gap:8px;font-size:0.83rem;color:var(--text-muted);line-height:1.45;">
-              <li>Todo jugador comienza en <strong>0 Elo</strong> (nunca baja de 0).</li>
-              <li>Probabilidad esperada oficial: <code>E = 1 / (1 + 10^((eloRival - elo) / 400))</code>.</li>
-              <li>Factor K dinámico: <code>K=40</code> (primeras 20 partidas), <code>K=32</code> estándar, <code>K=24</code> élite.</li>
-              <li>Actualización instantánea en PostgreSQL/SQLite y Ranking Global.</li>
-            </ul>
+          <div class="panel-card" style="display:flex;flex-direction:column;gap:14px;">
+            <div>
+              <span class="pill" style="margin-bottom:6px;">🔐 SALAS PRIVADAS · MODS CÓDIGO ABIERTO</span>
+              <h3 style="font-family:var(--font-display);color:var(--gold-bright);margin-bottom:6px;">Salas Privadas con Mods</h3>
+              <p style="font-size:0.82rem;color:var(--text-muted);line-height:1.45;">Juega con tus amigos usando tus <strong>Mods creados o importados con código abierto</strong> (no altera el Elo público).</p>
+            </div>
+
+            <div>
+              <label for="private-mod-select" style="font-size:0.74rem;color:var(--gold);text-transform:uppercase;letter-spacing:0.06em;font-weight:700;display:block;margin-bottom:6px;">Mod de Código Abierto para la Sala</label>
+              <select id="private-mod-select" class="input-field"></select>
+            </div>
+
+            <button id="btn-private-create" class="btn btn-primary">🔐 Crear Sala Privada</button>
+
+            <div id="private-room-waiting" class="hidden" style="padding:12px;border-radius:10px;background:rgba(38,84,61,0.22);border:1px solid #519674;">
+              <div style="font-size:0.76rem;color:#a7e8c6;margin-bottom:4px;">Sala Privada activa — comparte este código:</div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <strong id="private-room-code-display" style="font-family:monospace;font-size:1.35rem;letter-spacing:0.18em;color:#ffe27a;">------</strong>
+                <button id="btn-private-copy-code" class="btn btn-sm">📋 Copiar</button>
+                <button id="btn-private-cancel" class="btn btn-sm btn-danger">✕ Cerrar</button>
+              </div>
+            </div>
+
+            <div style="border-top:1px solid var(--border-subtle);padding-top:12px;">
+              <label for="input-private-code" style="font-size:0.74rem;color:var(--text-muted);display:block;margin-bottom:6px;">¿Tienes un código de sala privada?</label>
+              <div style="display:flex;gap:8px;">
+                <input id="input-private-code" class="input-field" type="text" maxlength="8" placeholder="Ej. CM49K2" style="text-transform:uppercase;font-family:monospace;letter-spacing:0.12em;">
+                <button id="btn-private-join" class="btn btn-gold">🚪 Unirse</button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -200,14 +224,14 @@
       <section id="screen-shop" class="screen-section">
         <div class="screen-header">
           <div>
-            <div class="screen-kicker">ECONOMÍA DEL JUEGO · MODS Y SUSCRIPCIÓN</div>
+            <div class="screen-kicker">ECONOMÍA DEL JUEGO · PODERES OP DE ATAQUE Y TEXTURAS</div>
             <h1 class="screen-title">TIENDA CHESS.MOD</h1>
-            <p class="screen-subtitle">Gana 🪙 Mods jugando partidas y desbloquea poderes balanceados, fichas con sonido propio y tableros exclusivos.</p>
+            <p class="screen-subtitle">Gana 🪙 Mods jugando y equipa poderes OP de ataque, fichas grandes 2×2 y tableros texturizados. <strong>Usables en cualquier modo EXCEPTO Modo Historia.</strong></p>
           </div>
           <span class="pill" style="font-size:0.88rem;padding:6px 14px;">🪙 <strong id="shop-mods-balance">100</strong> Mods</span>
         </div>
 
-        <!-- BANNER SUSCRIPCIÓN MENSUAL MOD VIP -->
+        <!-- BANNER SUSCRIPCIÓN MENSUAL MOD VIP ($5 USD / MES) -->
         <div class="vip-hero-card" id="vip-banner-card">
           <div class="vip-hero-top">
             <div>
@@ -216,35 +240,79 @@
                 <span id="vip-status-badge" class="pill muted">Inactivo</span>
               </div>
               <h2 class="vip-hero-title">Suscripción Mensual <span class="vip-name">Mod VIP</span></h2>
-              <div id="vip-expires-text" class="vip-hero-sub">S/ 15 / mes · Renovable mensualmente. Si dejas de pagar o cancelas, todo el inventario VIP se retira automáticamente.</div>
+              <div id="vip-expires-text" class="vip-hero-sub">$5 USD / mes · Cobro real mensual verificado. Si dejas de pagar o cancelas, todo el inventario VIP se retira automáticamente.</div>
             </div>
             <div class="vip-price-box">
-              <div class="vip-price-amount">S/ 15</div>
+              <div class="vip-price-amount">$5 USD</div>
               <div class="vip-price-period">por mes</div>
             </div>
           </div>
 
           <ul class="vip-benefit-list">
             <li>✨ <strong>Aurora dorada y nombre dorado</strong> visibles para otros jugadores en Ranking Global y partidas Online.</li>
-            <li>❄️ <strong>Poder VIP — Congelación Dorada:</strong> tus peones congelan a distancia (hasta 4 casillas) en color dorado por 3 turnos a cualquier ficha rival (no Rey).</li>
-            <li>♟️ <strong>Fichas Doradas exclusivas</strong> con efecto de sonido metálico dorado al mover y capturar.</li>
-            <li>🏁 <strong>Tablero Dorado y Negro</strong> de lujo + Marco Aurora Dorada.</li>
+            <li>👑⚡ <strong>Poder VIP SÚPER OP — Tormenta Dorada (CD 2t):</strong> dispara hasta 5 casillas congelando en oro por 3 turnos en área (cruz). ¡Si disparas a un enemigo ya congelado en oro, lo <strong>DESTRUYES al instante</strong>!</li>
+            <li>♟️ <strong>Fichas Doradas exclusivas</strong> con textura metálica y sonido áureo.</li>
+            <li>🏁 <strong>Tablero Dorado y Negro</strong> texturizado + Marco Aurora Dorada (usable en todo menos Modo Historia).</li>
           </ul>
 
           <div class="vip-hero-actions">
-            <button id="btn-vip-open-modal" class="btn btn-gold">👑 Suscribirse a Mod VIP (S/ 15 / mes)</button>
+            <button id="btn-vip-open-modal" class="btn btn-gold">👑 Suscribirse a Mod VIP ($5 USD / mes)</button>
             <button id="btn-vip-cancel" class="btn btn-danger btn-sm hidden">Cancelar suscripción (retirar inventario VIP)</button>
           </div>
         </div>
 
         <!-- TABS DE TIENDA POR MODS -->
         <div class="shop-tabs" id="shop-tabs-bar">
-          <button class="shop-tab-btn active" data-shop-tab="powers">⚡ Poderes</button>
-          <button class="shop-tab-btn" data-shop-tab="pieceSkins">♟️ Fichas</button>
-          <button class="shop-tab-btn" data-shop-tab="boards">🏁 Tableros</button>
+          <button class="shop-tab-btn active" data-shop-tab="powers">⚡ Poderes OP</button>
+          <button class="shop-tab-btn" data-shop-tab="pieceSkins">♟️ Fichas & Texturas</button>
+          <button class="shop-tab-btn" data-shop-tab="boards">🏁 Tableros Texturizados</button>
         </div>
 
         <div id="shop-items-grid" class="shop-grid"></div>
+      </section>
+
+      <!-- 3C. TALLER DE MODS (CÓDIGO ABIERTO · SOLO SALAS PRIVADAS) -->
+      <section id="screen-mods" class="screen-section">
+        <div class="screen-header">
+          <div>
+            <div class="screen-kicker">CÓDIGO ABIERTO (CHESSMOD-V1) · SOLO SALAS PRIVADAS</div>
+            <h1 class="screen-title">TALLER DE MODS</h1>
+            <p class="screen-subtitle">Escribe o importa tus propios Mods con código abierto (fichas grandes 2×2, poderes de ataque y texturas). <strong>Solo funcionan en Salas Privadas; en Públicas solo se usan los del juego.</strong></p>
+          </div>
+        </div>
+
+        <div class="mods-workshop-grid">
+          <div class="panel-card" style="display:flex;flex-direction:column;gap:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+              <h3 style="font-family:var(--font-display);color:var(--gold-bright);">Editor de Código Abierto (.json)</h3>
+              <div class="time-pills">
+                <button class="time-opt" data-mod-template="0">🌋 Titán 2×2</button>
+                <button class="time-opt" data-mod-template="1">🔫 Rayo Cuántico</button>
+                <button class="time-opt" data-mod-template="2">🧠 Traición</button>
+              </div>
+            </div>
+
+            <textarea id="mod-code-editor" class="mod-code-editor" spellcheck="false" rows="16"></textarea>
+            <div id="mod-validation-msg" style="font-size:0.78rem;color:var(--text-muted);">
+              Efectos soportados: <code>ranged_destroy</code>, <code>area_crush_2x2</code>, <code>golden_freeze_area</code>, <code>corrupt_steal</code>, <code>rift_destroy</code>, <code>water_cannon</code>, <code>summon_piece</code>.
+            </div>
+
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button id="btn-mod-validate-save" class="btn btn-gold">💾 Guardar Mod</button>
+              <button id="btn-mod-test-ai" class="btn btn-primary">🤖 Probar Vs IA (Privado)</button>
+              <button id="btn-mod-host-private" class="btn">🔐 Crear Sala Privada Online</button>
+              <button id="btn-mod-export" class="btn btn-sm">📤 Exportar .json</button>
+              <button id="btn-mod-import" class="btn btn-sm">📥 Importar .json</button>
+              <input id="input-mod-file" type="file" accept=".json,application/json" class="hidden">
+            </div>
+          </div>
+
+          <div class="panel-card" style="display:flex;flex-direction:column;gap:12px;">
+            <h3 style="font-family:var(--font-display);color:var(--gold-bright);">Mis Mods Guardados e Importados</h3>
+            <p style="font-size:0.78rem;color:var(--text-muted);line-height:1.45;">Comparte tu archivo <code>.chessmod.json</code> con otros jugadores. Cuando creas una Sala Privada con un Mod, ambos jugadores reciben su código abierto antes de iniciar.</p>
+            <div id="saved-mods-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+          </div>
+        </div>
       </section>
 
       <!-- 4. PERFIL -->
@@ -743,30 +811,27 @@
     </div>
   </div>
 
-  <!-- MODAL DE SUSCRIPCIÓN MENSUAL MOD VIP (S/ 15 / MES) -->
+  <!-- MODAL DE SUSCRIPCIÓN MENSUAL MOD VIP ($5 USD / MES · COBRO REAL) -->
   <div id="modal-vip-checkout" class="modal-backdrop">
-    <div class="modal-box" style="max-width:470px;text-align:left;">
+    <div class="modal-box" style="max-width:480px;text-align:left;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <span class="vip-tag">👑 SUSCRIPCIÓN MENSUAL</span>
+        <span class="vip-tag">👑 SUSCRIPCIÓN MENSUAL · COBRO REAL</span>
         <button id="btn-close-vip-modal" class="btn btn-sm btn-icon">✕</button>
       </div>
       <h2 style="text-align:left;margin-bottom:4px;">Activar <span class="vip-name">Mod VIP</span></h2>
-      <p style="text-align:left;margin-bottom:12px;">Plan mensual de <strong>S/ 15 / mes</strong> (30 días). Tu cuenta vinculada recibe inmediatamente todo el paquete VIP:</p>
+      <p style="text-align:left;margin-bottom:12px;">Plan mensual oficial de <strong>$5.00 USD / mes</strong> con cobro verificado por pasarela segura (Stripe / Tarjeta). Incluye todo el paquete VIP OP:</p>
       <ul class="vip-benefit-list" style="margin-bottom:14px;">
         <li>✨ Aurora dorada y nombre dorado visibles para otros jugadores</li>
-        <li>❄️ Poder VIP: Peones congelan a distancia por 3 turnos en dorado</li>
-        <li>♟️ Fichas Doradas con sonido exclusivo + Tablero Dorado y Negro</li>
+        <li>👑⚡ Poder VIP SÚPER OP (CD 2t): Congela en oro en área (3t) y destruye al instante enemigos ya congelados</li>
+        <li>♟️ Fichas Doradas con sonido áureo + Tablero Dorado y Negro texturizado</li>
       </ul>
-      <div style="font-size:0.74rem;color:var(--gold);text-transform:uppercase;letter-spacing:0.08em;font-weight:700;margin-bottom:8px;">Método de pago (S/ 15.00 PEN / mes)</div>
-      <div class="vip-pay-methods" id="vip-pay-methods">
-        <button type="button" class="vip-pay-pill active" data-pay="yape">📱 Yape</button>
-        <button type="button" class="vip-pay-pill" data-pay="plin">📲 Plin</button>
-        <button type="button" class="vip-pay-pill" data-pay="card">💳 Tarjeta</button>
+      <div id="vip-billing-status-note" style="font-size:0.76rem;color:#ffe27a;background:rgba(207,166,76,0.12);border:1px solid rgba(207,166,76,0.38);border-radius:8px;padding:9px 11px;margin-bottom:12px;line-height:1.45;">
+        💳 Serás redirigido a la pasarela de pago segura para completar el cobro mensual de <strong>$5.00 USD</strong>.
       </div>
-      <div style="font-size:0.74rem;color:var(--text-muted);background:rgba(201,75,60,0.12);border:1px solid rgba(201,75,60,0.35);border-radius:8px;padding:9px 11px;margin:12px 0 16px;line-height:1.45;">
-        ⚠️ <strong>Política Mod VIP:</strong> Si la suscripción vence o se cancela, todos los objetos VIP (aurora, nombre dorado, poder, fichas doradas y tablero dorado/negro) se retiran automáticamente de tu inventario.
+      <div style="font-size:0.74rem;color:var(--text-muted);background:rgba(201,75,60,0.12);border:1px solid rgba(201,75,60,0.35);border-radius:8px;padding:9px 11px;margin:0 0 16px;line-height:1.45;">
+        ⚠️ <strong>Política Mod VIP:</strong> Si dejas de pagar o cancelas la suscripción, todos los objetos VIP (aurora, nombre dorado, poder OP, fichas doradas y tablero dorado/negro) se retiran automáticamente de tu inventario. Los objetos de tienda y VIP no aplican en Modo Historia.
       </div>
-      <button id="btn-confirm-vip-sub" class="btn btn-gold" style="width:100%;padding:12px 16px;font-size:0.92rem;">👑 Confirmar Mod VIP — S/ 15 / mes</button>
+      <button id="btn-confirm-vip-sub" class="btn btn-gold" style="width:100%;padding:12px 16px;font-size:0.92rem;">💳 Ir a Pagar Mod VIP — $5.00 USD / mes</button>
     </div>
   </div>
 

@@ -713,6 +713,45 @@
   color: var(--gold-bright);
 }
 
+/* Taller de Mods (Código Abierto) */
+.mods-workshop-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 0.85fr;
+  gap: 16px;
+}
+.mod-code-editor {
+  width: 100%;
+  min-height: 310px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-stone);
+  background: #0b0a08;
+  color: #e9f5d0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.48;
+  resize: vertical;
+  outline: none;
+}
+.mod-code-editor:focus {
+  border-color: var(--gold-bright);
+  box-shadow: 0 0 0 2px rgba(207, 166, 76, 0.22);
+}
+.saved-mod-card {
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(12, 11, 9, 0.88);
+  border: 1px solid var(--border-stone);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+@media (max-width: 960px) {
+  .mods-workshop-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 900px) {
   #app-shell { grid-template-columns: 1fr; }
   .menu-sidebar {

@@ -360,7 +360,10 @@ export class ChessDatabase {
     const item = findShopItem(itemId);
     if (!item) throw new Error('Artículo no encontrado en la tienda.');
     if (item.vipOnly) {
-      throw new Error('Este artículo es exclusivo de la suscripción mensual Mod VIP (S/ 15 / mes).');
+      throw new Error('Este artículo es exclusivo de la suscripción mensual Mod VIP ($5 USD / mes).');
+    }
+    if (item.bossUnlock) {
+      throw new Error(`Este poder no se compra con Mods: ${item.exclusiveReason || 'desbloquéalo venciendo al Jefe correspondiente'}.`);
     }
     if (profile.unlockedCosmetics.includes(item.id)) {
       throw new Error('Ya tienes este artículo en tu inventario.');
@@ -551,6 +554,12 @@ export class ChessDatabase {
           'UPDATE campaign_progress SET best_turns = ?, completions = completions + 1, completed_at = ? WHERE user_id = ? AND campaign_id = ? AND level_id = ?',
           [bestTurns, now, userId, campaignId, lv]
         );
+      }
+
+      // Recompensa exclusiva por derrotar a Free Mittens (Capítulo 02 Nivel 5)
+      if (campaignId === 'mittens' && lv === 5) {
+        await this.grantExclusiveUnlock(userId, 'power_free_mittens');
+        unlockedExclusive = 'Poder de Free Mittens';
       }
 
       // Recompensa exclusiva por derrotar a CHESS (Capítulo 05 Nivel 5)

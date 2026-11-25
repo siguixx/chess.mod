@@ -1,6 +1,18 @@
 import { FILES, PIECE_NAMES, HINT_XP_COST, toAlg, formatClock, inBounds } from '/shared/config/constants.js';
 import { CAMPAIGN_MAP } from '/shared/config/campaigns.js';
-import { COSMETIC_PIECE_SKINS, COSMETIC_POWERS } from '/shared/config/cosmetics.js';
+import { COSMETIC_BOARDS, COSMETIC_PIECE_SKINS, COSMETIC_POWERS } from '/shared/config/cosmetics.js';
+import {
+  createInitialPowerState,
+  resolvePowerDef,
+  computePowerTargets,
+  powerNeedsSourceSelection,
+  executeBattlePowerAction,
+  applyMittensAssimilationIfActive,
+  tickPowerStateForSide,
+  isPieceFrozen,
+  isSquareBlockedByModState,
+  applyCustomModSetupToEngine
+} from '/shared/mods/modRuntime.js';
 import { MayaBossEngine } from '/shared/rules/mayaEngine.js';
 import { MayaCampaignEngine } from '/shared/rules/mayaCampaignEngine.js';
 import { FreeMittensEngine } from '/shared/rules/mittensEngine.js';
@@ -290,19 +302,36 @@ export class BattleController {
   }
 
   bindOnlineEvents() {
-    mpSocket.on('match:state', ({ matchId, state, events }) => {
+    mpSocket.on('match:state', ({ matchId, state, powerState, events, powerEvent }) => {
       if (this.mode !== 'online' || this.onlineMeta?.matchId !== matchId) return;
       this.engine.loadState(state);
+      if (powerState) this.powerState = powerState;
       this.selected = null;
       this.legalMoves = [];
+      this.shopPowerActive = false;
+      this.shopPowerSource = null;
+      this.shopPowerTargets = [];
       this.phase = this.engine.winner
         ? 'GAME_OVER'
         : (this.engine.turn === this.onlineMeta.yourColor ? 'PLAYER_TURN' : 'AI_THINKING');
-      this.sound.play(events?.captured ? 'capture' : 'move');
+      if (powerEvent) {
+        this.sound.play(powerEvent.sfx || 'power_golden_freeze');
+        if (powerEvent.tr !== undefined && powerEvent.tc !== undefined) {
+          const [vr, vc] = this.toVisualCoords(powerEvent.tr, powerEvent.tc);
+          this.vfx.spawnShockwave(vr, vc, powerEvent.color || '#ffd859', 48);
+          this.vfx.spawnSquareBurst(vr, vc, powerEvent.color || '#ffd859', 24, 3.2);
+        }
+        if (powerEvent.logText) this.toast(powerEvent.logText, 'info');
+      } else {
+        const myColor = this.onlineMeta.yourColor;
+        if (events?.by === myColor) this.sound.playPieceAction(this.getActivePieceSkin().id, Boolean(events?.captured));
+        else this.sound.play(events?.captured ? 'capture' : 'move');
+      }
       if (events?.to) {
         const [vr, vc] = this.toVisualCoords(events.to[0], events.to[1]);
         this.vfx.spawnSquareBurst(vr, vc, events.captured ? '#e05a4a' : '#cfa64c', 12, 2.2);
       }
+      this.configureBattlePanels();
       this.render();
     });
 
@@ -359,43 +388,88 @@ export class BattleController {
     });
   }
 
+  isStoryMode() {
+    return ['maya', 'maya_campaign', 'mittens', 'galaxy', 'glitch', 'chess_final'].includes(this.mode);
+  }
+
   setUserProfile(user) {
     this.userProfile = user || null;
     if (!document.getElementById('view-battle')?.classList.contains('hidden')) {
+      this.applyActiveBattleBoardTheme();
       this.configureBattlePanels();
       this.render();
     }
   }
 
+  applyActiveBattleBoardTheme() {
+    const root = document.documentElement;
+    const inner = document.getElementById('board-inner');
+    const allTex = COSMETIC_BOARDS.map((b) => b.textureClass).filter(Boolean);
+    if (inner) allTex.forEach((cls) => inner.classList.remove(cls));
+
+    // En Modo Historia JAMÁS se aplican tableros comprados en la tienda ni Mod VIP
+    if (this.isStoryMode()) {
+      const def = COSMETIC_BOARDS[0];
+      root.style.setProperty('--sq-light', def.light);
+      root.style.setProperty('--sq-dark', def.dark);
+      root.style.setProperty('--board-pedestal-bg', def.pedestal);
+      if (inner && def.textureClass) inner.classList.add(def.textureClass);
+      return;
+    }
+
+    // En Sala Privada con Mod de Código Abierto se aplica la textura del Mod
+    if (this.customMod?.board) {
+      root.style.setProperty('--sq-light', this.customMod.board.light);
+      root.style.setProperty('--sq-dark', this.customMod.board.dark);
+      root.style.setProperty('--board-pedestal-bg', this.customMod.board.pedestal);
+      if (inner && this.customMod.board.textureClass) inner.classList.add(this.customMod.board.textureClass);
+      return;
+    }
+
+    const themeId = this.userProfile?.boardThemeId || 'board_classic_maya';
+    const theme = COSMETIC_BOARDS.find((b) => b.id === themeId) || COSMETIC_BOARDS[0];
+    root.style.setProperty('--sq-light', theme.light);
+    root.style.setProperty('--sq-dark', theme.dark);
+    root.style.setProperty('--board-pedestal-bg', theme.pedestal);
+    if (inner && theme.textureClass) inner.classList.add(theme.textureClass);
+  }
+
   getActivePieceSkin() {
+    // En Modo Historia JAMÁS se aplican fichas compradas en la tienda ni Mod VIP
+    if (this.isStoryMode()) return COSMETIC_PIECE_SKINS[0];
     const id = this.userProfile?.pieceSkinId || 'pieces_classic';
     return COSMETIC_PIECE_SKINS.find((s) => s.id === id) || COSMETIC_PIECE_SKINS[0];
   }
 
   getEquippedShopPower() {
-    if (this.mode === 'online' || this.mode === 'chess_final') return null; // Cap. 5 CHESS limpio y Online clásico
+    // Los poderes se pueden usar en CUALQUIER LUGAR MENOS en Modo Historia
+    if (this.isStoryMode()) return null;
+    if (this.customMod?.power) return this.customMod.power;
     const id = this.userProfile?.equippedPowerId || 'power_none';
-    if (!id || id === 'power_none') return null;
-    const p = COSMETIC_POWERS.find((x) => x.id === id);
+    const p = resolvePowerDef(id, null);
     if (!p) return null;
     if (p.vipOnly && !this.userProfile?.isVip) return null;
     return p;
   }
 
   resetShopPowerMatchState() {
-    this.shopPowerCooldown = 0;
+    this.powerState = createInitialPowerState();
     this.shopPowerActive = false;
     this.shopPowerSource = null;
     this.shopPowerTargets = [];
-    this.frozenPieces = {};
-    this.solarShields = {};
+  }
+
+  getMySide() {
+    return this.mode === 'online' ? (this.onlineMeta?.yourColor || 'w') : 'w';
   }
 
   toggleShopPowerMode() {
     const power = this.getEquippedShopPower();
     if (!power || this.paused || this.phase !== 'PLAYER_TURN' || this.engine.winner) return;
-    if (this.shopPowerCooldown > 0) {
-      this.toast(`${power.name} en enfriamiento (${this.shopPowerCooldown} turnos).`, 'info');
+    const side = this.getMySide();
+    const cd = this.powerState?.cooldowns?.[side] || 0;
+    if (cd > 0) {
+      this.toast(`${power.name} en enfriamiento (${cd} turnos).`, 'info');
       return;
     }
     this.shopPowerActive = !this.shopPowerActive;
@@ -403,83 +477,27 @@ export class BattleController {
     this.shopPowerTargets = [];
     this.selected = null;
     this.legalMoves = [];
+
     if (this.shopPowerActive) {
-      if (power.id === 'power_vip_golden_freeze') {
-        this.toast('❄️ Congelación Dorada activa: toca uno de tus PEONES para apuntar a cualquier rival a distancia (3 turnos congelado).', 'info');
-      } else if (power.id === 'power_solar_shield') {
-        this.toast('🛡️ Escudo Solar activo: toca una pieza tuya (no Rey) para protegerla 2 turnos.', 'info');
-      } else if (power.id === 'power_wind_pulse') {
-        this.shopPowerTargets = this.computeWindPulseTargets();
+      if (powerNeedsSourceSelection(power)) {
+        this.toast(`${power.icon} ${power.name} activo: toca cualquiera de tus piezas para apuntar a un objetivo a distancia.`, 'info');
+      } else {
+        this.shopPowerTargets = computePowerTargets(this.engine, this.powerState, side, power, null);
         if (!this.shopPowerTargets.length) {
           this.shopPowerActive = false;
-          this.toast('No hay piezas enemigas con casilla trasera libre para empujar ahora.', 'info');
+          this.toast(`No hay objetivos válidos en el tablero para ${power.name} en este momento.`, 'info');
         } else {
-          this.toast('💨 Pulso de Viento: toca una pieza enemiga resaltada para empujarla 1 casilla atrás.', 'info');
+          this.toast(`${power.icon} ${power.name} activo: toca una casilla resaltada para desatar el ataque.`, 'info');
         }
-      } else if (power.id === 'power_shadow_step') {
-        this.toast('✨ Paso Fantasma activo: toca un Peón o Caballo tuyo para moverlo hasta 2 casillas.', 'info');
       }
     }
     this.render();
   }
 
-  computeGoldenFreezeTargets(pr, pc) {
-    const targets = [];
-    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]]) {
-      for (let step = 1; step <= 4; step++) {
-        const nr = pr + dr * step;
-        const nc = pc + dc * step;
-        if (!inBounds(nr, nc)) break;
-        const occ = this.engine.board[nr]?.[nc];
-        if (!occ) continue;
-        if (occ.color === 'b' && occ.type !== 'K' && !this.frozenPieces[occ.id]) {
-          targets.push({ fr: pr, fc: pc, tr: nr, tc: nc, kind: 'golden_freeze' });
-        }
-        break;
-      }
-    }
-    return targets;
-  }
-
-  computeWindPulseTargets() {
-    const targets = [];
-    for (let r = 1; r < 8; r++) {
-      for (let c = 0; c < 8; c++) {
-        const occ = this.engine.board[r]?.[c];
-        if (!occ || occ.color !== 'b' || occ.type === 'K') continue;
-        if (this.engine.board[r - 1][c]) continue;
-        if (this.mode === 'glitch' && this.engine.isRift?.(r - 1, c)) continue;
-        if (this.mode === 'mittens' && this.engine.isSprinkler?.(r - 1, c)) continue;
-        if (this.mode === 'maya' && this.engine.isSquareInPyramid?.(r - 1, c)) continue;
-        if (this.mode === 'galaxy' && this.engine.isSquareInGalaxyMan?.(r - 1, c)) continue;
-        targets.push({ fr: r, fc: c, tr: r, tc: c, pushR: r - 1, pushC: c, kind: 'wind_pulse' });
-      }
-    }
-    return targets;
-  }
-
-  computeShadowStepTargets(fr, fc) {
-    const targets = [];
-    for (let tr = 0; tr < 8; tr++) {
-      for (let tc = 0; tc < 8; tc++) {
-        const dist = Math.abs(tr - fr) + Math.abs(tc - fc);
-        if (dist < 1 || dist > 2) continue;
-        if (this.engine.board[tr][tc]) continue;
-        if (this.mode === 'glitch' && this.engine.isRift?.(tr, tc)) continue;
-        if (this.mode === 'mittens' && this.engine.isSprinkler?.(tr, tc)) continue;
-        if (this.mode === 'maya' && this.engine.isSquareInPyramid?.(tr, tc)) continue;
-        if (this.mode === 'galaxy' && this.engine.isSquareInGalaxyMan?.(tr, tc)) continue;
-        if (this.mode === 'blacky' && this.engine.isSealed?.(tr, tc)) continue;
-        const m = { fr, fc, tr, tc, kind: 'shadow_step' };
-        if (!this.engine.isMoveSafeForKing || this.engine.isMoveSafeForKing('w', m)) targets.push(m);
-      }
-    }
-    return targets;
-  }
-
   handleShopPowerSquareClick(r, c) {
     const power = this.getEquippedShopPower();
     if (!power || !this.shopPowerActive) return false;
+    const side = this.getMySide();
 
     const chosenTarget = this.shopPowerTargets.find((t) => t.tr === r && t.tc === c);
     if (chosenTarget) {
@@ -487,12 +505,12 @@ export class BattleController {
       return true;
     }
 
-    const clicked = this.engine.board[r]?.[c];
-    if (power.id === 'power_vip_golden_freeze') {
-      if (clicked && clicked.color === 'w' && clicked.type === 'P') {
-        const tgts = this.computeGoldenFreezeTargets(r, c);
+    if (powerNeedsSourceSelection(power)) {
+      const clicked = this.engine.board[r]?.[c];
+      if (clicked && clicked.color === side) {
+        const tgts = computePowerTargets(this.engine, this.powerState, side, power, { r, c });
         if (!tgts.length) {
-          this.toast('Ese peón no tiene enemigos en línea de visión (hasta 4 casillas). Prueba otro peón.', 'info');
+          this.toast('Esa pieza no tiene enemigos en línea de tiro ahora. Prueba otra pieza tuya.', 'info');
           return true;
         }
         this.shopPowerSource = { r, c };
@@ -501,33 +519,7 @@ export class BattleController {
         this.render();
         return true;
       }
-      this.toast('Selecciona uno de tus PEONES blancos para lanzar Congelación Dorada.', 'info');
-      return true;
-    }
-
-    if (power.id === 'power_solar_shield') {
-      if (clicked && clicked.color === 'w' && clicked.type !== 'K' && clicked.type !== 'H' && clicked.type !== 'U') {
-        this.executeShopPower(power, { tr: r, tc: c, kind: 'solar_shield' });
-        return true;
-      }
-      this.toast('Selecciona una pieza blanca (no Rey) para proteger con Escudo Solar.', 'info');
-      return true;
-    }
-
-    if (power.id === 'power_shadow_step') {
-      if (clicked && clicked.color === 'w' && (clicked.type === 'P' || clicked.type === 'N')) {
-        const tgts = this.computeShadowStepTargets(r, c);
-        if (!tgts.length) {
-          this.toast('No hay casillas vacías seguras a 2 pasos de esa pieza.', 'info');
-          return true;
-        }
-        this.shopPowerSource = { r, c };
-        this.shopPowerTargets = tgts;
-        this.sound.play('select');
-        this.render();
-        return true;
-      }
-      this.toast('Selecciona un Peón o Caballo blanco para usar Paso Fantasma.', 'info');
+      this.toast(`Selecciona una de tus piezas para disparar ${power.name}.`, 'info');
       return true;
     }
 
@@ -539,92 +531,58 @@ export class BattleController {
     this.shopPowerActive = false;
     this.shopPowerSource = null;
     this.shopPowerTargets = [];
-    this.shopPowerCooldown = power.cooldown || 4;
-    if (this.engine.pushHistory) this.engine.pushHistory();
 
-    if (target.kind === 'golden_freeze') {
-      const victim = this.engine.board[target.tr]?.[target.tc];
-      if (!victim) return;
-      this.frozenPieces[victim.id] = 3;
-      this.sound.play('power_golden_freeze');
-      this.vfx.spawnShockwave(target.fr, target.fc, '#ffd859', 36);
-      this.vfx.spawnSquareBurst(target.tr, target.tc, '#ffd859', 26, 3.2);
-      this.engine.lastMoveSquares = [[target.fr, target.fc], [target.tr, target.tc]];
-      this.engine.logs.unshift({
-        turn: this.engine.turnNumber,
-        type: 'special',
-        text: `❄️ CONGELACIÓN DORADA (Mod VIP): Peón (${toAlg(target.fr, target.fc)}) congela en oro a ${PIECE_NAMES[victim.type]} (${toAlg(target.tr, target.tc)}) durante 3 turnos.`
+    // En Multijugador Online (Pública o Sala Privada), el servidor valida y ejecuta el poder autoritativamente
+    if (this.mode === 'online' && this.onlineMeta?.matchId) {
+      this.phase = 'AI_THINKING';
+      mpSocket.emit('match:use_power', {
+        matchId: this.onlineMeta.matchId,
+        fr: target.fr,
+        fc: target.fc,
+        tr: target.tr,
+        tc: target.tc
       });
-      this.setTempBossMood('mood-surprised', 1400);
-      this.showBossSpeech('¡¿Qué?! ¡Esa pieza quedó congelada en oro puro!');
-    } else if (target.kind === 'solar_shield') {
-      const ally = this.engine.board[target.tr]?.[target.tc];
-      if (!ally) return;
-      this.solarShields[ally.id] = 2;
-      this.sound.play('power_solar_shield');
-      this.vfx.spawnShieldPulse(target.tr, target.tc);
-      this.engine.lastMoveSquares = [[target.tr, target.tc]];
-      this.engine.logs.unshift({
-        turn: this.engine.turnNumber,
-        type: 'special',
-        text: `🛡️ ESCUDO SOLAR: ${PIECE_NAMES[ally.type]} (${toAlg(target.tr, target.tc)}) queda invulnerable a capturas por 2 turnos.`
-      });
-    } else if (target.kind === 'wind_pulse') {
-      const victim = this.engine.board[target.tr]?.[target.tc];
-      if (!victim) return;
-      this.engine.board[target.pushR][target.pushC] = victim;
-      this.engine.board[target.tr][target.tc] = null;
-      this.sound.play('power_wind_pulse');
-      this.vfx.spawnSquareBurst(target.pushR, target.pushC, '#8adfff', 18, 2.4);
-      this.engine.lastMoveSquares = [[target.tr, target.tc], [target.pushR, target.pushC]];
-      this.engine.logs.unshift({
-        turn: this.engine.turnNumber,
-        type: 'special',
-        text: `💨 PULSO DE VIENTO: ${PIECE_NAMES[victim.type]} repelido de ${toAlg(target.tr, target.tc)} a ${toAlg(target.pushR, target.pushC)}.`
-      });
-    } else if (target.kind === 'shadow_step') {
-      const ally = this.engine.board[target.fr]?.[target.fc];
-      if (!ally) return;
-      this.engine.board[target.tr][target.tc] = ally;
-      this.engine.board[target.fr][target.fc] = null;
-      ally.hasMoved = true;
-      this.sound.play('power_shadow_step');
-      this.vfx.spawnGalaxyPortal(target.fr, target.fc);
-      this.vfx.spawnGalaxyPortal(target.tr, target.tc);
-      this.engine.lastMoveSquares = [[target.fr, target.fc], [target.tr, target.tc]];
-      this.engine.logs.unshift({
-        turn: this.engine.turnNumber,
-        type: 'special',
-        text: `✨ PASO FANTASMA: ${PIECE_NAMES[ally.type]} se desplaza de ${toAlg(target.fr, target.fc)} a ${toAlg(target.tr, target.tc)}.`
-      });
+      this.render();
+      return;
     }
 
-    this.engine.turn = 'b';
+    const side = 'w';
+    const res = executeBattlePowerAction(this.engine, this.powerState, side, power, target);
+    if (!res.ok) {
+      this.toast(res.error || 'No se pudo ejecutar el poder.', 'error');
+      this.render();
+      return;
+    }
+
+    this.sound.play(res.sfx || power.sfxType || 'power_golden_freeze');
+    const [vr, vc] = this.toVisualCoords(target.tr, target.tc);
+    this.vfx.spawnShockwave(vr, vc, power.color || '#ffd859', 54);
+    this.vfx.spawnSquareBurst(vr, vc, power.color || '#ffd859', 26, 3.2);
+    if (res.events?.destroyed?.length) this.vfx.triggerBoardShake(true);
+    this.toast(res.logText, 'success');
+
+    this.configureBattlePanels();
     this.render();
+    if (this.engine.winner) {
+      this.handleSinglePlayerGameOver();
+      return;
+    }
     this.runAITurn();
   }
 
   tickBattlePowerStatesAfterEnemyTurn() {
-    if (this.shopPowerCooldown > 0) this.shopPowerCooldown--;
-    for (const id of Object.keys(this.frozenPieces)) {
-      this.frozenPieces[id]--;
-      if (this.frozenPieces[id] <= 0) delete this.frozenPieces[id];
-    }
-    for (const id of Object.keys(this.solarShields)) {
-      this.solarShields[id]--;
-      if (this.solarShields[id] <= 0) delete this.solarShields[id];
-    }
+    if (!this.powerState) return;
+    tickPowerStateForSide(this.powerState, 'w');
   }
 
   isAiMoveBlockedByShopPowers(move) {
-    if (!move) return false;
+    if (!move || !this.powerState) return false;
     if (move.fr !== undefined && move.fc !== undefined) {
       const mover = this.engine.board[move.fr]?.[move.fc];
-      if (mover && this.frozenPieces[mover.id] > 0) return true;
+      if (isPieceFrozen(this.powerState, mover)) return true;
     }
     if (move.tr !== undefined && move.tc !== undefined) {
-      const target = this.engine.board[move.tr]?.[move.tc];
-      if (target && target.color === 'w' && this.solarShields[target.id] > 0) return true;
+      if (isSquareBlockedByModState(this.powerState, move.tr, move.tc, 'b')) return true;
     }
     return false;
   }
@@ -644,8 +602,8 @@ export class BattleController {
     const body = document.getElementById('prematch-rules-body');
     const power = this.getEquippedShopPower();
     const powerNote = power
-      ? `<li><strong>${power.icon} Tu Poder Equipado (${power.name}):</strong> ${power.description}</li>`
-      : '';
+      ? `<li><strong>${power.icon} Poder Activo (${power.name}):</strong> ${power.description}</li>`
+      : (this.isStoryMode() ? `<li><strong>📜 Modo Historia Puro:</strong> Los tableros, fichas y poderes comprados en la Tienda no se usan en Modo Historia; aquí juegas con las mecánicas oficiales del capítulo.</li>` : '');
     if (body) {
       body.innerHTML = `
         <ul class="prematch-rules-list">
@@ -671,6 +629,7 @@ export class BattleController {
     this.playerTeleportMode = false;
     this.hintSquares = null;
     this.resetShopPowerMatchState();
+    this.applyActiveBattleBoardTheme();
     this.vfx.resize();
   }
 
@@ -678,6 +637,7 @@ export class BattleController {
     this.clearIntroTimers();
     this.stopIdleTauntTimer();
     this.paused = true;
+    this.customMod = null;
     this.sound.stopBossMusic();
     document.getElementById('boss-intro-overlay')?.classList.remove('active');
     document.getElementById('modal-gameover')?.classList.remove('open');
@@ -981,14 +941,16 @@ export class BattleController {
     } else launch();
   }
 
-  startClassicMatch({ difficulty = 3, label = 'Vs IA', minutes = this.selectedMinutes, showGuide = true } = {}) {
+  startClassicMatch({ difficulty = 3, label = 'Vs IA', minutes = this.selectedMinutes, showGuide = true, customMod = null } = {}) {
     this.mode = 'classic';
+    this.customMod = customMod || null;
     this.bossId = 'classic_ai';
-    this.bossName = `${label} (IA Nv.${difficulty})`;
+    this.bossName = customMod ? `Mod Privado: ${customMod.name}` : `${label} (IA Nv.${difficulty})`;
     this.aiDifficulty = difficulty;
     this.campaignMeta = null;
     this.onlineMeta = null;
     this.engine = new ClassicChessEngine(minutes);
+    if (customMod) applyCustomModSetupToEngine(this.engine, customMod);
     this.sound.stopBossMusic();
 
     this.showBattleScreen();
@@ -997,10 +959,14 @@ export class BattleController {
     this.render();
     if (showGuide) {
       this.showPreMatchGuide({
-        modeTag: 'AJEDREZ CLÁSICO',
+        modeTag: customMod ? 'SALA PRIVADA LOCAL · MOD CÓDIGO ABIERTO' : 'AJEDREZ MODDEADO',
         title: this.bossName,
-        subtitle: minutes > 0 ? `Control de tiempo: ${minutes} min por jugador` : 'Sin límite de tiempo',
-        rulesHtml: `<li><strong>🏆 Objetivo:</strong> Da Jaque Mate al Rey negro. Si tienes un Poder equipado en la Tienda o Mod VIP, podrás activarlo desde el botón lateral.</li>`,
+        subtitle: customMod
+          ? `Autor: ${customMod.author} · v${customMod.version}`
+          : (minutes > 0 ? `Control de tiempo: ${minutes} min por jugador` : 'Sin límite de tiempo'),
+        rulesHtml: customMod
+          ? `<li><strong>🧩 Mod Abierto:</strong> ${customMod.description}</li>`
+          : `<li><strong>🏆 Objetivo:</strong> Da Jaque Mate al Rey negro. Tus tableros, fichas y poderes OP comprados en la Tienda o Mod VIP están 100% activos aquí.</li>`,
         onStart: () => {
           this.paused = false;
           this.lastClockTick = performance.now();
@@ -1015,11 +981,14 @@ export class BattleController {
 
   startOnlineMatch(matchPayload) {
     this.mode = 'online';
+    this.customMod = matchPayload.isPrivate ? (matchPayload.customMod || null) : null;
     this.bossId = 'online_opponent';
     this.bossName = `${matchPayload.opponent.username} (${matchPayload.opponent.elo} Elo)`;
     this.campaignMeta = null;
     this.onlineMeta = {
       matchId: matchPayload.matchId,
+      isPrivate: Boolean(matchPayload.isPrivate),
+      roomCode: matchPayload.roomCode || null,
       yourColor: matchPayload.yourColor,
       opponent: matchPayload.opponent,
       white: matchPayload.white,
@@ -1030,16 +999,24 @@ export class BattleController {
     this.sound.stopBossMusic();
 
     this.showBattleScreen();
+    if (matchPayload.powerState) this.powerState = matchPayload.powerState;
     this.configureBattlePanels();
     this.paused = false;
     this.phase = this.engine.turn === this.onlineMeta.yourColor ? 'PLAYER_TURN' : 'AI_THINKING';
     this.render();
-    this.toast(`¡Rival encontrado! ${matchPayload.opponent.username} (${matchPayload.opponent.elo} Elo)`, 'success');
+    this.toast(
+      matchPayload.isPrivate
+        ? `Sala Privada ${matchPayload.roomCode || ''} conectada vs ${matchPayload.opponent.username}`
+        : `¡Rival encontrado! ${matchPayload.opponent.username} (${matchPayload.opponent.elo} Elo)`,
+      'success'
+    );
     this.showPreMatchGuide({
-      modeTag: 'MULTIJUGADOR ONLINE · ELO',
+      modeTag: matchPayload.isPrivate ? `SALA PRIVADA ${matchPayload.roomCode || ''}` : 'MULTIJUGADOR PÚBLICO · ELO',
       title: `Vs ${matchPayload.opponent.username}`,
       subtitle: `Juegas con ${matchPayload.yourColor === 'w' ? 'BLANCAS (mueves primero)' : 'NEGRAS'} · ${matchPayload.timeMinutes} min`,
-      rulesHtml: `<li><strong>🌐 Reglas Oficiales:</strong> Ajedrez clásico validado por el servidor con relojes sincronizados en vivo. Al terminar se actualiza tu Elo y ganas Mods.</li>`,
+      rulesHtml: matchPayload.isPrivate && this.customMod
+        ? `<li><strong>🧩 Mod de Código Abierto Activo («${this.customMod.name}»):</strong> ${this.customMod.description} (Sala Privada amistosa, no afecta Elo público).</li>`
+        : `<li><strong>🌐 Sala Pública Oficial:</strong> Se permiten únicamente poderes oficiales del juego (Tienda, Free Mittens y Mod VIP). Al terminar se actualiza tu Elo y ganas Mods.</li>`,
       onStart: () => { this.paused = false; this.render(); }
     });
   }
@@ -1112,7 +1089,7 @@ export class BattleController {
     const isChessFinal = this.mode === 'chess_final';
     const isBlacky = this.mode === 'blacky';
     const isOnline = this.mode === 'online';
-    const has2x2Layer = isMayaBoss || (isGalaxy && this.engine.hasGalaxyMan);
+    const has2x2Layer = isMayaBoss || (isGalaxy && this.engine.hasGalaxyMan) || Boolean(this.powerState?.giantUnits?.length);
 
     document.getElementById('temple-backdrop-svg')?.classList.toggle('hidden', !(isMayaBoss || isBlacky));
     document.getElementById('mayan-boss-svg')?.classList.toggle('hidden', !isMayaBoss);
@@ -1370,6 +1347,10 @@ export class BattleController {
 
     const clicked = this.engine.board[r][c];
     if (clicked && clicked.color === myColor) {
+      if (isPieceFrozen(this.powerState, clicked)) {
+        this.toast('❄️ Esta pieza está congelada en dorado y no puede moverse aún.', 'info');
+        return;
+      }
       // Modo Teletransporte activo del jugador (Cap. 5 Poder de la Galaxia)
       if (this.mode === 'chess_final' && this.playerTeleportMode) {
         const tpMoves = this.engine.getPlayerTeleportTargets(r, c);
@@ -1402,9 +1383,10 @@ export class BattleController {
       } else {
         this.selected = { r, c };
         this.soldierMode = null;
-        this.legalMoves = (this.mode === 'mittens' || this.mode === 'chess_final')
+        this.legalMoves = ((this.mode === 'mittens' || this.mode === 'chess_final')
           ? this.engine.getLegalMovesForPiece(r, c, false)
-          : this.engine.getLegalMovesForPiece(r, c);
+          : this.engine.getLegalMovesForPiece(r, c))
+          .filter((m) => !isSquareBlockedByModState(this.powerState, m.tr, m.tc, myColor));
         this.sound.play('select');
         const [vr, vc] = this.toVisualCoords(r, c);
         this.vfx.spawnShockwave(vr, vc, '#efd083', 26);
@@ -1523,7 +1505,15 @@ export class BattleController {
           this.sound.playPieceAction(activeSkinId, false);
         }
       } else {
+        const victimBefore = this.engine.board[move.tr]?.[move.tc] ? { ...this.engine.board[move.tr][move.tc] } : null;
         const ev = this.engine.executeMove(move, promoType, true);
+        if (victimBefore && !this.isStoryMode()) {
+          const cloned = applyMittensAssimilationIfActive(this.engine, this.powerState, 'w', move.fr, move.fc, victimBefore);
+          if (cloned) {
+            this.sound.play('convert');
+            this.vfx.spawnConversionBurst(move.fr, move.fc);
+          }
+        }
         if (ev?.riftSealed) {
           this.sound.play('houseShield');
           this.vfx.spawnShieldPulse(move.tr, move.tc);
@@ -1997,7 +1987,9 @@ export class BattleController {
   render(hideR = -1, hideC = -1) {
     this.renderBoard(hideR, hideC);
     this.renderHintArrow();
-    if (this.mode === 'maya' || (this.mode === 'galaxy' && this.engine.hasGalaxyMan)) this.renderGiant2x2Layer();
+    if (this.mode === 'maya' || (this.mode === 'galaxy' && this.engine.hasGalaxyMan) || (this.powerState?.giantUnits?.length > 0)) {
+      this.renderGiant2x2Layer();
+    }
     this.renderClocks();
     this.renderStatus();
     this.renderCaptured();
@@ -2040,8 +2032,9 @@ export class BattleController {
         sq.className = `square ${(r + c) % 2 === 0 ? 'light' : 'dark'}`;
         const key = `${r},${c}`;
 
+        const isModRift = (this.powerState?.modRifts || []).some((rf) => rf.r === r && rf.c === c);
         if (this.mode === 'mittens' && this.engine.isSprinkler(r, c)) sq.classList.add('sprinkler-sq');
-        if (this.mode === 'glitch' && this.engine.isRift(r, c)) sq.classList.add('glitch-rift');
+        if ((this.mode === 'glitch' && this.engine.isRift(r, c)) || isModRift) sq.classList.add('glitch-rift');
         if (this.mode === 'blacky' && this.engine.isSealed(r, c)) sq.classList.add('blacky-sealed');
         if (this.selected && this.selected.r === r && this.selected.c === c) sq.classList.add('selected');
         if (lastSet.has(key)) sq.classList.add('last-move');
@@ -2071,7 +2064,7 @@ export class BattleController {
 
         if (this.mode === 'mittens' && this.engine.isSprinkler(r, c)) {
           sq.insertAdjacentHTML('beforeend', `<div class="piece-wrap" title="Aspersor inmóvil">${MITTENS_SVGS.sprinkler}</div>`);
-        } else if (this.mode === 'glitch' && this.engine.isRift(r, c)) {
+        } else if ((this.mode === 'glitch' && this.engine.isRift(r, c)) || isModRift) {
           sq.insertAdjacentHTML('beforeend', `<div class="piece-wrap" title="Grieta de Vacío">${SVGS.voidRift}</div>`);
         } else if (this.mode === 'blacky' && this.engine.isSealed(r, c) && !this.engine.board[r][c]) {
           sq.insertAdjacentHTML('beforeend', `<div class="piece-wrap" title="Casillero deshabilitado por BLACKY">${SVGS.blackySeal}</div>`);
@@ -2080,12 +2073,10 @@ export class BattleController {
           if (piece && !(r === hideR && c === hideC)) {
             const svgKey = this.getPieceSvgKey(piece);
             const myColor = this.mode === 'online' ? this.onlineMeta.yourColor : 'w';
-            const applySkin = piece.color === myColor && !['H', 'U'].includes(piece.type) && !piece.isSoldier;
+            const applySkin = !this.isStoryMode() && piece.color === myColor && !['H', 'U'].includes(piece.type) && !piece.isSoldier;
             const skinCls = applySkin ? ` ${this.getActivePieceSkin().cssClass}` : '';
-            const frozenLeft = this.frozenPieces[piece.id] || 0;
-            const shieldLeft = this.solarShields[piece.id] || 0;
+            const frozenLeft = this.powerState?.frozenPieces?.[piece.id] || 0;
             if (frozenLeft > 0) sq.classList.add('golden-frozen');
-            if (shieldLeft > 0) sq.classList.add('solar-shielded');
             const wrap = document.createElement('div');
             wrap.className = `piece-wrap${skinCls}${piece.betrayed ? ' blacky-betrayed' : ''}${frozenLeft > 0 ? ' piece-golden-frozen' : ''}`;
             wrap.innerHTML = SVGS[svgKey] || MITTENS_SVGS[svgKey] || GALAXY_SVGS[svgKey] || GLITCH_SVGS[svgKey] || CHESS_ORIGIN_SVGS[svgKey] || '';
@@ -2095,7 +2086,6 @@ export class BattleController {
             sq.appendChild(wrap);
 
             if (frozenLeft > 0) sq.insertAdjacentHTML('beforeend', `<span class="golden-freeze-badge" title="Congelado en oro">❄️ ${frozenLeft}t</span>`);
-            if (shieldLeft > 0) sq.insertAdjacentHTML('beforeend', `<span class="casa-shield-badge" title="Escudo Solar">☀️${shieldLeft}t</span>`);
             if (protectedCasaSet.has(key) || protectedBarrierSet.has(key)) sq.insertAdjacentHTML('beforeend', '<span class="casa-shield-badge">🛡️</span>');
             if (piece.type === 'G' && piece.shieldIntact) sq.insertAdjacentHTML('beforeend', '<span class="unit-badge">🛡️</span>');
             if (piece.type === 'C') sq.insertAdjacentHTML('beforeend', `<span class="unit-badge">${piece.pushCooldown === 0 ? '☀️' : `${piece.pushCooldown}t`}</span>`);
@@ -2111,7 +2101,8 @@ export class BattleController {
         }
         if (spTarget) {
           sq.classList.add('golden-freeze-target');
-          sq.insertAdjacentHTML('beforeend', `<span class="water-target-badge">${spTarget.kind === 'golden_freeze' ? '❄️' : (spTarget.kind === 'wind_pulse' ? '💨' : '✨')}</span>`);
+          const iconTag = spTarget.isGiant2x2 ? '🏛️2×2' : (this.getEquippedShopPower()?.icon || '⚡');
+          sq.insertAdjacentHTML('beforeend', `<span class="water-target-badge">${iconTag}</span>`);
         }
 
         const legal = this.legalMoves.find((m) => m.tr === r && m.tc === c);
@@ -2174,6 +2165,14 @@ export class BattleController {
       if (destroyed) layer.classList.add('destroyed');
       const rem = this.engine.countAliveAnchors();
       layer.innerHTML = SVGS.galaxyMan2x2 + `<span class="pyramid-badge">${destroyed ? 'Quebrado' : `2×2 · ${rem} Anclas`}</span>`;
+    } else if (this.powerState?.giantUnits?.length > 0) {
+      const g = this.powerState.giantUnits[this.powerState.giantUnits.length - 1];
+      const [vr, vc] = this.isFlipped() ? [6 - g.r, 6 - g.c] : [g.r, g.c];
+      layer.style.left = `${vc * 12.5}%`;
+      layer.style.top = `${vr * 12.5}%`;
+      layer.className = `pyramid-layer${g.kind === 'galaxy' ? ' galaxy-man-mode' : ''}`;
+      layer.innerHTML = (g.kind === 'galaxy' ? SVGS.galaxyMan2x2 : SVGS.pyramid)
+        + `<span class="pyramid-badge">${g.name.slice(0, 14)} · ${g.turnsLeft}t</span>`;
     }
   }
 
@@ -2275,12 +2274,19 @@ export class BattleController {
     const sp = this.getEquippedShopPower();
     const spBtn = document.getElementById('btn-shop-power');
     const spDesc = document.getElementById('shop-power-hud-desc');
+    const mySide = this.getMySide();
+    const cd = this.powerState?.cooldowns?.[mySide] || 0;
+    const assim = this.powerState?.assimilationTurns?.[mySide] || 0;
     if (sp && spBtn) {
-      spBtn.textContent = this.shopPowerCooldown > 0
-        ? `${sp.icon} ${sp.name} (${this.shopPowerCooldown}t)`
+      spBtn.textContent = cd > 0
+        ? `${sp.icon} ${sp.name} (${cd}t)`
         : (this.shopPowerActive ? `✕ Cancelar ${sp.name}` : `${sp.icon} Usar ${sp.name}`);
-      spBtn.disabled = this.phase !== 'PLAYER_TURN' || Boolean(this.engine.winner) || this.shopPowerCooldown > 0;
-      if (spDesc) spDesc.textContent = sp.description;
+      spBtn.disabled = this.phase !== 'PLAYER_TURN' || Boolean(this.engine.winner) || cd > 0;
+      if (spDesc) {
+        spDesc.textContent = assim > 0
+          ? `⛓️ Asimilación 1:1 activa (${assim}t): ¡tus capturas clonan piezas rivales! · ${sp.description}`
+          : sp.description;
+      }
     }
 
     const canUndo = this.mode !== 'online' && (this.phase === 'PLAYER_TURN' || this.phase === 'GAME_OVER') && this.engine.history.length > 0;

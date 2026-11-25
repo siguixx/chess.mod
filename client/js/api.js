@@ -55,8 +55,10 @@ class ApiClient {
 
   getCosmetics() { return this.request('/api/cosmetics'); }
   getShop() { return this.request('/api/shop'); }
+  getVipStatus() { return this.request('/api/vip/status'); }
   buyShopItem(itemId) { return this.request('/api/shop/buy', { method: 'POST', body: JSON.stringify({ itemId }) }); }
-  subscribeModVip(paymentMethod = 'yape') { return this.request('/api/vip/subscribe', { method: 'POST', body: JSON.stringify({ paymentMethod }) }); }
+  startModVipCheckout() { return this.request('/api/vip/checkout', { method: 'POST', body: JSON.stringify({}) }); }
+  verifyModVipPayment(sessionId) { return this.request('/api/vip/verify-payment', { method: 'POST', body: JSON.stringify({ sessionId }) }); }
   cancelModVip() { return this.request('/api/vip/cancel', { method: 'POST', body: JSON.stringify({}) }); }
   updateUsername(username) { return this.request('/api/profile/username', { method: 'PATCH', body: JSON.stringify({ username }) }); }
   updateAvatar(avatar) { return this.request('/api/profile/avatar', { method: 'PATCH', body: JSON.stringify({ avatar }) }); }

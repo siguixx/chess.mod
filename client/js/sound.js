@@ -296,6 +296,18 @@ export class SoundEngine {
         tone(880, 1320, 0.13, 'sine', 0.19); tone(1320, 1760, 0.18, 'triangle', 0.12, 0.03); break;
       case 'skin_vip_gold_capture':
         tone(659.25, 1318.5, 0.16, 'triangle', 0.24); tone(987.77, 1975.5, 0.24, 'sine', 0.18, 0.04); noise(0.1, 3100, 0.15, 0, 'highpass'); break;
+      case 'skin_magma_move':
+        tone(190, 92, 0.15, 'sawtooth', 0.22); noise(0.11, 1200, 0.18, 0, 'bandpass'); break;
+      case 'skin_magma_capture':
+        tone(220, 62, 0.28, 'sawtooth', 0.28); noise(0.22, 1600, 0.26, 0, 'bandpass'); break;
+      case 'skin_ice_move':
+        tone(1180, 1680, 0.12, 'sine', 0.17); tone(1760, 2240, 0.14, 'triangle', 0.09, 0.02); break;
+      case 'skin_ice_capture':
+        tone(1320, 880, 0.18, 'triangle', 0.22); noise(0.14, 4200, 0.18, 0, 'highpass'); break;
+      case 'skin_glitch_move':
+        tone(520, 120, 0.08, 'square', 0.14); tone(980, 310, 0.09, 'sawtooth', 0.12, 0.04); break;
+      case 'skin_glitch_capture':
+        noise(0.14, 2800, 0.22, 0, 'bandpass'); tone(640, 95, 0.18, 'square', 0.18, 0.02); break;
       // Efectos de sonido de Poderes de Tienda y Mod VIP
       case 'power_golden_freeze':
         tone(1046.5, 1567.98, 0.22, 'sine', 0.24, 0);
@@ -333,7 +345,10 @@ export class SoundEngine {
     const map = {
       pieces_jade: isCapture ? 'skin_jade_capture' : 'skin_jade_move',
       pieces_obsidian: isCapture ? 'skin_obsidian_capture' : 'skin_obsidian_move',
+      pieces_magma: isCapture ? 'skin_magma_capture' : 'skin_magma_move',
+      pieces_crystal_ice: isCapture ? 'skin_ice_capture' : 'skin_ice_move',
       pieces_cosmic: isCapture ? 'skin_cosmic_capture' : 'skin_cosmic_move',
+      pieces_glitch: isCapture ? 'skin_glitch_capture' : 'skin_glitch_move',
       pieces_vip_gold: isCapture ? 'skin_vip_gold_capture' : 'skin_vip_gold_move'
     };
     this.play(map[skinId] || (isCapture ? 'capture' : 'move'));

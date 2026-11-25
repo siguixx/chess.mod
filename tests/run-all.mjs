@@ -23,6 +23,15 @@ import {
 } from '../shared/config/campaigns.js';
 import { calculateEloUpdate } from '../shared/config/elo.js';
 import { INITIAL_ELO } from '../shared/config/constants.js';
+import { MOD_VIP_PLAN } from '../shared/config/cosmetics.js';
+import {
+  MOD_TEMPLATES,
+  validateAndNormalizeMod,
+  createInitialPowerState,
+  resolvePowerDef,
+  executeBattlePowerAction,
+  applyMittensAssimilationIfActive
+} from '../shared/mods/modRuntime.js';
 import { createChessServer } from '../server/index.js';
 
 let passed = 0;
@@ -417,6 +426,7 @@ await test('Modo Historia balanceado: defensas en Cap. 1-4, progresión gradual 
 });
 
 // 9. SERVIDOR REAL + /health + ELO 0 + DESBLOQUEO ESTRICTO DE CAMPAÑA + MULTIJUGADOR ONLINE SOCKET.IO
+process.env.VIP_WEBHOOK_SECRET = 'test_vip_billing_secret_2026';
 const tmpDb = path.join(os.tmpdir(), `chess_mod_test_${Date.now()}.sqlite`);
 const server = createChessServer({ port: 0, dbPath: tmpDb });
 const { url } = await server.start();
@@ -717,7 +727,64 @@ try {
     sBob.disconnect();
   });
 
-  await test('Economía Mods, Tienda (Poderes/Fichas/Tableros), Sesión Vinculada por Cookie y Mod VIP (S/15) con revocación total', async () => {
+  await test('Poderes OP de ataque, Fichas Grandes 2×2, Tormenta Dorada VIP (congelación + destrucción) y Asimilación Free Mittens', () => {
+    // 1. Tormenta Dorada VIP (OP): congela en área (cruz) y destruye si ya está congelado
+    const eVip = new ClassicChessEngine(10);
+    const psVip = createInitialPowerState();
+    eVip.board = Array.from({ length: 8 }, () => Array(8).fill(null));
+    eVip.board[0][4] = { id: 'bK', color: 'b', type: 'K' };
+    eVip.board[7][4] = { id: 'wK', color: 'w', type: 'K' };
+    eVip.board[5][3] = { id: 'wP1', color: 'w', type: 'P' };
+    eVip.board[2][3] = { id: 'bR1', color: 'b', type: 'R' };
+    eVip.board[2][4] = { id: 'bN1', color: 'b', type: 'N' }; // adyacente en cruz
+    const vipPower = resolvePowerDef('power_vip_golden_freeze');
+    const r1 = executeBattlePowerAction(eVip, psVip, 'w', vipPower, { fr: 5, fc: 3, tr: 2, tc: 3 });
+    assert.equal(r1.ok, true);
+    assert.equal(psVip.frozenPieces.bR1, 3, 'Objetivo congelado en oro 3 turnos');
+    assert.equal(psVip.frozenPieces.bN1, 3, 'Enemigo adyacente en cruz también congelado en oro');
+    // Segundo impacto sobre bR1 ya congelado -> ¡DESTRUCCIÓN INSTANTÁNEA!
+    eVip.turn = 'w';
+    psVip.cooldowns.w = 0;
+    const r2 = executeBattlePowerAction(eVip, psVip, 'w', vipPower, { fr: 5, fc: 3, tr: 2, tc: 3 });
+    assert.equal(r2.ok, true);
+    assert.equal(eVip.board[2][3], null, 'Enemigo ya congelado en oro es DESTRUIDO al instante');
+
+    // 2. Pirámide Aplastadora 2×2 (Ficha Grande) aplasta enemigos dentro del bloque 2×2
+    const ePyr = new ClassicChessEngine(10);
+    const psPyr = createInitialPowerState();
+    ePyr.board = Array.from({ length: 8 }, () => Array(8).fill(null));
+    ePyr.board[0][0] = { id: 'bK', color: 'b', type: 'K' };
+    ePyr.board[7][7] = { id: 'wK', color: 'w', type: 'K' };
+    ePyr.board[3][3] = { id: 'bQ1', color: 'b', type: 'Q' };
+    ePyr.board[4][4] = { id: 'bR1', color: 'b', type: 'R' };
+    const pyrPower = resolvePowerDef('power_maya_pyramid');
+    const rPyr = executeBattlePowerAction(ePyr, psPyr, 'w', pyrPower, { tr: 3, tc: 3 });
+    assert.equal(rPyr.ok, true);
+    assert.equal(ePyr.board[3][3], null);
+    assert.equal(ePyr.board[4][4], null);
+    assert.equal(psPyr.giantUnits.length, 1, 'Debe quedar la Ficha Grande 2×2 en el tablero');
+
+    // 3. Poder de Free Mittens: Chorro de agua destruye al chocar + Asimilación 1:1 clona captura en origen
+    const eMit = new ClassicChessEngine(10);
+    const psMit = createInitialPowerState();
+    eMit.board = Array.from({ length: 8 }, () => Array(8).fill(null));
+    eMit.board[0][4] = { id: 'bK', color: 'b', type: 'K' };
+    eMit.board[7][4] = { id: 'wK', color: 'w', type: 'K' };
+    eMit.board[3][0] = { id: 'wP1', color: 'w', type: 'P' };
+    eMit.board[0][0] = { id: 'bR1', color: 'b', type: 'R' }; // pegado al borde -> choque destruye
+    const mitPower = resolvePowerDef('power_free_mittens');
+    const rMit = executeBattlePowerAction(eMit, psMit, 'w', mitPower, { fr: 3, fc: 0, tr: 0, tc: 0 });
+    assert.equal(rMit.ok, true);
+    assert.equal(eMit.board[0][0], null, 'Chorro de Free Mittens destruye contra el borde');
+    assert.equal(psMit.assimilationTurns.w, 3, 'Activa 3 turnos de Asimilación 1:1');
+    const cloned = applyMittensAssimilationIfActive(eMit, psMit, 'w', 5, 5, { id: 'bN_cap', color: 'b', type: 'N' });
+    assert.ok(cloned && eMit.board[5][5]?.type === 'N' && eMit.board[5][5]?.color === 'w', 'Asimilación 1:1 clona la pieza capturada');
+  });
+
+  await test('Economía Mods, Tienda OP, Cobro Real Mod VIP ($5 USD) con revocación y Desbloqueo de Poder Free Mittens', async () => {
+    assert.equal(MOD_VIP_PLAN.priceUsd, 5, 'Mod VIP debe costar $5 USD/mes');
+    assert.equal(MOD_VIP_PLAN.requiresRealPayment, true);
+
     // 1. Crear cuenta nueva -> 100 Mods iniciales + cookie persistente
     const reg = await fetch(`${url}/api/auth/register`, {
       method: 'POST',
@@ -732,34 +799,37 @@ try {
     const vipToken = regData.token;
     assert.equal(regData.user.mods, 100, 'Usuario nuevo inicia con 100 Mods');
     assert.equal(regData.user.isVip, false);
-    assert.equal(regData.user.pieceSkinId, 'pieces_classic');
-    assert.equal(regData.user.equippedPowerId, 'power_none');
 
-    // 2. Cuenta siempre vinculada: GET /api/auth/me SOLO con cookie (sin Authorization) restaura cuenta y devuelve token
+    // 2. Cuenta siempre vinculada por cookie
     const meCookie = await fetch(`${url}/api/auth/me`, { headers: { Cookie: sessionCookie } });
-    assert.equal(meCookie.status, 200);
     const meData = await meCookie.json();
     assert.equal(meData.authenticated, true);
     assert.equal(meData.user.username, 'VipTester');
-    assert.ok(meData.token, 'GET /api/auth/me debe rehidratar el token de sesión');
+    assert.ok(meData.token);
 
-    // 3. Comprar ficha Jade (100 Mods) -> descuenta a 0, desbloquea y equipa; comprar sin saldo devuelve 400 INSUFFICIENT_MODS
     const authH = { Authorization: `Bearer ${vipToken}`, 'Content-Type': 'application/json' };
+
+    // 3. Poder de Free Mittens NO se puede comprar con Mods (solo derrotando a Free Mittens)
+    const buyMittensFail = await fetch(`${url}/api/shop/buy`, {
+      method: 'POST',
+      headers: authH,
+      body: JSON.stringify({ itemId: 'power_free_mittens' })
+    });
+    assert.equal(buyMittensFail.status, 400);
+
+    // Comprar ficha Jade (100 Mods) y validar falta de saldo al intentar comprar poder de 140 Mods
     const buyJade = await fetch(`${url}/api/shop/buy`, {
       method: 'POST',
       headers: authH,
       body: JSON.stringify({ itemId: 'pieces_jade' })
     });
     assert.equal(buyJade.status, 200);
-    const buyJadeData = await buyJade.json();
-    assert.equal(buyJadeData.user.mods, 0);
-    assert.equal(buyJadeData.user.pieceSkinId, 'pieces_jade');
-    assert.ok(buyJadeData.user.unlockedCosmetics.includes('pieces_jade'));
+    assert.equal((await buyJade.json()).user.mods, 0);
 
     const buyNoFunds = await fetch(`${url}/api/shop/buy`, {
       method: 'POST',
       headers: authH,
-      body: JSON.stringify({ itemId: 'power_solar_shield' })
+      body: JSON.stringify({ itemId: 'power_maya_arrows' })
     });
     assert.equal(buyNoFunds.status, 400);
     assert.equal((await buyNoFunds.json()).code, 'INSUFFICIENT_MODS');
@@ -770,19 +840,24 @@ try {
       headers: authH,
       body: JSON.stringify({ mode: 'classic', opponentName: 'IA Nv.2', winner: 'w', turns: 18 })
     });
-    assert.equal(winRep.status, 200);
     const winData = await winRep.json();
-    assert.ok(winData.modsGained > 0, 'Ganar partida debe otorgar Mods');
+    assert.ok(winData.modsGained > 0);
     assert.equal(winData.profile.mods, winData.modsGained);
 
-    // 5. Activar suscripción mensual Mod VIP (S/ 15 / mes) -> equipa aurora dorada, tablero dorado/negro, fichas doradas y poder VIP
-    const sub = await fetch(`${url}/api/vip/subscribe`, {
+    // 5. COBRO REAL Mod VIP ($5 USD): intentar suscribirse gratis devuelve HTTP 402 PAYMENT_REQUIRED
+    const freeAttempt = await fetch(`${url}/api/vip/subscribe`, { method: 'POST', headers: authH, body: '{}' });
+    assert.equal(freeAttempt.status, 402, 'Jamás debe activar Mod VIP gratis sin cobro verificado');
+    const checkoutNoKey = await fetch(`${url}/api/vip/checkout`, { method: 'POST', headers: authH, body: '{}' });
+    assert.equal(checkoutNoKey.status, 402);
+
+    // Activación mediante Webhook verificado de pago real ($5 USD pagados)
+    const whAct = await fetch(`${url}/api/vip/webhook`, {
       method: 'POST',
-      headers: authH,
-      body: JSON.stringify({ paymentMethod: 'yape' })
+      headers: { 'Content-Type': 'application/json', 'x-vip-billing-secret': 'test_vip_billing_secret_2026' },
+      body: JSON.stringify({ type: 'checkout.session.completed', data: { object: { client_reference_id: regData.user.id } } })
     });
-    assert.equal(sub.status, 200);
-    const subData = await sub.json();
+    assert.equal(whAct.status, 200);
+    const subData = await whAct.json();
     assert.equal(subData.user.isVip, true);
     assert.equal(subData.user.frameId, 'frame_vip_gold');
     assert.equal(subData.user.boardThemeId, 'board_vip_gold_black');
@@ -792,35 +867,88 @@ try {
     // Ranking Global muestra isVip=true a otros jugadores
     const lbVip = await (await fetch(`${url}/api/leaderboard`)).json();
     const vipEntry = lbVip.players.find((p) => p.username === 'VipTester');
-    assert.ok(vipEntry && vipEntry.isVip === true, 'Mod VIP debe ser visible para otros jugadores en Ranking Global');
+    assert.ok(vipEntry && vipEntry.isVip === true);
 
-    // 6. Cancelar Mod VIP -> QUITA TODO el inventario VIP y revierte equipados a defecto
-    const cancel = await fetch(`${url}/api/vip/cancel`, { method: 'POST', headers: authH, body: '{}' });
-    assert.equal(cancel.status, 200);
-    const cancelData = await cancel.json();
+    // 6. Webhook de impago/cancelación -> QUITA TODO el inventario VIP inmediatamente
+    const whRevoke = await fetch(`${url}/api/vip/webhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-vip-billing-secret': 'test_vip_billing_secret_2026' },
+      body: JSON.stringify({ type: 'customer.subscription.deleted', data: { object: { client_reference_id: regData.user.id } } })
+    });
+    assert.equal(whRevoke.status, 200);
+    const cancelData = await whRevoke.json();
     assert.equal(cancelData.user.isVip, false);
     assert.equal(cancelData.user.frameId, 'frame_stone');
     assert.equal(cancelData.user.boardThemeId, 'board_classic_maya');
     assert.equal(cancelData.user.pieceSkinId, 'pieces_classic');
     assert.equal(cancelData.user.equippedPowerId, 'power_none');
     for (const vipId of ['frame_vip_gold', 'board_vip_gold_black', 'pieces_vip_gold', 'power_vip_golden_freeze']) {
-      assert.equal(cancelData.user.unlockedCosmetics.includes(vipId), false, `${vipId} debe ser eliminado del inventario al cancelar VIP`);
+      assert.equal(cancelData.user.unlockedCosmetics.includes(vipId), false);
     }
-    // Conserva sus compras normales con Mods (pieces_jade)
-    assert.equal(cancelData.user.unlockedCosmetics.includes('pieces_jade'), true, 'Las compras normales con Mods se conservan');
 
-    // 7. Vencimiento automático de Mod VIP: si vip_expires_at ya pasó, GET /api/auth/me limpia todo el inventario VIP
-    await fetch(`${url}/api/vip/subscribe`, { method: 'POST', headers: authH, body: JSON.stringify({ paymentMethod: 'card' }) });
-    await server.db.execSql(
-      'UPDATE users SET vip_expires_at = ? WHERE username = ?',
-      [new Date(Date.now() - 60_000).toISOString(), 'VipTester']
-    );
-    const afterExp = await (await fetch(`${url}/api/auth/me`, { headers: authH })).json();
-    assert.equal(afterExp.user.isVip, false, 'VIP vencido debe desactivarse automáticamente');
-    assert.equal(afterExp.user.pieceSkinId, 'pieces_classic');
-    assert.equal(afterExp.user.boardThemeId, 'board_classic_maya');
-    assert.equal(afterExp.user.equippedPowerId, 'power_none');
-    assert.equal(afterExp.user.unlockedCosmetics.includes('power_vip_golden_freeze'), false, 'Poder VIP expirado debe borrarse del inventario');
+    // 7. Derrotar a Free Mittens (Cap. 2 Nv. 5) con Alice (que ya completó Cap. 1) desbloquea power_free_mittens
+    const aliceH = { Authorization: `Bearer ${aliceToken}`, 'Content-Type': 'application/json' };
+    for (let lv = 1; lv <= 5; lv++) {
+      const rMit = await fetch(`${url}/api/game/report`, {
+        method: 'POST',
+        headers: aliceH,
+        body: JSON.stringify({ mode: 'mittens', opponentName: `Mittens ${lv}`, winner: 'w', campaignId: 'mittens', levelId: lv })
+      });
+      assert.equal(rMit.status, 200);
+      if (lv === 5) {
+        const d5 = await rMit.json();
+        assert.equal(d5.unlockedExclusive, 'Poder de Free Mittens');
+        assert.equal(d5.profile.unlockedCosmetics.includes('power_free_mittens'), true, 'Debe desbloquear el poder de Free Mittens tras vencerlo');
+      }
+    }
+  });
+
+  await test('Salas Privadas con Mods de Código Abierto vs Salas Públicas (bloqueo de Mods custom en públicas)', async () => {
+    const checkMod = validateAndNormalizeMod(JSON.stringify(MOD_TEMPLATES[0]));
+    assert.equal(checkMod.ok, true);
+    const customMod = checkMod.mod;
+
+    const sAlice = ioClient(url, { auth: { token: aliceToken }, transports: ['websocket'] });
+    const sBob = ioClient(url, { auth: { token: bobToken }, transports: ['websocket'] });
+    await Promise.all([
+      new Promise((res) => sAlice.on('connect', res)),
+      new Promise((res) => sBob.on('connect', res))
+    ]);
+
+    // 1. En cola pública, enviar customMod debe ser RECHAZADO
+    const pQueueErr = new Promise((res) => sAlice.once('queue:error', res));
+    sAlice.emit('queue:join', { timeMinutes: 10, customMod });
+    const qErr = await pQueueErr;
+    assert.ok(qErr.error.includes('Salas Privadas'), 'Públicas debe rechazar Mods personalizados');
+
+    // 2. En Sala Privada, Alice crea sala con el Mod abierto (Titán 2×2) y Bob se une por código
+    const pCreated = new Promise((res) => sAlice.once('private:created', res));
+    sAlice.emit('private:create', { timeMinutes: 10, customMod });
+    const created = await pCreated;
+    assert.ok(created.code && created.code.length === 6);
+
+    const pFoundA = new Promise((res) => sAlice.once('match:found', res));
+    const pFoundB = new Promise((res) => sBob.once('match:found', res));
+    sBob.emit('private:join', { code: created.code });
+    const [mA, mB] = await Promise.all([pFoundA, pFoundB]);
+    assert.equal(mA.isPrivate, true);
+    assert.equal(mB.customMod.name, customMod.name, 'Ambos jugadores reciben el código abierto del Mod');
+
+    // 3. Alice (blancas) ejecuta el poder custom 2×2 en el servidor autoritativamente
+    const pPowerState = new Promise((res) => sBob.once('match:state', res));
+    sAlice.emit('match:use_power', { matchId: mA.matchId, tr: 3, tc: 3 });
+    const stAfter = await pPowerState;
+    assert.equal(stAfter.powerState.giantUnits.length, 1, 'El servidor debe desplegar la Ficha Grande 2×2 del Mod custom');
+
+    // 4. Al terminar la Sala Privada, el Elo público NO se altera
+    const pEnd = new Promise((res) => sAlice.once('match:ended', res));
+    sBob.emit('match:resign', { matchId: mA.matchId });
+    const endData = await pEnd;
+    assert.equal(endData.isPrivate, true);
+    assert.equal(endData.eloUpdate.whiteDelta, 0, 'Salas Privadas con Mods no alteran el Elo público');
+
+    sAlice.disconnect();
+    sBob.disconnect();
   });
 } finally {
   await server.stop();

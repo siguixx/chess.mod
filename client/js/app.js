@@ -13,6 +13,7 @@ import {
   COSMETIC_POWERS,
   MOD_VIP_PLAN
 } from '/shared/config/cosmetics.js';
+import { MOD_TEMPLATES, validateAndNormalizeMod } from '/shared/mods/modRuntime.js';
 import { SoundEngine } from './sound.js';
 import { VFXEngine } from './vfx.js';
 import { BattleController } from './battleController.js';
@@ -66,7 +67,9 @@ class ChessModApp {
     this.activeScreen = 'play';
     this.activeCampaignTab = 'maya';
     this.activeShopTab = 'powers';
-    this.selectedVipPayment = 'yape';
+    this.vipBillingStatus = { billingConfigured: false };
+    this.savedMods = this.loadSavedMods();
+    this.activePrivateRoomCode = null;
     this.selectedAiDifficulty = 3;
     this.selectedTimedMinutes = 3;
     this.inQueue = false;
@@ -106,8 +109,60 @@ class ChessModApp {
     } catch {
       this.renderAllScreens();
     }
+    this.checkVipPaymentReturn();
+    api.getVipStatus().then((st) => { this.vipBillingStatus = st || {}; this.syncVipBillingUI(); }).catch(() => {});
+    this.initModsWorkshopEditor();
     this.checkSecretBossUrl();
     window.addEventListener('hashchange', () => this.checkSecretBossUrl());
+  }
+
+  async checkVipPaymentReturn() {
+    const params = new URLSearchParams(window.location.search || '');
+    const sessionId = params.get('vip_session_id');
+    if (sessionId && api.getToken()) {
+      try {
+        const res = await api.verifyModVipPayment(sessionId);
+        if (res.user) {
+          this.sound.play('vip_activate');
+          this.setUser(res.user);
+          showToast('👑 ¡Pago de $5 USD verificado! Mod VIP activado por 30 días.', 'success');
+        }
+      } catch (err) {
+        showToast(err.message || 'No se pudo verificar el pago de Mod VIP.', 'error');
+      }
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }
+
+  syncVipBillingUI() {
+    const note = document.getElementById('vip-billing-status-note');
+    if (!note) return;
+    if (this.vipBillingStatus?.billingConfigured) {
+      note.innerHTML = '💳 Pasarela de cobro real activa (<strong>$5.00 USD / mes</strong>). Serás redirigido para completar tu pago seguro.';
+    } else {
+      note.innerHTML = '🔒 <strong>Cobro real obligatorio ($5.00 USD / mes):</strong> La pasarela Stripe aún no tiene llaves configuradas en este servidor (<code>STRIPE_SECRET_KEY</code>). Mod VIP jamás se activa gratis sin cobro verificado.';
+    }
+  }
+
+  loadSavedMods() {
+    try {
+      const raw = localStorage.getItem('chess_mod_open_mods_v1');
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    } catch {}
+    return [...MOD_TEMPLATES];
+  }
+
+  persistSavedMods() {
+    try { localStorage.setItem('chess_mod_open_mods_v1', JSON.stringify(this.savedMods)); } catch {}
+  }
+
+  initModsWorkshopEditor() {
+    const editor = document.getElementById('mod-code-editor');
+    if (editor && !editor.value.trim()) {
+      editor.value = JSON.stringify(MOD_TEMPLATES[0], null, 2);
+    }
+    this.renderModsWorkshop();
   }
 
   checkSecretBossUrl() {
@@ -160,6 +215,7 @@ class ChessModApp {
     if (screenName === 'ranking') this.loadLeaderboard();
     if (screenName === 'story') this.renderCampaignScreen();
     if (screenName === 'shop') this.renderShopScreen();
+    if (screenName === 'mods') this.renderModsWorkshop();
     if (screenName === 'customize') this.renderCosmeticsScreen();
     if (screenName === 'profile') this.renderProfileScreen();
     if (screenName === 'stats') this.renderStatsScreen();
@@ -267,23 +323,18 @@ class ChessModApp {
         showToast('Inicia sesión o crea una cuenta para vincular tu suscripción Mod VIP.', 'info');
         return;
       }
+      this.syncVipBillingUI();
       document.getElementById('modal-vip-checkout')?.classList.add('open');
     });
     on('btn-close-vip-modal', 'click', () => document.getElementById('modal-vip-checkout')?.classList.remove('open'));
-    document.querySelectorAll('#vip-pay-methods [data-pay]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this.selectedVipPayment = btn.dataset.pay;
-        document.querySelectorAll('#vip-pay-methods [data-pay]').forEach((b) => b.classList.toggle('active', b === btn));
-      });
-    });
     on('btn-confirm-vip-sub', 'click', async () => {
       if (!this.user) return this.openAuthModal('login');
       try {
-        const res = await api.subscribeModVip(this.selectedVipPayment);
-        this.sound.play('vip_activate');
-        this.setUser(res.user);
-        document.getElementById('modal-vip-checkout')?.classList.remove('open');
-        showToast(res.message || '👑 ¡Mod VIP activado por 30 días!', 'success');
+        const res = await api.startModVipCheckout();
+        if (res.checkoutUrl) {
+          showToast('Redirigiendo a la pasarela de cobro segura ($5 USD/mes)...', 'info');
+          window.location.href = res.checkoutUrl;
+        }
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -297,6 +348,98 @@ class ChessModApp {
       } catch (err) {
         showToast(err.message, 'error');
       }
+    });
+
+    // === 2B. SALAS PRIVADAS CON MODS ===
+    on('btn-private-create', 'click', () => this.createPrivateRoom());
+    on('btn-private-cancel', 'click', () => {
+      mpSocket.emit('private:cancel');
+      this.activePrivateRoomCode = null;
+      this.renderMultiplayerScreen();
+    });
+    on('btn-private-copy-code', 'click', () => {
+      if (!this.activePrivateRoomCode) return;
+      navigator.clipboard?.writeText(this.activePrivateRoomCode).catch(() => {});
+      showToast(`Código ${this.activePrivateRoomCode} copiado al portapapeles.`, 'success');
+    });
+    on('btn-private-join', 'click', () => {
+      if (!this.user) return this.openAuthModal('login');
+      const code = document.getElementById('input-private-code')?.value.trim().toUpperCase();
+      if (!code || code.length < 4) return showToast('Ingresa un código de Sala Privada válido.', 'error');
+      mpSocket.connect();
+      mpSocket.emit('private:join', { code });
+    });
+
+    // === 3C. TALLER DE MODS (CÓDIGO ABIERTO) ===
+    document.querySelectorAll('[data-mod-template]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.modTemplate, 10) || 0;
+        const tpl = MOD_TEMPLATES[idx] || MOD_TEMPLATES[0];
+        const ed = document.getElementById('mod-code-editor');
+        if (ed) ed.value = JSON.stringify(tpl, null, 2);
+        showToast(`Plantilla abierta cargada: ${tpl.name}`, 'info');
+      });
+    });
+    on('btn-mod-validate-save', 'click', () => {
+      const parsed = this.parseEditorMod();
+      if (!parsed) return;
+      const idx = this.savedMods.findIndex((m) => m.id === parsed.id);
+      if (idx >= 0) this.savedMods[idx] = parsed;
+      else this.savedMods.unshift(parsed);
+      this.persistSavedMods();
+      this.renderModsWorkshop();
+      this.renderMultiplayerScreen();
+      showToast(`Mod de código abierto guardado: «${parsed.name}»`, 'success');
+    });
+    on('btn-mod-test-ai', 'click', () => {
+      const parsed = this.parseEditorMod();
+      if (!parsed) return;
+      this.battle.startClassicMatch({ difficulty: 3, label: 'Sala Privada', minutes: this.battle.selectedMinutes, customMod: parsed });
+    });
+    on('btn-mod-host-private', 'click', () => {
+      const parsed = this.parseEditorMod();
+      if (!parsed) return;
+      const idx = this.savedMods.findIndex((m) => m.id === parsed.id);
+      if (idx >= 0) this.savedMods[idx] = parsed;
+      else this.savedMods.unshift(parsed);
+      this.persistSavedMods();
+      this.switchScreen('multiplayer');
+      const sel = document.getElementById('private-mod-select');
+      if (sel) sel.value = parsed.id;
+      this.createPrivateRoom(parsed);
+    });
+    on('btn-mod-export', 'click', () => {
+      const parsed = this.parseEditorMod();
+      if (!parsed) return;
+      const blob = new Blob([JSON.stringify(parsed, null, 2)], { type: 'application/json' });
+      const urlObj = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = urlObj;
+      a.download = `${parsed.id}.chessmod.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(urlObj), 1000);
+      showToast(`Mod exportado: ${parsed.id}.chessmod.json`, 'success');
+    });
+    on('btn-mod-import', 'click', () => document.getElementById('input-mod-file')?.click());
+    on('input-mod-file', 'change', (e) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const res = validateAndNormalizeMod(String(reader.result || ''));
+        if (!res.ok) return showToast(res.error, 'error');
+        const ed = document.getElementById('mod-code-editor');
+        if (ed) ed.value = JSON.stringify(res.mod, null, 2);
+        const idx = this.savedMods.findIndex((m) => m.id === res.mod.id);
+        if (idx >= 0) this.savedMods[idx] = res.mod;
+        else this.savedMods.unshift(res.mod);
+        this.persistSavedMods();
+        this.renderModsWorkshop();
+        this.renderMultiplayerScreen();
+        showToast(`Mod importado correctamente: «${res.mod.name}»`, 'success');
+      };
+      reader.readAsText(file);
     });
     on('form-login', 'submit', async (e) => {
       e.preventDefault();
@@ -377,9 +520,100 @@ class ChessModApp {
 
     mpSocket.on('match:found', (payload) => {
       this.inQueue = false;
+      this.activePrivateRoomCode = null;
       clearInterval(this.queueTimerInterval);
       this.renderMultiplayerScreen();
       this.battle.startOnlineMatch(payload);
+    });
+
+    mpSocket.on('private:created', ({ code, customMod }) => {
+      this.activePrivateRoomCode = code;
+      this.renderMultiplayerScreen();
+      showToast(`Sala Privada creada: ${code}${customMod ? ` (Mod: ${customMod.name})` : ''}`, 'success');
+    });
+
+    mpSocket.on('private:closed', () => {
+      this.activePrivateRoomCode = null;
+      this.renderMultiplayerScreen();
+    });
+
+    mpSocket.on('private:error', ({ error }) => {
+      showToast(error || 'Error en Sala Privada.', 'error');
+    });
+  }
+
+  parseEditorMod() {
+    const ed = document.getElementById('mod-code-editor');
+    const msg = document.getElementById('mod-validation-msg');
+    const res = validateAndNormalizeMod(ed?.value || '');
+    if (!res.ok) {
+      if (msg) msg.innerHTML = `<span style="color:#ffaca3;">❌ ${res.error}</span>`;
+      showToast(res.error, 'error');
+      return null;
+    }
+    if (msg) msg.innerHTML = `<span style="color:#9ce0be;">✅ Mod válido: <strong>${res.mod.name}</strong> · Poder: ${res.mod.power.icon} ${res.mod.power.name} (${res.mod.power.effect})</span>`;
+    return res.mod;
+  }
+
+  createPrivateRoom(overrideMod = null) {
+    if (!this.user) {
+      this.openAuthModal('login');
+      showToast('Inicia sesión para crear una Sala Privada online.', 'info');
+      return;
+    }
+    let chosenMod = overrideMod;
+    if (!chosenMod) {
+      const selVal = document.getElementById('private-mod-select')?.value || '';
+      if (selVal) chosenMod = this.savedMods.find((m) => m.id === selVal) || null;
+    }
+    mpSocket.connect();
+    mpSocket.emit('private:create', { timeMinutes: this.queueTimeMinutes, customMod: chosenMod });
+  }
+
+  renderModsWorkshop() {
+    const list = document.getElementById('saved-mods-list');
+    if (!list) return;
+    if (!this.savedMods.length) {
+      list.innerHTML = '<p style="font-size:0.8rem;color:var(--text-muted);">Aún no tienes Mods guardados.</p>';
+      return;
+    }
+    list.innerHTML = this.savedMods.map((m) => `
+      <div class="saved-mod-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <strong style="color:var(--gold-bright);font-size:0.9rem;">${m.power?.icon || '🧩'} ${m.name}</strong>
+          <span class="pill muted">v${m.version || '1.0'}</span>
+        </div>
+        <div style="font-size:0.75rem;color:var(--text-muted);line-height:1.4;">${m.description}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn btn-sm" data-mod-load="${m.id}">✏️ Editar código</button>
+          <button class="btn btn-sm btn-primary" data-mod-play-ai="${m.id}">🤖 Vs IA</button>
+          <button class="btn btn-sm btn-gold" data-mod-host="${m.id}">🔐 Sala Privada</button>
+        </div>
+      </div>`).join('');
+
+    list.querySelectorAll('[data-mod-load]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const mod = this.savedMods.find((x) => x.id === b.dataset.modLoad);
+        const ed = document.getElementById('mod-code-editor');
+        if (mod && ed) {
+          ed.value = JSON.stringify(mod, null, 2);
+          showToast(`Código abierto de «${mod.name}» cargado en el editor.`, 'info');
+        }
+      });
+    });
+    list.querySelectorAll('[data-mod-play-ai]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const mod = this.savedMods.find((x) => x.id === b.dataset.modPlayAi);
+        if (mod) this.battle.startClassicMatch({ difficulty: 3, label: 'Sala Privada', minutes: this.battle.selectedMinutes, customMod: mod });
+      });
+    });
+    list.querySelectorAll('[data-mod-host]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const mod = this.savedMods.find((x) => x.id === b.dataset.modHost);
+        if (!mod) return;
+        this.switchScreen('multiplayer');
+        this.createPrivateRoom(mod);
+      });
     });
   }
 
@@ -567,7 +801,7 @@ class ChessModApp {
         expTxt.textContent = `${MOD_VIP_PLAN.priceLabel} · Renovable mensualmente. Si dejas de pagar o cancelas, todo el inventario VIP se retira automáticamente.`;
       }
     }
-    if (btnSub) btnSub.textContent = isVip ? '👑 Renovar Mod VIP (+30 días · S/ 15)' : '👑 Suscribirse a Mod VIP (S/ 15 / mes)';
+    if (btnSub) btnSub.textContent = isVip ? '👑 Renovar Mod VIP (+30 días · $5 USD)' : '👑 Suscribirse a Mod VIP ($5 USD / mes)';
     if (btnCancel) btnCancel.classList.toggle('hidden', !isVip);
 
     const grid = document.getElementById('shop-items-grid');
@@ -580,7 +814,9 @@ class ChessModApp {
     else items = COSMETIC_BOARDS;
 
     grid.innerHTML = items.map((item) => {
-      const isOwned = item.vipOnly ? isVip : (unlocked.has(item.id) || (item.minLevel && level >= item.minLevel) || item.priceMods === 0);
+      const isOwned = item.vipOnly
+        ? isVip
+        : (item.bossUnlock ? unlocked.has(item.id) : (unlocked.has(item.id) || (item.minLevel && level >= item.minLevel) || item.priceMods === 0));
       const isEquipped = (tab === 'powers' && (u?.equippedPowerId || 'power_none') === item.id)
         || (tab === 'pieceSkins' && (u?.pieceSkinId || 'pieces_classic') === item.id)
         || (tab === 'boards' && (u?.boardThemeId || 'board_classic_maya') === item.id);
@@ -599,10 +835,12 @@ class ChessModApp {
       }
 
       const pricePill = item.vipOnly
-        ? `<span class="vip-tag">👑 Mod VIP</span>`
-        : (isOwned
-          ? `<span class="pill jade">✓ En inventario</span>`
-          : `<span class="pill">🪙 ${item.priceMods} Mods</span>`);
+        ? `<span class="vip-tag">👑 Mod VIP ($5/m)</span>`
+        : (item.bossUnlock && !isOwned
+          ? `<span class="pill crimson">⛓️ Recompensa Jefe</span>`
+          : (isOwned
+            ? `<span class="pill jade">✓ En inventario</span>`
+            : `<span class="pill">🪙 ${item.priceMods} Mods</span>`));
 
       let actionBtn = '';
       if (isEquipped) {
@@ -610,7 +848,9 @@ class ChessModApp {
       } else if (isOwned) {
         actionBtn = `<button class="btn btn-sm btn-primary" data-shop-equip="${item.id}" data-shop-cat="${tab}">Equipar</button>`;
       } else if (item.vipOnly) {
-        actionBtn = `<button class="btn btn-sm btn-gold" data-open-vip="1">👑 Obtener Mod VIP</button>`;
+        actionBtn = `<button class="btn btn-sm btn-gold" data-open-vip="1">👑 Obtener Mod VIP ($5)</button>`;
+      } else if (item.bossUnlock) {
+        actionBtn = `<button class="btn btn-sm" data-goto-story="1">📜 Derrota a Free Mittens</button>`;
       } else {
         const canAfford = !u || mods >= (item.priceMods || 0);
         actionBtn = `<button class="btn btn-sm btn-gold" data-shop-buy="${item.id}" ${!canAfford ? 'title="Gana más Mods jugando partidas"' : ''}>🪙 Comprar (${item.priceMods})</button>`;
@@ -652,6 +892,13 @@ class ChessModApp {
     grid.querySelectorAll('[data-open-vip]').forEach((b) => {
       b.addEventListener('click', () => document.getElementById('btn-vip-open-modal')?.click());
     });
+    grid.querySelectorAll('[data-goto-story]').forEach((b) => {
+      b.addEventListener('click', () => {
+        this.activeCampaignTab = 'mittens';
+        this.switchScreen('story');
+        showToast('Derrota a Free Mittens (Capítulo 2 Nivel 5) para desbloquear su Poder OP.', 'info');
+      });
+    });
     grid.querySelectorAll('[data-shop-sfx]').forEach((b) => {
       b.addEventListener('click', () => {
         const cat = b.dataset.shopCat;
@@ -675,10 +922,22 @@ class ChessModApp {
     if (eloVal) eloVal.textContent = `${u ? u.elo : 0} Elo`;
     const btn = document.getElementById('btn-mp-find');
     if (btn) {
-      btn.textContent = this.inQueue ? '✕ Cancelar búsqueda' : '⚔️ Buscar Partida Online';
+      btn.textContent = this.inQueue ? '✕ Cancelar búsqueda' : '⚔️ Buscar Partida Pública';
       btn.className = this.inQueue ? 'btn btn-danger' : 'btn btn-gold';
     }
     document.getElementById('mp-queue-status')?.classList.toggle('hidden', !this.inQueue);
+
+    const sel = document.getElementById('private-mod-select');
+    if (sel) {
+      const prev = sel.value;
+      sel.innerHTML = `<option value="">Sin Mod custom (usar poderes oficiales)</option>`
+        + this.savedMods.map((m) => `<option value="${m.id}">${m.power?.icon || '🧩'} ${m.name} (Código Abierto)</option>`).join('');
+      if (prev && this.savedMods.some((m) => m.id === prev)) sel.value = prev;
+    }
+    const waitBox = document.getElementById('private-room-waiting');
+    const codeDisp = document.getElementById('private-room-code-display');
+    if (waitBox) waitBox.classList.toggle('hidden', !this.activePrivateRoomCode);
+    if (codeDisp && this.activePrivateRoomCode) codeDisp.textContent = this.activePrivateRoomCode;
   }
 
   renderCampaignScreen() {
@@ -889,13 +1148,13 @@ class ChessModApp {
     const pwGrid = document.getElementById('cosmetics-powers-grid');
     if (pwGrid) {
       pwGrid.innerHTML = COSMETIC_POWERS.filter((item) => !item.vipOnly || isVip).map((item) => {
-        const isUnl = item.vipOnly ? isVip : (unlocked.has(item.id) || item.priceMods === 0);
+        const isUnl = item.vipOnly ? isVip : (item.bossUnlock ? unlocked.has(item.id) : (unlocked.has(item.id) || item.priceMods === 0));
         const isEq = (u?.equippedPowerId || 'power_none') === item.id;
         return `
           <div class="cosmetic-tile ${isEq ? 'equipped' : ''} ${!isUnl ? 'locked' : ''}">
             <div class="shop-card-icon" style="width:52px;height:52px;">${item.icon || '⚡'}</div>
             <strong style="font-size:0.83rem;">${item.name}</strong>
-            <span class="pill ${isUnl ? 'jade' : 'muted'}">${isUnl ? 'Disponible' : `Tienda · 🪙 ${item.priceMods}`}</span>
+            <span class="pill ${isUnl ? 'jade' : 'muted'}">${isUnl ? 'Disponible' : (item.exclusiveReason || `Tienda · 🪙 ${item.priceMods}`)}</span>
             <div style="display:flex;gap:6px;">
               <button class="btn btn-sm ${isEq ? 'btn-gold' : 'btn-primary'}" data-equip-power="${item.id}" ${!isUnl || isEq ? 'disabled' : ''}>
                 ${isEq ? '✓ Equipado' : 'Equipar'}
