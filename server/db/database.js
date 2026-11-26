@@ -1861,10 +1861,33 @@ export class ChessDatabase {
       joined: false,
       pendingApproval: true,
       requestId: reqId,
+      clanTag: clan.tag,
+      clanName: clan.name,
       message: policy === 'private_readonly'
         ? 'Clan privado: tu solicitud fue enviada al Owner del clan para revisión.'
         : 'Solicitud enviada: el Owner y moderadores del clan la revisarán.'
     };
+  }
+
+  async getClanApproverUserIds(clanId) {
+    const clan = await this.queryOne('SELECT leader_id FROM clans WHERE id = ?', [clanId]);
+    if (!clan) return [];
+    const ids = new Set();
+    if (clan.leader_id) ids.add(clan.leader_id);
+    const rows = await this.queryAll(`
+      SELECT cm.user_id, cm.role, cr.permissions_json
+      FROM clan_members cm
+      LEFT JOIN clan_roles cr ON cr.id = cm.custom_role_id
+      WHERE cm.clan_id = ?
+    `, [clanId]);
+    for (const r of rows) {
+      if (r.role === 'leader') { ids.add(r.user_id); continue; }
+      try {
+        const p = JSON.parse(r.permissions_json || '{}');
+        if (p.accept_members) ids.add(r.user_id);
+      } catch {}
+    }
+    return [...ids];
   }
 
   async respondClanJoinRequest(userId, clanId, reqId, accept) {
@@ -1897,7 +1920,14 @@ export class ChessDatabase {
     } else {
       await this.execSql('DELETE FROM clan_join_requests WHERE id = ?', [reqId]);
     }
-    return { ok: true, accepted: Boolean(accept), user: await this.getFullUserProfile(userId) };
+    return {
+      ok: true,
+      accepted: Boolean(accept),
+      targetUserId: req.user_id,
+      clanTag: ctx.clan.tag,
+      clanName: ctx.clan.name,
+      user: await this.getFullUserProfile(userId)
+    };
   }
 
   async createClanRole(userId, clanId, { name, color = '#7dd3fc', priority = 20, permissions = {} } = {}) {
@@ -2217,7 +2247,7 @@ export class ChessDatabase {
       if (existing.requester_id === target.id) {
         const now = new Date().toISOString();
         await this.execSql("UPDATE friendships SET status = 'accepted', updated_at = ? WHERE id = ?", [now, existing.id]);
-        return { ok: true, autoAccepted: true, summary: await this.getFriendsSummary(userId) };
+        return { ok: true, autoAccepted: true, id: existing.id, targetUserId: target.id, targetUsername: target.username, summary: await this.getFriendsSummary(userId) };
       }
       throw new Error(`Ya enviaste una solicitud pendiente a ${target.username}.`);
     }
@@ -2228,7 +2258,7 @@ export class ChessDatabase {
       "INSERT INTO friendships (id, requester_id, addressee_id, status, created_at, updated_at) VALUES (?, ?, ?, 'pending', ?, ?)",
       [id, userId, target.id, now, now]
     );
-    return { ok: true, id, summary: await this.getFriendsSummary(userId) };
+    return { ok: true, id, targetUserId: target.id, targetUsername: target.username, summary: await this.getFriendsSummary(userId) };
   }
 
   async respondFriendRequest(userId, friendshipId, accept) {
@@ -2240,7 +2270,49 @@ export class ChessDatabase {
     } else {
       await this.execSql('DELETE FROM friendships WHERE id = ?', [friendshipId]);
     }
-    return { ok: true, summary: await this.getFriendsSummary(userId) };
+    return { ok: true, accepted: Boolean(accept), requesterId: row.requester_id, summary: await this.getFriendsSummary(userId) };
+  }
+
+  /* ================= PENALIZACIÓN POR ABANDONO DE PARTIDA MULTIJUGADOR (-75 XP + ALERTA BANEO) ================= */
+  async penalizeMatchAbandon(userId, matchId = '') {
+    const row = await this.findUserById(userId);
+    if (!row) return null;
+    const xpPenalty = 75;
+    const xpRes = await this.addXp(userId, -xpPenalty, `Penalización por abandonar partida multijugador (${matchId || 'online'})`);
+    await this.recordSecurityEvent(userId, 'match_abandon', {
+      details: `Abandonó partida multijugador ${matchId || ''} (-${xpPenalty} XP)`
+    });
+
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const recentRows = await this.queryAll(
+      "SELECT id FROM security_events WHERE user_id = ? AND event_type = 'match_abandon' AND created_at >= ?",
+      [userId, since24h]
+    );
+    const recentAbandons = recentRows.length;
+
+    if (recentAbandons >= 3) {
+      const flagId = `acf_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+      await this.execSql(
+        "INSERT INTO anticheat_flags (id, user_id, username, category, severity, score, details, status, created_at) VALUES (?, ?, ?, 'abandon_abuse', 'high', 45, ?, 'open', ?)",
+        [
+          flagId,
+          userId,
+          row.username,
+          `Abandono reiterado de partidas multijugador (${recentAbandons} abandonos en 24h). Posible baneo por conducta antideportiva.`,
+          new Date().toISOString()
+        ]
+      ).catch(() => {});
+    }
+
+    return {
+      ok: true,
+      xpPenalty,
+      xpBefore: xpRes.previousXp,
+      xpAfter: xpRes.xp,
+      recentAbandons,
+      banWarning: recentAbandons >= 2,
+      profile: await this.getFullUserProfile(userId)
+    };
   }
 
   async removeFriendship(userId, friendshipId) {

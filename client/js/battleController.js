@@ -223,7 +223,14 @@ export class BattleController {
   bindUI() {
     const on = (id, ev, fn) => { const el = document.getElementById(id); if (el) el.addEventListener(ev, fn); };
 
-    on('btn-battle-back', 'click', () => this.exitBattle());
+    on('btn-battle-back', 'click', () => this.requestExitBattle());
+    on('btn-cancel-exit-match', 'click', () => {
+      document.getElementById('modal-confirm-exit')?.classList.remove('open');
+    });
+    on('btn-confirm-exit-match', 'click', () => {
+      document.getElementById('modal-confirm-exit')?.classList.remove('open');
+      this.exitBattle({ abandonOnline: this.mode === 'online' && !this.engine?.winner });
+    });
     on('btn-hint', 'click', () => this.requestHint());
     on('btn-close-hint', 'click', () => {
       this.hintSquares = null;
@@ -395,6 +402,13 @@ export class BattleController {
 
     mpSocket.on('match:draw_declined', () => this.toast('Tu rival rechazó la oferta de tablas.', 'info'));
     mpSocket.on('match:error', ({ error }) => this.toast(error || 'Jugada rechazada por el servidor.', 'error'));
+    mpSocket.on('match:abandon_applied', (data) => {
+      if (data?.profile) this.onUserUpdated(data.profile);
+      const warn = data?.banWarning
+        ? ' ⚠️ Atención: abandonos reiterados pueden provocar baneo de tu cuenta.'
+        : '';
+      this.toast(`⚠️ Abandonaste la partida multijugador: -${data?.xpPenalty || 75} XP.${warn}`, 'error');
+    });
 
     mpSocket.on('match:ended', (payload) => {
       if ((this.mode !== 'online' && this.mode !== 'spectate') || this.onlineMeta?.matchId !== payload.matchId) return;
@@ -810,7 +824,44 @@ export class BattleController {
     this.vfx.resize();
   }
 
-  exitBattle() {
+  isBattleScreenOpen() {
+    const el = document.getElementById('view-battle');
+    return Boolean(el && !el.classList.contains('hidden'));
+  }
+
+  requestExitBattle() {
+    if (!this.isBattleScreenOpen()) return;
+    // Si la partida ya terminó o estamos en modo espectador, salir directo al menú sin pedir confirmación
+    if (this.phase === 'GAME_OVER' || this.engine?.winner || this.mode === 'spectate') {
+      this.exitBattle();
+      return;
+    }
+    const modal = document.getElementById('modal-confirm-exit');
+    const titleEl = document.getElementById('confirm-exit-title');
+    const descEl = document.getElementById('confirm-exit-desc');
+    const confirmBtn = document.getElementById('btn-confirm-exit-match');
+    if (!modal || !titleEl || !descEl || !confirmBtn) {
+      this.exitBattle();
+      return;
+    }
+
+    if (this.mode === 'online') {
+      titleEl.textContent = '⚠️ ¿Estás seguro de salir?';
+      titleEl.style.color = '#ff9b90';
+      descEl.textContent = '¿Estás seguro de salir? Salir puede ser frustrante para otros jugadores, se te cobrarán 75 XP y posible baneo si esto sigue siendo seguido.';
+      confirmBtn.textContent = 'Salir (-75 XP)';
+      confirmBtn.className = 'btn btn-danger';
+    } else {
+      titleEl.textContent = '¿Estás seguro de salir?';
+      titleEl.style.color = 'var(--gold-bright)';
+      descEl.textContent = '¿Estás seguro de salir? No se guardará el progreso de tu partida.';
+      confirmBtn.textContent = 'Salir al Menú';
+      confirmBtn.className = 'btn btn-gold';
+    }
+    modal.classList.add('open');
+  }
+
+  exitBattle({ abandonOnline = false } = {}) {
     this.clearIntroTimers();
     this.stopIdleTauntTimer();
     this.paused = true;
@@ -818,10 +869,15 @@ export class BattleController {
     this.sound.stopBossMusic();
     document.getElementById('boss-intro-overlay')?.classList.remove('active');
     document.getElementById('modal-gameover')?.classList.remove('open');
+    document.getElementById('modal-confirm-exit')?.classList.remove('open');
     document.getElementById('view-battle')?.classList.add('hidden');
     document.getElementById('app-shell')?.classList.remove('hidden');
     if (this.mode === 'online' && this.onlineMeta?.matchId && !this.engine.winner) {
-      mpSocket.emit('match:resign', { matchId: this.onlineMeta.matchId });
+      if (abandonOnline) {
+        mpSocket.emit('match:abandon', { matchId: this.onlineMeta.matchId });
+      } else {
+        mpSocket.emit('match:resign', { matchId: this.onlineMeta.matchId });
+      }
     }
     if (this.mode === 'spectate' && this.onlineMeta?.matchId) {
       mpSocket.emit('match:leave_spectate', { matchId: this.onlineMeta.matchId });

@@ -1903,6 +1903,106 @@ try {
     assert.equal(modFull.user.isVip, true, 'Moderador con grantAll=true recibe VIP y todo desbloqueado');
     assert.equal(modFull.user.battlePassS1.owned, true);
   });
+
+  await test('Tiempo real: Presencia (Activo/En partida/Offline), Notificaciones interactivas (Clan/Amistad/Match/Chat) y Abandono PvP (-75 XP + alerta baneo)', async () => {
+    const regRt = async (username, email) => {
+      const r = await (await fetch(`${url}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password: 'Password123' })
+      })).json();
+      return { ...r, h: { Authorization: `Bearer ${r.token}`, 'Content-Type': 'application/json' } };
+    };
+    const u1 = await regRt('RtPlayer1', 'rt1@chessmod.test');
+    const u2 = await regRt('RtPlayer2', 'rt2@chessmod.test');
+    // Dar XP suficiente a u1 para verificar descuento exacto de 75 XP (50 + 200 = 250 XP)
+    await server.db.addXp(u1.user.id, 200, 'Seed XP test');
+
+    const s1 = ioClient(url, { auth: { token: u1.token }, transports: ['websocket'] });
+    const pSnap1 = new Promise((res) => s1.once('presence:snapshot', res));
+    await new Promise((res) => s1.on('connect', res));
+    const snap1 = await pSnap1;
+    assert.equal(snap1.users[u1.user.id]?.online, true, 'Presencia en tiempo real detecta a RtPlayer1 conectado');
+
+    // Al conectar u2, s1 recibe presence:update en tiempo real sin refrescar
+    const pPresU2 = new Promise((res) => {
+      const fn = (ev) => { if (ev.userId === u2.user.id && ev.online) { s1.off('presence:update', fn); res(ev); } };
+      s1.on('presence:update', fn);
+    });
+    const s2 = ioClient(url, { auth: { token: u2.token }, transports: ['websocket'] });
+    await new Promise((res) => s2.on('connect', res));
+    const presU2 = await pPresU2;
+    assert.equal(presU2.status, 'online', 's1 ve a RtPlayer2 activo al instante');
+
+    // 1. Notificación en tiempo real de solicitud de amistad
+    const pFriendNotif = new Promise((res) => {
+      const fn = (n) => { if (n.type === 'friend_request') { s2.off('notify:event', fn); res(n); } };
+      s2.on('notify:event', fn);
+    });
+    await fetch(`${url}/api/friends/request`, { method: 'POST', headers: u1.h, body: JSON.stringify({ username: 'RtPlayer2' }) });
+    const fNotif = await pFriendNotif;
+    assert.ok(fNotif.message.includes('RtPlayer1'), 'u2 recibe notificación en vivo de solicitud de amistad');
+
+    // 2. Notificación en tiempo real de solicitud de ingreso al clan (u1 crea clan con aprobación, u2 solicita)
+    await server.db.addMods(u1.user.id, 15000);
+    const clanRes = await (await fetch(`${url}/api/clans`, {
+      method: 'POST', headers: u1.h,
+      body: JSON.stringify({ name: 'Clan Tiempo Real', tag: 'CTR', joinPolicy: 'approval' })
+    })).json();
+    const pClanReqNotif = new Promise((res) => {
+      const fn = (n) => { if (n.type === 'clan_join_request') { s1.off('notify:event', fn); res(n); } };
+      s1.on('notify:event', fn);
+    });
+    await fetch(`${url}/api/clans/${clanRes.clanId}/join`, { method: 'POST', headers: u2.h, body: '{}' });
+    const cNotif = await pClanReqNotif;
+    assert.ok(cNotif.message.includes('RtPlayer2') && cNotif.data.requestId, 'Owner del clan recibe notificación en vivo con requestId');
+
+    // 3. Solicitud directa de Match en tiempo real: u1 reta a u2 -> u2 recibe notify:event match_invite y se une
+    const pMatchNotif = new Promise((res) => {
+      const fn = (n) => { if (n.type === 'match_invite') { s2.off('notify:event', fn); res(n); } };
+      s2.on('notify:event', fn);
+    });
+    s1.emit('match:invite', { targetUserId: u2.user.id, timeMinutes: 5 });
+    const mNotif = await pMatchNotif;
+    assert.ok(mNotif.data.code && mNotif.message.includes('solicitud de match'), 'u2 recibe notificación de match con código');
+
+    const pFound1 = new Promise((res) => s1.once('match:found', res));
+    const pFound2 = new Promise((res) => s2.once('match:found', res));
+    const pInMatchPres = new Promise((res) => {
+      const fn = (ev) => { if (ev.userId === u1.user.id && ev.status === 'in_match') { s2.off('presence:update', fn); res(ev); } };
+      s2.on('presence:update', fn);
+    });
+    s2.emit('private:join', { code: mNotif.data.code });
+    const [m1] = await Promise.all([pFound1, pFound2, pInMatchPres]);
+    assert.ok(m1.matchId, 'Al aceptar la notificación de match inicia la partida inmediatamente');
+
+    // 4. Abandono voluntario de partida multijugador: descuenta 75 XP reales y declara victoria al rival
+    const pAbandonApplied = new Promise((res) => s1.once('match:abandon_applied', res));
+    const pEnded = new Promise((res) => s2.once('match:ended', res));
+    s1.emit('match:abandon', { matchId: m1.matchId });
+    const [abData, endData] = await Promise.all([pAbandonApplied, pEnded]);
+    assert.equal(abData.xpPenalty, 75, 'Abandonar multijugador cobra exactamente 75 XP');
+    assert.equal(abData.xpAfter, 175, '250 XP - 75 XP = 175 XP exactos');
+    assert.ok(endData.reason.includes('-75 XP'));
+
+    // 5. Abandono reiterado (3 veces en 24h) genera alerta automática abandon_abuse para posible baneo
+    await server.db.penalizeMatchAbandon(u1.user.id, 'mtc_repeat_2');
+    const ab3 = await server.db.penalizeMatchAbandon(u1.user.id, 'mtc_repeat_3');
+    assert.equal(ab3.recentAbandons, 3);
+    assert.equal(ab3.banWarning, true);
+    const flags = await server.db.listAntiCheatFlags(50);
+    assert.ok(flags.some((f) => f.userId === u1.user.id && f.category === 'abandon_abuse'), 'Abandono reiterado levanta alerta de posible baneo');
+
+    // 6. Al desconectarse u2, s1 recibe presence:update offline al instante
+    const pOffline = new Promise((res) => {
+      const fn = (ev) => { if (ev.userId === u2.user.id && ev.online === false) { s1.off('presence:update', fn); res(ev); } };
+      s1.on('presence:update', fn);
+    });
+    s2.disconnect();
+    const offEv = await pOffline;
+    assert.equal(offEv.status, 'offline', 'Desconexión actualiza presencia a offline en tiempo real');
+    s1.disconnect();
+  });
 } finally {
   await server.stop();
   try { fs.unlinkSync(tmpDb); } catch {}

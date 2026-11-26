@@ -42,6 +42,35 @@ export function createSocialRouter(db, authMiddleware, multiplayer) {
   router.post('/clans/:id/join', authMiddleware.requireAuth, async (req, res) => {
     try {
       const result = await db.joinClan(req.userId, req.params.id, req.body?.message || '');
+      const actor = await db.findUserById(req.userId);
+      if (result.pendingApproval && multiplayer?.pushNotification) {
+        const approvers = await db.getClanApproverUserIds(req.params.id);
+        for (const uid of approvers) {
+          multiplayer.pushNotification(uid, {
+            type: 'clan_join_request',
+            title: '🏰 Solicitud de Clan',
+            message: `${actor?.username || 'Un jugador'} solicitó unirse a tu clan [${result.clanTag || ''}].`,
+            fromUserId: req.userId,
+            fromUsername: actor?.username || 'Jugador',
+            data: { clanId: req.params.id, requestId: result.requestId, clanTag: result.clanTag, clanName: result.clanName }
+          });
+          multiplayer.notifyUser(uid, 'clan:updated', { clanId: req.params.id });
+        }
+      } else if (result.joined && multiplayer?.notifyUser) {
+        const approvers = await db.getClanApproverUserIds(req.params.id);
+        for (const uid of approvers) {
+          if (uid === req.userId) continue;
+          multiplayer.pushNotification(uid, {
+            type: 'clan_event',
+            title: '🏰 Nuevo Integrante',
+            message: `${actor?.username || 'Un jugador'} se unió a tu clan.`,
+            fromUserId: req.userId,
+            fromUsername: actor?.username || 'Jugador',
+            data: { clanId: req.params.id }
+          });
+          multiplayer.notifyUser(uid, 'clan:updated', { clanId: req.params.id });
+        }
+      }
       return res.json(result);
     } catch (err) {
       return res.status(err.status || 400).json({ error: err.message });
@@ -60,6 +89,17 @@ export function createSocialRouter(db, authMiddleware, multiplayer) {
   router.post('/clans/:id/requests/:reqId/respond', authMiddleware.requireAuth, async (req, res) => {
     try {
       const result = await db.respondClanJoinRequest(req.userId, req.params.id, req.params.reqId, Boolean(req.body?.accept));
+      if (result.targetUserId && multiplayer?.pushNotification) {
+        multiplayer.pushNotification(result.targetUserId, {
+          type: 'clan_request_result',
+          title: result.accepted ? '✅ Solicitud de Clan Aceptada' : '✕ Solicitud de Clan Rechazada',
+          message: result.accepted
+            ? `¡Fuiste aceptado en el clan [${result.clanTag}] ${result.clanName}!`
+            : `Tu solicitud para unirte al clan [${result.clanTag}] ${result.clanName} fue rechazada.`,
+          data: { clanId: req.params.id, accepted: result.accepted }
+        });
+        multiplayer.notifyUser(result.targetUserId, 'clan:updated', { clanId: req.params.id });
+      }
       return res.json(result);
     } catch (err) {
       return res.status(err.status || 400).json({ error: err.message });
@@ -135,6 +175,16 @@ export function createSocialRouter(db, authMiddleware, multiplayer) {
       if (multiplayer?.notifyUser && Array.isArray(resMsg.memberIds)) {
         for (const uid of resMsg.memberIds) {
           multiplayer.notifyUser(uid, 'clan:message', resMsg.message);
+          if (uid !== req.userId && multiplayer.pushNotification) {
+            multiplayer.pushNotification(uid, {
+              type: 'clan_message',
+              title: '💬 Mensaje de Clan',
+              message: `${resMsg.message.senderUsername} escribió en tu clan: "${resMsg.message.content.slice(0, 65)}"`,
+              fromUserId: req.userId,
+              fromUsername: resMsg.message.senderUsername,
+              data: { clanId: req.params.id }
+            });
+          }
         }
       }
       return res.status(201).json({ ok: true, message: resMsg.message });
@@ -165,6 +215,20 @@ export function createSocialRouter(db, authMiddleware, multiplayer) {
   router.post('/friends/request', authMiddleware.requireAuth, async (req, res) => {
     try {
       const result = await db.sendFriendRequest(req.userId, req.body?.username);
+      if (result.targetUserId && multiplayer?.pushNotification) {
+        const actor = await db.findUserById(req.userId);
+        multiplayer.pushNotification(result.targetUserId, {
+          type: result.autoAccepted ? 'friend_accepted' : 'friend_request',
+          title: result.autoAccepted ? '🤝 Nuevo Amigo' : '🤝 Solicitud de Amistad',
+          message: result.autoAccepted
+            ? `${actor?.username || 'Un jugador'} aceptó tu solicitud de amistad.`
+            : `${actor?.username || 'Un jugador'} te envió una solicitud de amistad.`,
+          fromUserId: req.userId,
+          fromUsername: actor?.username || 'Jugador',
+          data: { friendshipId: result.id, fromUserId: req.userId, fromUsername: actor?.username || 'Jugador' }
+        });
+        multiplayer.notifyUser(result.targetUserId, 'friends:updated', {});
+      }
       return res.status(201).json(result);
     } catch (err) {
       return res.status(400).json({ error: err.message });
@@ -174,6 +238,18 @@ export function createSocialRouter(db, authMiddleware, multiplayer) {
   router.post('/friends/:id/accept', authMiddleware.requireAuth, async (req, res) => {
     try {
       const result = await db.respondFriendRequest(req.userId, req.params.id, true);
+      if (result.requesterId && multiplayer?.pushNotification) {
+        const actor = await db.findUserById(req.userId);
+        multiplayer.pushNotification(result.requesterId, {
+          type: 'friend_accepted',
+          title: '🤝 Solicitud Aceptada',
+          message: `${actor?.username || 'Un jugador'} aceptó tu solicitud de amistad.`,
+          fromUserId: req.userId,
+          fromUsername: actor?.username || 'Jugador',
+          data: { friendId: req.userId, friendUsername: actor?.username || 'Jugador' }
+        });
+        multiplayer.notifyUser(result.requesterId, 'friends:updated', {});
+      }
       return res.json(result);
     } catch (err) {
       return res.status(400).json({ error: err.message });
@@ -213,6 +289,16 @@ export function createSocialRouter(db, authMiddleware, multiplayer) {
       const msg = await db.sendFriendMessage(req.userId, req.params.friendId, req.body?.content);
       if (multiplayer?.notifyUser) {
         multiplayer.notifyUser(req.params.friendId, 'friend:message', msg);
+      }
+      if (multiplayer?.pushNotification) {
+        multiplayer.pushNotification(req.params.friendId, {
+          type: 'friend_message',
+          title: '💬 Mensaje Recibido',
+          message: `${msg.senderUsername} te ha escrito: "${msg.content.slice(0, 70)}"`,
+          fromUserId: req.userId,
+          fromUsername: msg.senderUsername,
+          data: { friendId: req.userId, friendUsername: msg.senderUsername }
+        });
       }
       return res.status(201).json({ ok: true, message: msg });
     } catch (err) {

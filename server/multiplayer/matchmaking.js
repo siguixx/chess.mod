@@ -102,6 +102,7 @@ export class MultiplayerManager {
     this.socketToMatch = new Map();
     this.socketToSpectate = new Map(); // socketId -> matchId
     this.privateRooms = new Map();
+    this.onlineUsers = new Map(); // userId -> { userId, username, sockets: Set<socketId> }
 
     this.setupSocketAuth();
     this.setupHandlers();
@@ -130,6 +131,54 @@ export class MultiplayerManager {
         sock.emit(event, payload);
       }
     }
+  }
+
+  pushNotification(userId, { type = 'info', title = 'CHESS.MOD', message = '', fromUserId = null, fromUsername = '', data = {} } = {}) {
+    if (!userId) return null;
+    const notif = {
+      id: `ntf_${crypto.randomUUID().replace(/-/g, '').slice(0, 10)}`,
+      type,
+      title,
+      message,
+      fromUserId,
+      fromUsername,
+      data,
+      createdAt: new Date().toISOString()
+    };
+    this.notifyUser(userId, 'notify:event', notif);
+    return notif;
+  }
+
+  getUserPresenceStatus(userId) {
+    const entry = this.onlineUsers.get(userId);
+    if (!entry || entry.sockets.size === 0) return { online: false, status: 'offline' };
+    for (const sid of entry.sockets) {
+      if (this.socketToMatch.has(sid)) return { online: true, status: 'in_match' };
+    }
+    return { online: true, status: 'online' };
+  }
+
+  getPresenceSnapshot() {
+    const users = {};
+    for (const [uid, entry] of this.onlineUsers.entries()) {
+      if (entry.sockets.size === 0) continue;
+      const st = this.getUserPresenceStatus(uid);
+      users[uid] = { online: true, status: st.status, username: entry.username };
+    }
+    return { users, onlineCount: Object.keys(users).length };
+  }
+
+  broadcastPresenceUpdate(userId) {
+    if (!userId) return;
+    const st = this.getUserPresenceStatus(userId);
+    const entry = this.onlineUsers.get(userId);
+    this.io.emit('presence:update', {
+      userId,
+      username: entry?.username || '',
+      online: st.online,
+      status: st.status,
+      onlineCount: this.onlineUsers.size
+    });
   }
 
   getLiveMatchesSummary() {
@@ -192,11 +241,113 @@ export class MultiplayerManager {
 
   setupHandlers() {
     this.io.on('connection', (socket) => {
+      // Registrar presencia en tiempo real del usuario
+      if (!this.onlineUsers.has(socket.userId)) {
+        this.onlineUsers.set(socket.userId, { userId: socket.userId, username: socket.username, sockets: new Set() });
+      }
+      const pEntry = this.onlineUsers.get(socket.userId);
+      pEntry.username = socket.username;
+      pEntry.sockets.add(socket.id);
+
+      socket.emit('presence:snapshot', this.getPresenceSnapshot());
+      this.broadcastPresenceUpdate(socket.userId);
+
       socket.emit('online:stats', {
-        onlineCount: this.io.sockets.sockets.size,
+        onlineCount: this.onlineUsers.size,
         queueCount: this.queue.length
       });
       socket.emit('live:matches', { matches: this.getLiveMatchesSummary() });
+
+      socket.on('presence:request', () => {
+        socket.emit('presence:snapshot', this.getPresenceSnapshot());
+      });
+
+      // === INVITACIÓN / SOLICITUD DIRECTA DE MATCH EN TIEMPO REAL ===
+      socket.on('match:invite', async ({ targetUserId, timeMinutes = 10, specialModeId = null, betMods = 0 } = {}) => {
+        if (!targetUserId || targetUserId === socket.userId) {
+          return socket.emit('private:error', { error: 'Selecciona a otro jugador para enviar solicitud de match.' });
+        }
+        if (this.socketToMatch.has(socket.id)) {
+          return socket.emit('private:error', { error: 'Ya estás en una partida activa.' });
+        }
+        const targetPresence = this.getUserPresenceStatus(targetUserId);
+        if (!targetPresence.online) {
+          return socket.emit('private:error', { error: 'Ese jugador está desconectado en este momento.' });
+        }
+        if (targetPresence.status === 'in_match') {
+          return socket.emit('private:error', { error: 'Ese jugador está actualmente en una partida.' });
+        }
+        const row = await this.db.ensureFreshVipState(await this.db.findUserById(socket.userId));
+        if (!row) return;
+        const targetRow = await this.db.findUserById(targetUserId);
+        if (!targetRow) return socket.emit('private:error', { error: 'Jugador no encontrado.' });
+
+        const settings = sanitizeRoomSettings({ timeMinutes, specialModeId, betMods }, timeMinutes, betMods);
+        if (settings.betMods > 0 && (Number(row.mods) || 0) < settings.betMods) {
+          return socket.emit('private:error', { error: `No tienes ${settings.betMods} Mods para esa apuesta.` });
+        }
+
+        this.leaveSpectate(socket);
+        this.removeFromQueue(socket.id);
+        this.removePrivateRoomBySocket(socket.id);
+
+        let code = generateRoomCode();
+        while (this.privateRooms.has(code)) code = generateRoomCode();
+
+        const entry = {
+          code,
+          hostSocketId: socket.id,
+          hostUserId: row.id,
+          hostProfile: this.db.formatPublicUser(row),
+          invitedUserId: targetUserId,
+          timeMinutes: settings.timeMinutes,
+          betMods: settings.betMods,
+          specialModeId: settings.specialModeId,
+          roomSettings: settings,
+          customMod: null,
+          createdAt: Date.now()
+        };
+        this.privateRooms.set(code, entry);
+
+        socket.emit('private:created', {
+          code,
+          timeMinutes: settings.timeMinutes,
+          betMods: settings.betMods,
+          specialModeId: settings.specialModeId,
+          roomSettings: settings,
+          customMod: null,
+          invitedUsername: targetRow.username
+        });
+
+        const spDef = SPECIAL_GAME_MODES.find((m) => m.id === settings.specialModeId);
+        const modeTxt = spDef ? `${spDef.icon} ${spDef.name}` : '♟️ Ajedrez Clásico';
+        this.pushNotification(targetUserId, {
+          type: 'match_invite',
+          title: '⚔️ Solicitud de Match',
+          message: `${row.username} te envió solicitud de match (${modeTxt} · ${settings.timeMinutes || '∞'} min).`,
+          fromUserId: row.id,
+          fromUsername: row.username,
+          data: { code, hostUserId: row.id, hostUsername: row.username, timeMinutes: settings.timeMinutes, specialModeId: settings.specialModeId }
+        });
+      });
+
+      socket.on('match:invite_respond', ({ code = '', accept = false } = {}) => {
+        const cleanCode = String(code || '').trim().toUpperCase();
+        const waiting = this.privateRooms.get(cleanCode);
+        if (!waiting) return;
+        if (!accept) {
+          this.privateRooms.delete(cleanCode);
+          this.notifyUser(waiting.hostUserId, 'private:closed', { ok: true, declinedBy: socket.username });
+          this.pushNotification(waiting.hostUserId, {
+            type: 'match_invite_declined',
+            title: '⚔️ Match Rechazado',
+            message: `${socket.username} rechazó tu solicitud de match.`,
+            fromUserId: socket.userId,
+            fromUsername: socket.username,
+            data: { code: cleanCode }
+          });
+        }
+      });
 
       socket.on('live:list', () => {
         socket.emit('live:matches', { matches: this.getLiveMatchesSummary() });
@@ -547,6 +698,27 @@ export class MultiplayerManager {
         }
       });
 
+      // Abandono voluntario en plena partida multijugador: -75 XP reales + registro para posible baneo
+      socket.on('match:abandon', async ({ matchId } = {}) => {
+        const room = this.matches.get(matchId);
+        if (!room || room.finished) return;
+        let winner = null;
+        let quitterName = '';
+        if (room.white.socketId === socket.id) {
+          winner = 'b';
+          quitterName = room.white.profile.username;
+        } else if (room.black.socketId === socket.id) {
+          winner = 'w';
+          quitterName = room.black.profile.username;
+        }
+        if (!winner) return;
+        const penalty = await this.db.penalizeMatchAbandon(socket.userId, room.id).catch(() => null);
+        if (penalty) {
+          socket.emit('match:abandon_applied', penalty);
+        }
+        await this.finishMatch(room, winner, `${quitterName} abandonó la partida multijugador (-75 XP).`);
+      });
+
       socket.on('match:offer_draw', ({ matchId } = {}) => {
         const room = this.matches.get(matchId);
         if (!room || room.finished) return;
@@ -570,6 +742,11 @@ export class MultiplayerManager {
       });
 
       socket.on('disconnect', () => {
+        const pEntry = this.onlineUsers.get(socket.userId);
+        if (pEntry) {
+          pEntry.sockets.delete(socket.id);
+          if (pEntry.sockets.size === 0) this.onlineUsers.delete(socket.userId);
+        }
         this.removeFromQueue(socket.id);
         this.removePrivateRoomBySocket(socket.id);
         this.leaveSpectate(socket);
@@ -582,6 +759,7 @@ export class MultiplayerManager {
             this.finishMatch(room, winner, `${quitter} se desconectó de la partida.`);
           }
         }
+        this.broadcastPresenceUpdate(socket.userId);
       });
     });
   }
@@ -777,6 +955,8 @@ export class MultiplayerManager {
 
     whiteSock.emit('match:found', { ...basePayload, yourColor: 'w', opponent: blackProfile });
     blackSock.emit('match:found', { ...basePayload, yourColor: 'b', opponent: whiteProfile });
+    this.broadcastPresenceUpdate(whiteEntry.userId);
+    this.broadcastPresenceUpdate(blackEntry.userId);
     this.broadcastLiveMatches();
   }
 
@@ -878,6 +1058,8 @@ export class MultiplayerManager {
       this.socketToMatch.delete(room.white.socketId);
       this.socketToMatch.delete(room.black.socketId);
       this.matches.delete(room.id);
+      this.broadcastPresenceUpdate(room.white.userId);
+      this.broadcastPresenceUpdate(room.black.userId);
       this.broadcastLiveMatches();
     }
   }

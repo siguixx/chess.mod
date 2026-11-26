@@ -161,6 +161,12 @@ class ChessModApp {
     this.pendingCreateClanAvatar = '';
     this.pendingEditClanAvatar = null;
     this.activePublicChatClanId = null;
+    this.presenceMap = new Map();
+    this.notifications = [];
+    this.unreadNotifs = 0;
+    this.onlineCount = 0;
+    this.lastBackPressAt = 0;
+    this.allowingPageExit = false;
     this.vipBillingStatus = { billingConfigured: false };
     this.savedMods = this.loadSavedMods();
     this.activePrivateRoomCode = null;
@@ -198,6 +204,7 @@ class ChessModApp {
     applyLanguageToDOM(this.lang);
     this.bindMenuEvents();
     this.bindSocketEvents();
+    this.initBackNavigationGuard();
     this.syncSettingsUI();
     this.bootstrap();
   }
@@ -370,6 +377,10 @@ class ChessModApp {
     this.battle.setUserProfile(user);
     this.applyEquippedBoardTheme();
     this.renderAllScreens();
+    if (user && api.getToken()) {
+      mpSocket.connect();
+      mpSocket.emit('presence:request');
+    }
   }
 
   applyEquippedBoardTheme() {
@@ -1187,6 +1198,23 @@ class ChessModApp {
       }
     });
 
+    // === NOTIFICACIONES EN TIEMPO REAL ===
+    on('btn-notifications-bell', 'click', () => {
+      this.unreadNotifs = 0;
+      this.updateNotifBadge();
+      this.renderNotificationsModal();
+      document.getElementById('modal-notifications')?.classList.add('open');
+    });
+    on('btn-close-notifications', 'click', () => {
+      document.getElementById('modal-notifications')?.classList.remove('open');
+    });
+    on('btn-clear-notifications', 'click', () => {
+      this.notifications = [];
+      this.unreadNotifs = 0;
+      this.updateNotifBadge();
+      this.renderNotificationsModal();
+    });
+
     // === 8. CONFIGURACIÓN COMPLETA ===
     document.querySelectorAll('#settings-lang-pills [data-set-lang]').forEach((b) => {
       b.addEventListener('click', () => {
@@ -1332,11 +1360,338 @@ class ChessModApp {
       if (this.user?.clan && msg.clanId === this.user.clan.id) {
         if (this.activeScreen === 'social' && this.activeSocialTab === 'clans' && (this.activeClanTab || 'chat') === 'chat') {
           this.loadMyClanChat(msg.clanId);
-        } else if (msg.senderId !== this.user.id) {
-          showToast(`🏰 [${this.user.clan.tag}] ${msg.senderUsername}: ${msg.content.slice(0, 55)}`, 'info');
         }
       }
     });
+
+    mpSocket.on('presence:snapshot', ({ users = {}, onlineCount = 0 } = {}) => {
+      this.presenceMap.clear();
+      for (const [uid, info] of Object.entries(users)) {
+        this.presenceMap.set(uid, { online: Boolean(info?.online), status: info?.status || 'online' });
+      }
+      this.onlineCount = Number(onlineCount) || this.presenceMap.size;
+      this.updatePresenceDOM();
+    });
+
+    mpSocket.on('presence:update', ({ userId, online, status, onlineCount } = {}) => {
+      if (userId) {
+        if (online) this.presenceMap.set(userId, { online: true, status: status || 'online' });
+        else this.presenceMap.delete(userId);
+      }
+      if (onlineCount !== undefined) this.onlineCount = Number(onlineCount) || 0;
+      else this.onlineCount = this.presenceMap.size;
+      this.updatePresenceDOM(userId || null);
+    });
+
+    mpSocket.on('notify:event', (notif) => {
+      this.handleIncomingNotification(notif);
+    });
+
+    mpSocket.on('friends:updated', () => {
+      if (this.activeScreen === 'social' && this.activeSocialTab === 'friends') {
+        this.loadFriends();
+      }
+    });
+
+    mpSocket.on('clan:updated', async () => {
+      await this.refreshCurrentUser();
+      if (this.activeScreen === 'social' && this.activeSocialTab === 'clans') {
+        this.loadClans();
+      }
+    });
+  }
+
+  /* ================= SISTEMA DE BOTÓN ATRÁS / TRIÁNGULO / RETROCESO ================= */
+  initBackNavigationGuard() {
+    try {
+      if (!window.history?.state?.chessModGuard) {
+        window.history.replaceState({ chessModGuard: true, root: true }, '');
+        window.history.pushState({ chessModGuard: true, sentinel: true }, '');
+      }
+    } catch {}
+
+    window.addEventListener('popstate', () => {
+      if (this.allowingPageExit) return;
+      const shouldExitPage = this.handleSystemBackNavigation();
+      if (shouldExitPage) {
+        this.allowingPageExit = true;
+        try { window.history.back(); } catch {}
+        setTimeout(() => { this.allowingPageExit = false; }, 1000);
+        return;
+      }
+      try {
+        window.history.pushState({ chessModGuard: true, sentinel: true }, '');
+      } catch {}
+    });
+  }
+
+  /**
+   * Gestiona el botón Atrás / Triángulo / Retroceso del teléfono o navegador:
+   * - Si hay modal abierto (no obligatorio) -> lo cierra (1 clic).
+   * - Si está dentro de una partida -> abre la confirmación de salida (Multijugador -75 XP vs Bot).
+   * - Si está en cualquier subventana (Tienda, Social, Historia, etc.) -> regresa al menú principal (1 clic).
+   * - Si ya está en el menú principal ('play') -> requiere 2 clics seguidos (< 2.5s) para salir de la página.
+   */
+  handleSystemBackNavigation() {
+    // No permitir saltar modales obligatorios (idioma / entrenador único)
+    if (document.getElementById('modal-language-picker')?.classList.contains('open')
+      || document.getElementById('modal-trainer-picker')?.classList.contains('open')) {
+      return false;
+    }
+
+    // 1. Si hay un modal cerrable abierto, cerrarlo primero
+    const closableModals = [
+      'modal-confirm-exit',
+      'modal-notifications',
+      'modal-friend-chat',
+      'modal-clan-public-chat',
+      'modal-mode-launcher',
+      'modal-report-quick',
+      'modal-vip-payment',
+      'modal-bp-payment',
+      'modal-chess-power',
+      'modal-auth'
+    ];
+    for (const id of closableModals) {
+      const m = document.getElementById(id);
+      if (m && m.classList.contains('open')) {
+        m.classList.remove('open');
+        return false;
+      }
+    }
+
+    // 2. Si está dentro de una partida -> pedir confirmación según Multijugador vs Bot
+    if (this.battle.isBattleScreenOpen()) {
+      this.battle.requestExitBattle();
+      return false;
+    }
+
+    // 3. Si está en cualquier ventana secundaria (Tienda, Inventario, Social, Historia, Ranking, Perfil, Ajustes, etc.) -> 1 clic regresa al menú principal
+    if (this.activeScreen !== 'play') {
+      this.switchScreen('play');
+      return false;
+    }
+
+    // 4. Ya en el menú principal: exigir 2 presiones de Atrás en < 2.5s para salir de la página
+    const now = Date.now();
+    if (now - this.lastBackPressAt <= 2500) {
+      return true;
+    }
+    this.lastBackPressAt = now;
+    showToast('⬅️ Presiona atrás otra vez para salir de CHESS.MOD', 'info');
+    return false;
+  }
+
+  /* ================= PRESENCIA EN TIEMPO REAL (ACTIVO / EN PARTIDA / DESCONECTADO) ================= */
+  getPresenceInfo(userId) {
+    if (!userId) return { online: false, status: 'offline' };
+    if (this.user && userId === this.user.id && mpSocket.socket?.connected) {
+      return this.presenceMap.get(userId) || { online: true, status: 'online' };
+    }
+    return this.presenceMap.get(userId) || { online: false, status: 'offline' };
+  }
+
+  formatPresenceInner(userId) {
+    const info = this.getPresenceInfo(userId);
+    if (info.status === 'in_match') {
+      return { text: '⚔️ En partida', color: '#ffd859', border: 'rgba(255,216,89,0.55)', bg: 'rgba(255,216,89,0.14)' };
+    }
+    if (info.online) {
+      return { text: '🟢 Activo', color: '#86efac', border: 'rgba(134,239,172,0.5)', bg: 'rgba(34,197,94,0.14)' };
+    }
+    return { text: '⚫ Desconectado', color: '#9ca3af', border: 'rgba(156,163,175,0.28)', bg: 'rgba(156,163,175,0.08)' };
+  }
+
+  renderPresencePill(userId) {
+    if (!userId) return '';
+    const st = this.formatPresenceInner(userId);
+    return `<span class="live-presence-pill" data-presence-uid="${escapeHtml(userId)}" style="display:inline-flex;align-items:center;gap:3px;font-size:0.62rem;padding:1px 6px;border-radius:999px;border:1px solid ${st.border};background:${st.bg};color:${st.color};white-space:nowrap;">${st.text}</span>`;
+  }
+
+  updatePresenceDOM(onlyUserId = null) {
+    const countPill = document.getElementById('live-online-count-pill');
+    if (countPill) {
+      const cnt = Math.max(this.onlineCount, this.presenceMap.size);
+      countPill.textContent = `🟢 ${cnt}`;
+      countPill.title = `${cnt} jugador(es) activos en CHESS.MOD ahora mismo`;
+    }
+    const selector = onlyUserId
+      ? `[data-presence-uid="${CSS.escape(onlyUserId)}"]`
+      : '[data-presence-uid]';
+    document.querySelectorAll(selector).forEach((el) => {
+      const uid = el.dataset.presenceUid;
+      const st = this.formatPresenceInner(uid);
+      el.textContent = st.text;
+      el.style.color = st.color;
+      el.style.borderColor = st.border;
+      el.style.background = st.bg;
+    });
+  }
+
+  /* ================= NOTIFICACIONES INTERACTIVAS EN TIEMPO REAL ================= */
+  updateNotifBadge() {
+    const badge = document.getElementById('notif-unread-badge');
+    if (!badge) return;
+    badge.classList.toggle('hidden', this.unreadNotifs <= 0);
+    badge.textContent = this.unreadNotifs > 99 ? '99+' : String(this.unreadNotifs);
+  }
+
+  getNotifButtonsHtml(n) {
+    if (n.resolvedLabel) {
+      return `<span class="pill jade" style="font-size:0.64rem;">${escapeHtml(n.resolvedLabel)}</span>`;
+    }
+    if (n.type === 'clan_join_request') {
+      return `
+        <button type="button" class="btn btn-sm btn-primary" data-ntf-act="clan_accept" data-ntf-id="${n.id}">✅ Aceptar</button>
+        <button type="button" class="btn btn-sm btn-danger" data-ntf-act="clan_reject" data-ntf-id="${n.id}">✕ Rechazar</button>`;
+    }
+    if (n.type === 'friend_request') {
+      return `
+        <button type="button" class="btn btn-sm btn-primary" data-ntf-act="friend_accept" data-ntf-id="${n.id}">✅ Aceptar</button>
+        <button type="button" class="btn btn-sm btn-danger" data-ntf-act="friend_reject" data-ntf-id="${n.id}">✕ Rechazar</button>`;
+    }
+    if (n.type === 'match_invite') {
+      return `
+        <button type="button" class="btn btn-sm btn-gold" data-ntf-act="match_join" data-ntf-id="${n.id}">⚔️ Unirse</button>
+        <button type="button" class="btn btn-sm btn-danger" data-ntf-act="match_reject" data-ntf-id="${n.id}">✕ Rechazar</button>`;
+    }
+    if (n.type === 'friend_message') {
+      return `<button type="button" class="btn btn-sm btn-primary" data-ntf-act="open_friend_chat" data-ntf-id="${n.id}">💬 Responder</button>`;
+    }
+    if (n.type === 'clan_message' || n.type === 'clan_request_result' || n.type === 'clan_event') {
+      return `<button type="button" class="btn btn-sm btn-primary" data-ntf-act="open_clan" data-ntf-id="${n.id}">🏰 Ver Clan</button>`;
+    }
+    return '';
+  }
+
+  handleIncomingNotification(notif) {
+    if (!notif || !notif.id) return;
+    // Evitar spam visual si el usuario ya tiene abierto ese mismo chat
+    if (notif.type === 'friend_message' && this.activeChatFriend && notif.data?.friendId === this.activeChatFriend.userId
+      && document.getElementById('modal-friend-chat')?.classList.contains('open')) {
+      return;
+    }
+    if (notif.type === 'clan_message' && this.activeScreen === 'social' && this.activeSocialTab === 'clans'
+      && (this.activeClanTab || 'chat') === 'chat' && !this.battle.isBattleScreenOpen()) {
+      return;
+    }
+
+    this.notifications.unshift({ ...notif, resolvedLabel: null });
+    if (this.notifications.length > 40) this.notifications.length = 40;
+    this.unreadNotifs += 1;
+    this.updateNotifBadge();
+    try { this.sound.play('select'); } catch {}
+
+    if (document.getElementById('modal-notifications')?.classList.contains('open')) {
+      this.renderNotificationsModal();
+    }
+    this.showInteractiveNotifBanner(this.notifications[0]);
+  }
+
+  showInteractiveNotifBanner(n) {
+    const stack = document.getElementById('live-notif-stack');
+    if (!stack) return;
+    const card = document.createElement('div');
+    card.dataset.liveNotifCard = n.id;
+    card.style.cssText = 'pointer-events:auto;background:rgba(20,18,15,0.96);border:1px solid var(--border-gold);border-left:4px solid var(--gold-bright);border-radius:10px;padding:10px 12px;box-shadow:0 12px 28px rgba(0,0,0,0.55);color:#f3ead8;font-size:0.78rem;';
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:4px;">
+        <strong style="color:var(--gold-bright);font-size:0.8rem;">${escapeHtml(n.title || 'CHESS.MOD')}</strong>
+        <button type="button" class="btn btn-sm btn-icon" data-dismiss-banner="1" style="padding:1px 6px;font-size:0.68rem;">✕</button>
+      </div>
+      <div style="line-height:1.4;margin-bottom:7px;">${escapeHtml(n.message || '')}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">${this.getNotifButtonsHtml(n)}</div>`;
+    stack.prepend(card);
+
+    card.querySelector('[data-dismiss-banner]')?.addEventListener('click', () => card.remove());
+    card.querySelectorAll('[data-ntf-act]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        await this.handleNotificationAction(b.dataset.ntfId, b.dataset.ntfAct);
+        card.remove();
+      });
+    });
+
+    setTimeout(() => { if (card.isConnected) card.remove(); }, 10000);
+  }
+
+  renderNotificationsModal() {
+    const box = document.getElementById('notifications-list-box');
+    if (!box) return;
+    if (!this.notifications.length) {
+      box.innerHTML = '<div style="text-align:center;padding:28px 12px;color:var(--text-muted);font-size:0.82rem;">🔔 No tienes notificaciones nuevas. Aquí aparecerán solicitudes de clan, retos de match, amistad y mensajes en tiempo real.</div>';
+      return;
+    }
+    box.innerHTML = this.notifications.map((n) => {
+      const timeStr = n.createdAt ? new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+      return `
+        <div class="social-row-card" style="padding:9px 11px;flex-direction:column;align-items:stretch;gap:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <strong style="color:var(--gold-bright);font-size:0.82rem;">${escapeHtml(n.title || 'CHESS.MOD')}</strong>
+            <span style="font-size:0.66rem;color:var(--text-muted);">${timeStr}</span>
+          </div>
+          <div style="font-size:0.8rem;color:#ebe3d5;">${escapeHtml(n.message || '')}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">${this.getNotifButtonsHtml(n)}</div>
+        </div>`;
+    }).join('');
+
+    box.querySelectorAll('[data-ntf-act]').forEach((b) => {
+      b.addEventListener('click', () => this.handleNotificationAction(b.dataset.ntfId, b.dataset.ntfAct));
+    });
+  }
+
+  async handleNotificationAction(notifId, action) {
+    const n = this.notifications.find((x) => x.id === notifId);
+    if (!n) return;
+    try {
+      if (action === 'clan_accept' || action === 'clan_reject') {
+        const accept = action === 'clan_accept';
+        const res = await api.respondClanRequest(n.data.clanId, n.data.requestId, accept);
+        n.resolvedLabel = accept ? '✅ Aceptado en el clan' : '✕ Rechazado';
+        if (res.user) this.setUser(res.user);
+        if (this.activeScreen === 'social' && this.activeSocialTab === 'clans') this.loadClans();
+        showToast(accept ? '✅ Usuario aceptado en tu clan.' : 'Solicitud de clan rechazada.', accept ? 'success' : 'info');
+      } else if (action === 'friend_accept' || action === 'friend_reject') {
+        const accept = action === 'friend_accept';
+        const res = accept
+          ? await api.acceptFriend(n.data.friendshipId)
+          : await api.rejectFriend(n.data.friendshipId);
+        n.resolvedLabel = accept ? '🤝 Amigo agregado' : '✕ Rechazado';
+        if (this.activeScreen === 'social' && this.activeSocialTab === 'friends') this.renderFriends(res.summary);
+        showToast(accept ? '🤝 ¡Solicitud de amistad aceptada!' : 'Solicitud rechazada.', accept ? 'success' : 'info');
+      } else if (action === 'match_join') {
+        n.resolvedLabel = '⚔️ Uniéndose al match...';
+        document.getElementById('modal-notifications')?.classList.remove('open');
+        mpSocket.connect();
+        mpSocket.emit('private:join', { code: n.data.code });
+        showToast(`⚔️ Uniéndote al match contra ${n.data.hostUsername || 'tu rival'}...`, 'success');
+      } else if (action === 'match_reject') {
+        n.resolvedLabel = '✕ Match rechazado';
+        mpSocket.emit('match:invite_respond', { code: n.data.code, accept: false });
+        showToast('Rechazaste la solicitud de match.', 'info');
+      } else if (action === 'open_friend_chat') {
+        document.getElementById('modal-notifications')?.classList.remove('open');
+        this.openFriendChat({ userId: n.data.friendId, username: n.data.friendUsername || n.fromUsername });
+      } else if (action === 'open_clan') {
+        document.getElementById('modal-notifications')?.classList.remove('open');
+        this.activeSocialTab = 'clans';
+        this.activeClanTab = 'chat';
+        this.switchScreen('social');
+        document.querySelector('#social-tabs-bar [data-social-tab="clans"]')?.click();
+      }
+      this.renderNotificationsModal();
+    } catch (err) {
+      showToast(err.message || 'No se pudo completar la acción.', 'error');
+    }
+  }
+
+  sendDirectMatchInvite(targetUserId, targetUsername) {
+    if (!this.user) return this.openAuthModal('login');
+    mpSocket.connect();
+    mpSocket.emit('match:invite', {
+      targetUserId,
+      timeMinutes: this.battle.selectedMinutes || 10
+    });
+    showToast(`⚔️ Solicitud de match enviada a ${targetUsername}. Esperando respuesta...`, 'success');
   }
 
   syncModGameModeBuilderFromObj(mod) {
@@ -2412,7 +2767,7 @@ class ChessModApp {
                 <span class="avatar-badge ${p.frameId || 'frame_stone'}${vipAuraCls}" style="width:34px;height:34px;">${renderAvatarMarkup(p.avatar)}</span>
                 <div>
                   <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
-                    ${clanTag}<strong class="${nameCls}" style="color:${isMe ? 'var(--gold-bright)' : 'var(--text-main)'};">${p.username}${isMe ? ' (Tú)' : ''}</strong>${roleBadge}${vipBadge}${repBtn}
+                    ${clanTag}<strong class="${nameCls}" style="color:${isMe ? 'var(--gold-bright)' : 'var(--text-main)'};">${p.username}${isMe ? ' (Tú)' : ''}</strong>${roleBadge}${vipBadge}${this.renderPresencePill(p.id)}${repBtn}
                   </div>
                   <div style="font-size:0.7rem;color:var(--text-muted);">Nivel ${p.level}${p.title ? ` · «${p.title}»` : ''}</div>
                 </div>
@@ -2753,12 +3108,13 @@ class ChessModApp {
                   <div style="min-width:0;">
                     <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
                       <strong style="color:${escapeHtml(clan.textColor || '#efd083')};font-family:${clan.fontCss || 'inherit'};">${escapeHtml(m.username)}${isMe ? ' (Tú)' : ''}</strong>
-                      ${globalBadge}${clanRoleBadge}
+                      ${globalBadge}${clanRoleBadge}${this.renderPresencePill(m.id)}
                     </div>
                     <div style="font-size:0.7rem;color:var(--text-muted);">${m.elo} Elo${m.isVip ? ' · 👑 Mod VIP' : ''}</div>
                   </div>
                 </div>
                 <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;">
+                  ${!isMe ? `<button class="btn btn-sm btn-gold" data-clan-invite-match="${m.id}" data-clan-uname="${escapeHtml(m.username)}">⚔️ Retar</button>` : ''}
                   ${canActOn && canManageRoles ? `
                     <select class="input-field" data-clan-assign-role="${m.id}" style="padding:4px 6px;font-size:0.72rem;width:auto;">
                       <option value="">Miembro</option>
@@ -2938,6 +3294,9 @@ class ChessModApp {
         }
       });
     } else if (tab === 'members') {
+      myBox.querySelectorAll('[data-clan-invite-match]').forEach((b) => {
+        b.addEventListener('click', () => this.sendDirectMatchInvite(b.dataset.clanInviteMatch, b.dataset.clanUname));
+      });
       myBox.querySelectorAll('[data-clan-assign-role]').forEach((sel) => {
         sel.addEventListener('change', async () => {
           try {
@@ -3231,13 +3590,16 @@ class ChessModApp {
             <div style="display:flex;align-items:center;gap:8px;">
               <span class="avatar-badge ${f.frameId || 'frame_stone'}${f.isVip ? ' vip-aura' : ''}" style="width:30px;height:30px;">${renderAvatarMarkup(f.avatar)}</span>
               <div>
-                <strong class="${f.isVip ? 'vip-name' : ''}">${f.username}</strong>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                  <strong class="${f.isVip ? 'vip-name' : ''}">${f.username}</strong>
+                  ${this.renderPresencePill(f.userId)}
+                </div>
                 <div style="font-size:0.7rem;color:var(--text-muted);">${f.elo} Elo</div>
               </div>
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
               <button class="btn btn-sm btn-primary" data-friend-chat="${f.userId}" data-friend-name="${f.username}">💬 Mensaje</button>
-              <button class="btn btn-sm btn-gold" data-friend-invite="1">🔐 Sala Privada</button>
+              <button class="btn btn-sm btn-gold" data-friend-challenge="${f.userId}" data-friend-name="${f.username}">⚔️ Retar Match</button>
               <button class="btn btn-sm btn-danger" data-friend-remove="${f.friendshipId}">✕</button>
             </div>
           </div>`).join('')
@@ -3245,9 +3607,8 @@ class ChessModApp {
       acc.querySelectorAll('[data-friend-chat]').forEach((b) => b.addEventListener('click', () => {
         this.openFriendChat({ userId: b.dataset.friendChat, username: b.dataset.friendName });
       }));
-      acc.querySelectorAll('[data-friend-invite]').forEach((b) => b.addEventListener('click', () => {
-        this.switchScreen('multiplayer');
-        this.createPrivateRoom();
+      acc.querySelectorAll('[data-friend-challenge]').forEach((b) => b.addEventListener('click', () => {
+        this.sendDirectMatchInvite(b.dataset.friendChallenge, b.dataset.friendName);
       }));
       acc.querySelectorAll('[data-friend-remove]').forEach((b) => b.addEventListener('click', async () => {
         const res = await api.removeFriend(b.dataset.friendRemove);
@@ -3338,7 +3699,7 @@ class ChessModApp {
             : '';
           return `
           <tr>
-            <td><strong>${u.clanTag ? `[${escapeHtml(u.clanTag)}] ` : ''}${escapeHtml(u.username)}</strong> ${rankBadge} ${u.isVip ? '<span class="vip-tag">VIP</span>' : ''} ${u.hasBattlePassS1 ? '<span class="pill" style="font-size:0.62rem;border-color:#38bdf8;color:#7dd3fc;">🎖️ T1</span>' : ''}</td>
+            <td><strong>${u.clanTag ? `[${escapeHtml(u.clanTag)}] ` : ''}${escapeHtml(u.username)}</strong> ${rankBadge} ${u.isVip ? '<span class="vip-tag">VIP</span>' : ''} ${u.hasBattlePassS1 ? '<span class="pill" style="font-size:0.62rem;border-color:#38bdf8;color:#7dd3fc;">🎖️ T1</span>' : ''} ${this.renderPresencePill(u.id)}</td>
             <td style="font-size:0.75rem;color:var(--text-muted);">${escapeHtml(u.email)}</td>
             <td>${u.elo} Elo · 🪙 ${u.mods}</td>
             <td>${u.isBanned ? `<span class="pill crimson">${u.bannedUntil ? 'EXPULSADO' : 'BANEADO'}</span><div style="font-size:0.68rem;color:#ffaca3;">${escapeHtml(u.banReason)}${untilTxt}</div>` : '<span class="pill jade">Activo</span>'}</td>

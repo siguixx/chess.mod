@@ -41,6 +41,14 @@ app.whenReady().then(async () => {
 
     const report = await win.webContents.executeJavaScript(`(async () => {
       const wait = (ms) => new Promise(r => setTimeout(r, ms));
+      const exitBattleClean = async () => {
+        document.getElementById('btn-battle-back')?.click();
+        await wait(80);
+        if (document.getElementById('modal-confirm-exit')?.classList.contains('open')) {
+          document.getElementById('btn-confirm-exit-match')?.click();
+          await wait(100);
+        }
+      };
       const results = {};
 
       // 0. Bridge de escritorio Electron + Logo oficial CHESS.MOD cargado
@@ -173,8 +181,8 @@ app.whenReady().then(async () => {
       results.xpSpentOnHint = xpBeforeHint - window.chessModApp.user.xp;
 
       // 6. Verificar Minijefes Capítulo 2 (con intro al entrar, SIN orejas ni cara de gato) + Free Mittens (con audio nuevo en loop + cadenas rotas + intro)
-      document.getElementById('btn-battle-back').click();
-      await wait(150);
+      await exitBattleClean();
+      await wait(120);
       document.querySelector('[data-screen="story"]').click();
       await wait(120);
       document.querySelector('#campaign-tabs-bar [data-campaign="mittens"]').click();
@@ -194,8 +202,8 @@ app.whenReady().then(async () => {
       const anyDuplicateGradId = gradIdsInBattle.some(id => document.querySelectorAll('#' + CSS.escape(id)).length > 1);
       results.portraitIdsUniqueNoHiddenCollision = gradIdsInBattle.length > 0 && !anyDuplicateGradId;
       results.minibossNoMusicPlaying = [...document.querySelectorAll('audio')].every(a => a.paused);
-      document.getElementById('btn-battle-back').click();
-      await wait(150);
+      await exitBattleClean();
+      await wait(120);
 
       // Iniciar Free Mittens (Lv. 5): intro temática + audio FreeMittensBattle.mp3 en loop + cadenas rotas + mittens_ref.png + aspersor
       document.querySelector('[data-screen="story"]').click();
@@ -227,8 +235,8 @@ app.whenReady().then(async () => {
       results.mittensBossDialogue = document.getElementById('boss-speech-text')?.textContent.trim() || '';
 
       // 7. Verificar Cap. 3 Lv. 5 (Entidad Galáctica): intro + Hombre Galaxia 2×2 + 2 Barreras Universales
-      document.getElementById('btn-battle-back').click();
-      await wait(150);
+      await exitBattleClean();
+      await wait(120);
       document.querySelector('[data-screen="story"]').click();
       await wait(100);
       document.querySelector('#campaign-tabs-bar [data-campaign="galaxy"]').click();
@@ -244,8 +252,8 @@ app.whenReady().then(async () => {
         && document.getElementById('pyramid-layer').innerHTML.includes('gxSpiralBg');
 
       // 8. Verificar Cap. 4 Lv. 5 (Boss Glitch): intro temática + textura real glitch_texture.jpg
-      document.getElementById('btn-battle-back').click();
-      await wait(150);
+      await exitBattleClean();
+      await wait(120);
       document.querySelector('[data-screen="story"]').click();
       await wait(100);
       document.querySelector('#campaign-tabs-bar [data-campaign="glitch"]').click();
@@ -260,8 +268,8 @@ app.whenReady().then(async () => {
       results.glitchBoardDynamicTextureActive = document.getElementById('board-inner').classList.contains('glitch-board-active');
 
       // 9. Verificar Cap. 5 Lv. 5 (CHESS): Modal obligatorio de 3 poderes + textura tablero de ajedrez + Súper IA Web Worker
-      document.getElementById('btn-battle-back').click();
-      await wait(150);
+      await exitBattleClean();
+      await wait(120);
       document.querySelector('[data-screen="story"]').click();
       await wait(100);
       document.querySelector('#campaign-tabs-bar [data-campaign="chess"]').click();
@@ -293,8 +301,8 @@ app.whenReady().then(async () => {
       results.chessRecentLogs = logs.slice(0, 3);
 
       // 10. Verificar que BLACKY NO aparece en menús normales, pero SÍ se abre por URL /blacky (o #blacky)
-      document.getElementById('btn-battle-back').click();
-      await wait(150);
+      await exitBattleClean();
+      await wait(120);
       const allMenuText = document.getElementById('app-shell').textContent.toLowerCase();
       results.blackyHiddenFromMenus = !allMenuText.includes('blacky');
 
@@ -320,8 +328,8 @@ app.whenReady().then(async () => {
 
       // 11. Ranking Global muestra 0 Elo inicial + Pase de Batalla T1 + Tablero Colosal 12×12 + Vista Móvil
       window.location.hash = '';
-      document.getElementById('btn-battle-back').click();
-      await wait(150);
+      await exitBattleClean();
+      await wait(120);
       document.querySelector('[data-screen="ranking"]').click();
       await wait(400);
       results.rankingRows = document.querySelectorAll('#ranking-tbody tr').length;
@@ -375,7 +383,12 @@ app.whenReady().then(async () => {
       await wait(400);
       results.colossal12x12Squares = document.querySelectorAll('#board-grid .square').length;
       results.undoVisibleVsBot = !document.getElementById('btn-undo').classList.contains('hidden');
+      // Verificar modal de confirmación al salir contra Bot
       document.getElementById('btn-battle-back').click();
+      await wait(120);
+      results.botExitConfirmModalOpened = document.getElementById('modal-confirm-exit')?.classList.contains('open') || false;
+      results.botExitConfirmTextOk = (document.getElementById('confirm-exit-desc')?.textContent || '').includes('No se guardará el progreso');
+      document.getElementById('btn-confirm-exit-match')?.click();
       await wait(150);
 
       // 14. Probar Modo Equipos 2 vs 2 (4 facciones en arena 10×10 = 100 casillas) + botón Agregar Amigo en Online + Chat Privado modal
@@ -387,8 +400,8 @@ app.whenReady().then(async () => {
       results.teams2v2HasFactions = Boolean(document.querySelector('.faction-c') && document.querySelector('.faction-r') && document.querySelector('.faction-y'));
       results.onlineAddFriendBtnExists = Boolean(document.getElementById('btn-online-add-friend'));
       results.friendChatModalExists = Boolean(document.getElementById('modal-friend-chat'));
-      document.getElementById('btn-battle-back').click();
-      await wait(150);
+      await exitBattleClean();
+      await wait(120);
 
       // 15. Verificar Clanes 15,000 Mods (ajustes antes de crear: imagen, privacidad, color VIP, fuente, chat público) + Rol OWNER (sebasstianrf27@gmail.com)
       document.querySelector('[data-screen="social"]').click();
@@ -424,6 +437,35 @@ app.whenReady().then(async () => {
       await wait(450);
       results.ownerPanelHasGiveModBtns = document.querySelectorAll('[data-owner-set-mod]').length > 0;
       results.ownerPanelShowsOwnerBadge = (document.getElementById('mod-users-tbody')?.textContent || '').includes('OWNER');
+
+      // 16. Verificar Notificaciones en tiempo real, Presencia activa y Guardia de botón Atrás (1 clic -> menú, 2 clics -> salir)
+      results.notifBellExists = Boolean(document.getElementById('btn-notifications-bell') && document.getElementById('modal-notifications'));
+      results.liveOnlineCountText = document.getElementById('live-online-count-pill')?.textContent.trim() || '';
+      results.presencePillsRendered = document.querySelectorAll('[data-presence-uid]').length > 0;
+
+      // Simular botón Atrás desde pantalla Tienda -> debe volver a 'play' sin salir de la página
+      window.chessModApp.switchScreen('shop');
+      await wait(80);
+      const backFromShop = window.chessModApp.handleSystemBackNavigation();
+      results.backFromShopReturnsToPlay = backFromShop === false && window.chessModApp.activeScreen === 'play';
+
+      // Simular botón Atrás 2 veces desde menú principal -> 1ra devuelve false (avisa), 2da devuelve true (sale)
+      window.chessModApp.lastBackPressAt = 0;
+      const firstBack = window.chessModApp.handleSystemBackNavigation();
+      const secondBack = window.chessModApp.handleSystemBackNavigation();
+      results.doubleBackToExitWorks = firstBack === false && secondBack === true;
+
+      // Simular salida en partida Multijugador -> debe mostrar texto con 75 XP y posible baneo
+      window.chessModApp.battle.mode = 'online';
+      window.chessModApp.battle.phase = 'PLAYER_TURN';
+      window.chessModApp.battle.engine.winner = null;
+      document.getElementById('view-battle').classList.remove('hidden');
+      window.chessModApp.battle.requestExitBattle();
+      await wait(80);
+      const mpExitTxt = document.getElementById('confirm-exit-desc')?.textContent || '';
+      results.mpExitConfirmHas75XpAndBan = mpExitTxt.includes('75 XP') && mpExitTxt.includes('posible baneo');
+      document.getElementById('btn-cancel-exit-match')?.click();
+      document.getElementById('view-battle').classList.add('hidden');
 
       return results;
     })()`);

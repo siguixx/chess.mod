@@ -26,6 +26,7 @@
   <audio id="blacky-music-audio" src="/assets/audio/BlackyBattle.mp3" loop preload="auto"></audio>
 
   <div id="toast-container"></div>
+  <div id="live-notif-stack" aria-live="polite" style="position:fixed;top:64px;right:14px;z-index:2600;display:flex;flex-direction:column;gap:8px;max-width:340px;width:calc(100vw - 28px);pointer-events:none;"></div>
 
   <!-- ================= MENÚ PRINCIPAL PROFESIONAL DE CHESS.MOD ================= -->
   <div id="app-shell">
@@ -69,6 +70,13 @@
           </div>
         </div>
         <div class="xp-mini-track"><div id="sidebar-xp-bar" class="xp-mini-fill"></div></div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+          <button id="btn-notifications-bell" type="button" class="btn btn-sm" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;position:relative;" title="Notificaciones en tiempo real">
+            🔔 <span style="font-size:0.72rem;">Avisos</span>
+            <span id="notif-unread-badge" class="hidden" style="background:#ef4444;color:#fff;font-size:0.64rem;font-weight:700;padding:1px 6px;border-radius:999px;line-height:1.2;">0</span>
+          </button>
+          <span id="live-online-count-pill" class="pill jade" style="font-size:0.66rem;white-space:nowrap;" title="Jugadores activos en tiempo real">🟢 0</span>
+        </div>
         <button id="btn-sidebar-auth" class="btn btn-sm btn-gold" style="width:100%;">Iniciar sesión / Registro</button>
       </div>
     </aside>
@@ -1535,6 +1543,35 @@
       <div style="margin-top:16px;display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap;border-top:1px solid rgba(207,166,76,0.22);padding-top:14px;">
         <span id="trainer-pending-label" style="font-size:0.8rem;color:var(--text-muted);margin-right:auto;">Selecciona una tarjeta de entrenador arriba para continuar.</span>
         <button id="btn-confirm-permanent-trainer" class="btn btn-gold" disabled style="padding:11px 20px;font-size:0.9rem;" data-i18n="trainer_confirm_btn">🔒 Confirmar Entrenador Permanente</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL CENTRO DE NOTIFICACIONES EN TIEMPO REAL -->
+  <div id="modal-notifications" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Notificaciones en tiempo real">
+    <div class="modal-box" style="max-width:520px;text-align:left;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;">
+        <div>
+          <span class="pill jade" style="font-size:0.64rem;">🔔 TIEMPO REAL · SIN REFRESCAR</span>
+          <h2 style="margin:4px 0 0;font-size:1.15rem;text-align:left;">Notificaciones de CHESS.MOD</h2>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button id="btn-clear-notifications" type="button" class="btn btn-sm">🗑️ Limpiar</button>
+          <button id="btn-close-notifications" type="button" class="btn btn-sm btn-icon">✕</button>
+        </div>
+      </div>
+      <div id="notifications-list-box" style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 2px;"></div>
+    </div>
+  </div>
+
+  <!-- MODAL CONFIRMACIÓN DE SALIDA DE PARTIDA (MULTIJUGADOR -75 XP vs BOT) -->
+  <div id="modal-confirm-exit" class="modal-backdrop" role="dialog" aria-modal="true" aria-label="Confirmar salida de partida">
+    <div class="modal-box" style="max-width:450px;text-align:center;">
+      <h2 id="confirm-exit-title" style="margin-bottom:8px;">¿Estás seguro de salir?</h2>
+      <p id="confirm-exit-desc" style="font-size:0.88rem;line-height:1.5;margin-bottom:16px;"></p>
+      <div class="modal-actions">
+        <button id="btn-cancel-exit-match" type="button" class="btn btn-primary">Quedarse en Partida</button>
+        <button id="btn-confirm-exit-match" type="button" class="btn btn-danger">Salir</button>
       </div>
     </div>
   </div>
