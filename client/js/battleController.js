@@ -2462,6 +2462,19 @@ export class BattleController {
     } catch {}
   }
 
+  buildMaxSaturationCurve(amount = 420) {
+    const samples = 44100;
+    const curve = new Float32Array(samples);
+    const deg = Math.PI / 180;
+    for (let i = 0; i < samples; i++) {
+      const x = (i * 2) / samples - 1;
+      // Hard-clipping / overdrive extremo para saturación total
+      const shaped = ((3 + amount) * x * 20 * deg) / (Math.PI + amount * Math.abs(x));
+      curve[i] = Math.max(-1, Math.min(1, shaped * 2.4));
+    }
+    return curve;
+  }
+
   playLoudAwakeningAudio() {
     const audio = document.getElementById('blacky-awakening-audio');
     if (!audio) return;
@@ -2470,18 +2483,24 @@ export class BattleController {
       audio.currentTime = 0;
       audio.volume = 1.0;
       audio.muted = false;
-      // Amplificación Web Audio (GainNode 1.85x) para que suene muy fuerte al aparecer los ojos
-      if (!this._awakeningGainWired) {
+      // Saturación y volumen al MÁXIMO con Web Audio API (Pre-Gain -> WaveShaper hard-clip -> Out-Gain)
+      const ctx = this.sound?.ensureContext?.();
+      if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+      if (ctx && !this._awakeningGainWired) {
         try {
-          const ctx = this.sound?.ensureContext?.();
-          if (ctx) {
-            const srcNode = ctx.createMediaElementSource(audio);
-            const boostGain = ctx.createGain();
-            boostGain.gain.value = 1.85;
-            srcNode.connect(boostGain);
-            boostGain.connect(ctx.destination);
-            this._awakeningGainWired = true;
-          }
+          const srcNode = ctx.createMediaElementSource(audio);
+          const preGain = ctx.createGain();
+          preGain.gain.value = 6.0;
+          const shaper = ctx.createWaveShaper();
+          shaper.curve = this.buildMaxSaturationCurve(420);
+          shaper.oversample = '4x';
+          const outGain = ctx.createGain();
+          outGain.gain.value = 3.5;
+          srcNode.connect(preGain);
+          preGain.connect(shaper);
+          shaper.connect(outGain);
+          outGain.connect(ctx.destination);
+          this._awakeningGainWired = true;
         } catch {}
       }
       audio.play().catch(() => {});
@@ -2501,12 +2520,11 @@ export class BattleController {
     const SECRET_URL = 'https://chessmod.onrender.com/blacky';
     const overlay = document.getElementById('blacky-ending-overlay');
     const textEl = document.getElementById('blacky-ending-text');
-    const eyesEl = document.getElementById('blacky-ending-eyes');
     const linkWrap = document.getElementById('blacky-ending-link-wrap');
     const urlEl = document.getElementById('blacky-ending-url');
     const copyBtn = document.getElementById('btn-copy-blacky-url');
     const flashEl = document.getElementById('blacky-ending-flash');
-    if (!overlay || !textEl || !eyesEl || !linkWrap) {
+    if (!overlay || !textEl || !linkWrap) {
       this.exitBattle();
       return;
     }
@@ -2528,7 +2546,6 @@ export class BattleController {
     // Estado inicial: pantalla totalmente apagada (negro absoluto)
     textEl.textContent = '';
     textEl.classList.remove('hidden');
-    eyesEl.classList.add('hidden');
     linkWrap.classList.add('hidden');
     flashEl?.classList.remove('boom');
     if (urlEl) urlEl.textContent = SECRET_URL;
@@ -2566,14 +2583,13 @@ export class BattleController {
     });
     t += 3000;
 
-    // 4. Aparecen los 2 puntos blancos simulando ojos + MP3 muy fuerte + URL con botón para copiarlo
+    // 4. Sin ojos: flash perturbador + MP3 MUY FUERTE Y SATURADO AL MÁXIMO + URL con botón para copiarlo
     schedule(t, () => {
       if (flashEl) {
         flashEl.classList.remove('boom');
         void flashEl.offsetWidth;
         flashEl.classList.add('boom');
       }
-      eyesEl.classList.remove('hidden');
       linkWrap.classList.remove('hidden');
       this.playLoudAwakeningAudio();
     });
@@ -2583,7 +2599,6 @@ export class BattleController {
     schedule(t, () => {
       this.stopLoudAwakeningAudio();
       overlay.classList.remove('active');
-      eyesEl.classList.add('hidden');
       linkWrap.classList.add('hidden');
       textEl.classList.remove('hidden');
       textEl.textContent = '';

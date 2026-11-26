@@ -1727,11 +1727,6 @@
       60% { transform: translate(-1px, -0.6px); opacity: 0.78; }
       80% { transform: translate(1.2px, 1px); opacity: 0.94; }
     }
-    @keyframes horrorEyesStare {
-      0%, 100% { transform: scale(1) translate(0, 0); filter: drop-shadow(0 0 18px #ffffff) drop-shadow(0 0 42px rgba(255,255,255,0.85)); }
-      35% { transform: scale(1.08) translate(-1.5px, 1px); filter: drop-shadow(0 0 28px #ffffff) drop-shadow(0 0 60px rgba(255,40,40,0.55)); }
-      70% { transform: scale(1.14) translate(1.5px, -1px); filter: drop-shadow(0 0 24px #ffffff) drop-shadow(0 0 55px rgba(255,255,255,0.95)); }
-    }
     @keyframes horrorScanline {
       0% { background-position: 0 0; }
       100% { background-position: 0 100%; }
@@ -1793,23 +1788,6 @@
       min-height: 3.2em;
       animation: horrorTextJitter 0.22s infinite;
     }
-    #blacky-ending-eyes {
-      position: relative;
-      z-index: 2;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: clamp(56px, 14vw, 130px);
-      margin-bottom: 34px;
-      animation: horrorEyesStare 0.42s infinite;
-    }
-    .blacky-eye-dot {
-      width: clamp(20px, 4.4vw, 34px);
-      height: clamp(20px, 4.4vw, 34px);
-      border-radius: 50%;
-      background: #ffffff;
-      box-shadow: 0 0 22px #ffffff, 0 0 54px rgba(255,255,255,0.92), 0 0 90px rgba(255,60,60,0.45);
-    }
     #blacky-ending-link-wrap {
       position: relative;
       z-index: 2;
@@ -1836,10 +1814,6 @@
   <div id="blacky-ending-overlay" role="dialog" aria-modal="true" aria-label="Secuencia final de CHESS">
     <div id="blacky-ending-flash"></div>
     <div id="blacky-ending-text"></div>
-    <div id="blacky-ending-eyes" class="hidden" aria-hidden="true">
-      <div class="blacky-eye-dot"></div>
-      <div class="blacky-eye-dot"></div>
-    </div>
     <div id="blacky-ending-link-wrap" class="hidden">
       <div id="blacky-ending-url">https://chessmod.onrender.com/blacky</div>
       <button id="btn-copy-blacky-url" type="button" style="cursor:pointer;font-family:'Courier New',monospace;font-size:0.86rem;letter-spacing:0.14em;color:#ffffff;background:rgba(160,18,18,0.42);border:1px solid rgba(255,140,140,0.75);padding:9px 20px;border-radius:6px;box-shadow:0 0 18px rgba(255,40,40,0.45);transition:transform 0.12s ease;">📋 COPIAR ENLACE</button>

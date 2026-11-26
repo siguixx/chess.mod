@@ -503,7 +503,8 @@ app.whenReady().then(async () => {
       await wait(120);
       results.horrorEndingOverlayOpened = document.getElementById('blacky-ending-overlay')?.classList.contains('active') || false;
       await wait(520);
-      // En el clímax: el botón de copiar existe y NO se copió solo antes de hacer clic
+      // En el clímax: SIN ojos blancos, el botón de copiar existe y NO se copió solo antes de hacer clic
+      results.horrorEndingEyesRemoved = !document.getElementById('blacky-ending-eyes');
       results.horrorEndingNotAutoCopied = window.__LAST_COPIED_SECRET_URL === '';
       const copyBtn = document.getElementById('btn-copy-blacky-url');
       results.horrorEndingCopyBtnVisible = Boolean(copyBtn && !document.getElementById('blacky-ending-link-wrap')?.classList.contains('hidden'));
