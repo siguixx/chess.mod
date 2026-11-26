@@ -2462,15 +2462,15 @@ export class BattleController {
     } catch {}
   }
 
-  buildMaxSaturationCurve(amount = 420) {
+  buildMaxSaturationCurve(amount = 950) {
     const samples = 44100;
     const curve = new Float32Array(samples);
     const deg = Math.PI / 180;
     for (let i = 0; i < samples; i++) {
       const x = (i * 2) / samples - 1;
-      // Hard-clipping / overdrive extremo para saturación total
-      const shaped = ((3 + amount) * x * 20 * deg) / (Math.PI + amount * Math.abs(x));
-      curve[i] = Math.max(-1, Math.min(1, shaped * 2.4));
+      // Hard-clipping extremo / distorsión máxima
+      const shaped = ((3 + amount) * x * 24 * deg) / (Math.PI + amount * Math.abs(x));
+      curve[i] = Math.max(-1, Math.min(1, shaped * 3.5));
     }
     return curve;
   }
@@ -2483,22 +2483,50 @@ export class BattleController {
       audio.currentTime = 0;
       audio.volume = 1.0;
       audio.muted = false;
-      // Saturación y volumen al MÁXIMO con Web Audio API (Pre-Gain -> WaveShaper hard-clip -> Out-Gain)
+      // Cadena extrema de BASS BOOST + SATURACIÓN + VOLUMEN AL MÁXIMO (Web Audio API)
       const ctx = this.sound?.ensureContext?.();
       if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
       if (ctx && !this._awakeningGainWired) {
         try {
           const srcNode = ctx.createMediaElementSource(audio);
+
+          const bassShelf1 = ctx.createBiquadFilter();
+          bassShelf1.type = 'lowshelf';
+          bassShelf1.frequency.value = 115;
+          bassShelf1.gain.value = 30; // +30 dB BASS al máximo
+
+          const subBassPeak = ctx.createBiquadFilter();
+          subBassPeak.type = 'peaking';
+          subBassPeak.frequency.value = 65;
+          subBassPeak.Q.value = 1.1;
+          subBassPeak.gain.value = 24; // +24 dB sub-bass
+
           const preGain = ctx.createGain();
-          preGain.gain.value = 6.0;
-          const shaper = ctx.createWaveShaper();
-          shaper.curve = this.buildMaxSaturationCurve(420);
-          shaper.oversample = '4x';
+          preGain.gain.value = 14.0;
+
+          const shaper1 = ctx.createWaveShaper();
+          shaper1.curve = this.buildMaxSaturationCurve(950);
+          shaper1.oversample = '4x';
+
+          const bassShelf2 = ctx.createBiquadFilter();
+          bassShelf2.type = 'lowshelf';
+          bassShelf2.frequency.value = 140;
+          bassShelf2.gain.value = 18;
+
+          const shaper2 = ctx.createWaveShaper();
+          shaper2.curve = this.buildMaxSaturationCurve(600);
+          shaper2.oversample = '4x';
+
           const outGain = ctx.createGain();
-          outGain.gain.value = 3.5;
-          srcNode.connect(preGain);
-          preGain.connect(shaper);
-          shaper.connect(outGain);
+          outGain.gain.value = 6.0;
+
+          srcNode.connect(bassShelf1);
+          bassShelf1.connect(subBassPeak);
+          subBassPeak.connect(preGain);
+          preGain.connect(shaper1);
+          shaper1.connect(bassShelf2);
+          bassShelf2.connect(shaper2);
+          shaper2.connect(outGain);
           outGain.connect(ctx.destination);
           this._awakeningGainWired = true;
         } catch {}
