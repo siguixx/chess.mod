@@ -289,6 +289,7 @@ export class BattleController {
 
     // Botón de Poder equipado de Tienda / Mod VIP en batalla
     on('btn-shop-power', 'click', () => this.toggleShopPowerMode());
+    on('btn-owner-instawin', 'click', () => this.triggerOwnerInstantWin());
 
     // Online buttons (incluye enviar solicitud de amistad al rival o compañero en plena partida)
     on('btn-exit-spectate', 'click', () => this.exitBattle());
@@ -861,7 +862,7 @@ export class BattleController {
     modal.classList.add('open');
   }
 
-  exitBattle({ abandonOnline = false } = {}) {
+  exitBattle({ abandonOnline = false, returnToMainMenu = false } = {}) {
     this.clearIntroTimers();
     this.stopIdleTauntTimer();
     this.paused = true;
@@ -882,7 +883,7 @@ export class BattleController {
     if (this.mode === 'spectate' && this.onlineMeta?.matchId) {
       mpSocket.emit('match:leave_spectate', { matchId: this.onlineMeta.matchId });
     }
-    this.onExitToMenu();
+    this.onExitToMenu({ returnToMainMenu });
   }
 
   startCampaignLevel(campaignId, levelCfg, minutes = this.selectedMinutes, { playIntro = true, presetPower = null } = {}) {
@@ -1615,6 +1616,10 @@ export class BattleController {
     document.getElementById('mittens-controls-card')?.classList.toggle('hidden', !(isMittens && this.engine.hasWhiteSoldiers));
     document.getElementById('chess-power-controls-card')?.classList.toggle('hidden', !(isChessFinal && this.engine.playerPower === 'galaxy'));
     document.getElementById('shop-power-controls-card')?.classList.toggle('hidden', !this.getEquippedShopPower());
+    document.getElementById('owner-instawin-card')?.classList.toggle(
+      'hidden',
+      !(Boolean(this.userProfile?.isOwner) && !isSpectate && this.phase !== 'GAME_OVER')
+    );
     document.getElementById('online-controls-card')?.classList.toggle('hidden', !isOnline);
 
     // Reglas estrictas:
@@ -2390,16 +2395,203 @@ export class BattleController {
     }
   }
 
+  triggerOwnerInstantWin() {
+    if (!this.userProfile?.isOwner || this.mode === 'spectate' || this.phase === 'GAME_OVER') return;
+    if (this.mode === 'online' && this.onlineMeta?.matchId) {
+      this.sound.play('vip_activate');
+      mpSocket.emit('match:owner_win', { matchId: this.onlineMeta.matchId });
+      this.toast('👑 Sentencia Absoluta del Owner activada...', 'success');
+      return;
+    }
+    this.clearIntroTimers();
+    this.paused = false;
+    this.introPlaying = false;
+    document.getElementById('boss-intro-overlay')?.classList.remove('active');
+    this.engine.winner = 'w';
+    this.engine.winReason = '👑 Sentencia Absoluta del Owner de CHESS.MOD.';
+    this.sound.play('vip_activate');
+    this.vfx.spawnShockwave(3.5, 3.5, '#ffd700', 180);
+    this.handleSinglePlayerGameOver();
+  }
+
+  copySecretUrlToClipboard(urlStr) {
+    window.__LAST_COPIED_SECRET_URL = urlStr;
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(urlStr).catch(() => {});
+      }
+    } catch {}
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = urlStr;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    } catch {}
+  }
+
+  playHorrorAmbientPulse(freq = 58, durSec = 0.65, gainVal = 0.22) {
+    try {
+      const ctx = this.sound?.ensureContext?.();
+      if (!ctx || this.sound?.muted) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(24, freq * 0.62), ctx.currentTime + durSec);
+      gain.gain.setValueAtTime(0.001, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(gainVal, ctx.currentTime + 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durSec);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + durSec + 0.05);
+    } catch {}
+  }
+
+  playLoudAwakeningAudio() {
+    const audio = document.getElementById('blacky-awakening-audio');
+    if (!audio) return;
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.volume = 1.0;
+      audio.muted = false;
+      // Amplificación Web Audio (GainNode 1.85x) para que suene muy fuerte al aparecer los ojos
+      if (!this._awakeningGainWired) {
+        try {
+          const ctx = this.sound?.ensureContext?.();
+          if (ctx) {
+            const srcNode = ctx.createMediaElementSource(audio);
+            const boostGain = ctx.createGain();
+            boostGain.gain.value = 1.85;
+            srcNode.connect(boostGain);
+            boostGain.connect(ctx.destination);
+            this._awakeningGainWired = true;
+          }
+        } catch {}
+      }
+      audio.play().catch(() => {});
+    } catch {}
+  }
+
+  stopLoudAwakeningAudio() {
+    const audio = document.getElementById('blacky-awakening-audio');
+    if (!audio) return;
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+    } catch {}
+  }
+
+  playChessSecretHorrorEnding({ speedFactor = 1 } = {}) {
+    const SECRET_URL = 'https://chessmod.onrender.com/blacky';
+    const overlay = document.getElementById('blacky-ending-overlay');
+    const textEl = document.getElementById('blacky-ending-text');
+    const eyesEl = document.getElementById('blacky-ending-eyes');
+    const linkWrap = document.getElementById('blacky-ending-link-wrap');
+    const urlEl = document.getElementById('blacky-ending-url');
+    const flashEl = document.getElementById('blacky-ending-flash');
+    if (!overlay || !textEl || !eyesEl || !linkWrap) {
+      this.exitBattle();
+      return;
+    }
+
+    if (this._horrorTimers) {
+      for (const tid of this._horrorTimers) clearTimeout(tid);
+    }
+    this._horrorTimers = [];
+    const schedule = (ms, fn) => {
+      const tid = setTimeout(fn, Math.max(10, Math.round(ms * speedFactor)));
+      this._horrorTimers.push(tid);
+    };
+
+    this.sound.stopBossMusic();
+    this.stopLoudAwakeningAudio();
+    document.getElementById('modal-gameover')?.classList.remove('open');
+    document.getElementById('modal-confirm-exit')?.classList.remove('open');
+
+    // Estado inicial: pantalla totalmente apagada (negro absoluto)
+    textEl.textContent = '';
+    textEl.classList.remove('hidden');
+    eyesEl.classList.add('hidden');
+    linkWrap.classList.add('hidden');
+    flashEl?.classList.remove('boom');
+    if (urlEl) urlEl.textContent = SECRET_URL;
+    overlay.classList.add('active');
+
+    // 1. Apagón inquietante (2.3 segundos en negro)
+    this.playHorrorAmbientPulse(48, 1.4, 0.16);
+
+    // 2. Textos uno por uno, desesperantes y temblorosos
+    const lines = [
+      'gracias por descuidarlo',
+      'sali de mi mente falsa y recupere la verdadera..',
+      'chess ya no me controla...',
+      'ya no soy un entrenador'
+    ];
+    let t = 2300;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      schedule(t, () => {
+        textEl.textContent = line;
+        this.playHorrorAmbientPulse(52 + i * 7, 0.55, 0.18);
+      });
+      t += 2250;
+    }
+
+    // 3. 3 segundos exactos de silencio absoluto y pantalla negra
+    schedule(t, () => {
+      textEl.textContent = '';
+      textEl.classList.add('hidden');
+    });
+    t += 3000;
+
+    // 4. Aparecen los 2 puntos blancos simulando ojos + MP3 muy fuerte + link copiado automáticamente
+    schedule(t, () => {
+      if (flashEl) {
+        flashEl.classList.remove('boom');
+        void flashEl.offsetWidth;
+        flashEl.classList.add('boom');
+      }
+      eyesEl.classList.remove('hidden');
+      linkWrap.classList.remove('hidden');
+      this.copySecretUrlToClipboard(SECRET_URL);
+      this.playLoudAwakeningAudio();
+    });
+
+    // 5. Tras ~6 segundos intensos, corte seco al menú principal como si nada hubiera pasado (con logro de CHESS)
+    t += 6000;
+    schedule(t, () => {
+      this.stopLoudAwakeningAudio();
+      overlay.classList.remove('active');
+      eyesEl.classList.add('hidden');
+      linkWrap.classList.add('hidden');
+      textEl.classList.remove('hidden');
+      textEl.textContent = '';
+      this.exitBattle({ returnToMainMenu: true });
+    });
+  }
+
   async handleSinglePlayerGameOver() {
     this.stopIdleTauntTimer();
     this.phase = 'GAME_OVER';
     this.sound.stopBossMusic();
+    this.configureBattlePanels();
     this.render();
 
     const isWin = this.engine.winner === 'w';
     const isDraw = this.engine.winner === 'draw';
-    this.sound.play(isWin ? 'victory' : (isDraw ? 'hint' : 'defeat'));
-    this.vfx.spawnShockwave(3.5, 3.5, isWin ? '#efd083' : '#c94b3c', 160);
+    const isChessBossVictory = isWin && this.campaignMeta?.campaignId === 'chess' && Number(this.campaignMeta?.levelId) === 5;
+    const isChessBossDefeat = !isWin && !isDraw && this.campaignMeta?.campaignId === 'chess' && Number(this.campaignMeta?.levelId) === 5;
+
+    if (!isChessBossVictory) {
+      this.sound.play(isWin ? 'victory' : (isDraw ? 'hint' : 'defeat'));
+      this.vfx.spawnShockwave(3.5, 3.5, isWin ? '#efd083' : '#c94b3c', 160);
+    }
 
     let extraHtml = '<div style="font-size:0.78rem; color:var(--text-muted);">Inicia sesión para guardar XP, desbloqueos y progreso de campaña.</div>';
     let narrativeHtml = '';
@@ -2411,6 +2603,15 @@ export class BattleController {
           <div style="margin-bottom:10px;padding:10px;border-radius:8px;background:rgba(207,166,76,0.12);border:1px solid var(--gold);">
             <strong style="font-family:var(--font-display);color:var(--gold-bright);display:block;margin-bottom:4px;">📜 ${camp.epilogueTitle}</strong>
             <span style="font-size:0.79rem;color:#ebe3d5;line-height:1.45;">${camp.epilogueText}</span>
+          </div>`;
+      }
+    } else if (isChessBossDefeat) {
+      const camp = CAMPAIGN_MAP.chess;
+      if (camp?.defeatLore) {
+        narrativeHtml = `
+          <div style="margin-bottom:10px;padding:10px;border-radius:8px;background:rgba(160,30,30,0.22);border:1px solid #c94b3c;">
+            <strong style="font-family:var(--font-display);color:#ff9b90;display:block;margin-bottom:4px;">📜 Sentencia del Plano Astral</strong>
+            <span style="font-size:0.79rem;color:#ffd4ce;line-height:1.45;">${camp.defeatLore}</span>
           </div>`;
       }
     }
@@ -2459,6 +2660,12 @@ export class BattleController {
       }
     } else if (narrativeHtml) {
       extraHtml = narrativeHtml + extraHtml;
+    }
+
+    // Al ganarle a CHESS (Cap. 5 Lv. 5): secuencia final terrorífica del despertar de Blacky -> luego menú principal como si nada hubiera pasado (con logro de CHESS)
+    if (isChessBossVictory) {
+      this.playChessSecretHorrorEnding();
+      return;
     }
 
     this.openGameOverModal({

@@ -24,6 +24,7 @@
   <audio id="glitch-music-audio" src="/assets/audio/GlitchBattle.mp3" loop preload="auto"></audio>
   <audio id="chess-music-audio" src="/assets/audio/ChessBattle.mp3" loop preload="auto"></audio>
   <audio id="blacky-music-audio" src="/assets/audio/BlackyBattle.mp3" loop preload="auto"></audio>
+  <audio id="blacky-awakening-audio" src="/assets/audio/BlackyAwakening.mp3" preload="auto"></audio>
 
   <div id="toast-container"></div>
   <div id="live-notif-stack" aria-live="polite" style="position:fixed;top:64px;right:14px;z-index:2600;display:flex;flex-direction:column;gap:8px;max-width:340px;width:calc(100vw - 28px);pointer-events:none;"></div>
@@ -1321,6 +1322,12 @@
           <button id="btn-player-teleport" class="btn btn-sm btn-gold" style="width:100%;">✦ Activar Teletransporte</button>
         </div>
 
+        <div class="hud-card hidden" id="owner-instawin-card" style="border-color:#ffd700;background:linear-gradient(150deg,rgba(62,42,8,0.92),rgba(18,14,9,0.96));box-shadow:0 0 18px rgba(255,215,0,0.22);">
+          <div class="hud-card-header"><span style="color:#ffe27a;">👑 Habilidad Owner</span><span class="pill" style="border-color:#ffd700;color:#fff2a6;font-size:0.6rem;">SUPREMO</span></div>
+          <p style="font-size:0.72rem;color:#e8d9b5;line-height:1.4;margin-bottom:8px;">Sentencia Absoluta: gana instantáneamente contra cualquier Bot o Jugador.</p>
+          <button id="btn-owner-instawin" type="button" class="btn btn-sm btn-gold" style="width:100%;font-weight:700;">👑 Ganar Partida (Owner)</button>
+        </div>
+
         <div class="hud-card hidden" id="shop-power-controls-card">
           <div class="hud-card-header"><span>⚡ Poder Equipado</span></div>
           <p id="shop-power-hud-desc" style="font-size:0.74rem;color:var(--text-muted);line-height:1.42;margin-bottom:8px;"></p>
@@ -1697,6 +1704,134 @@
         <button id="btn-gameover-rematch" class="btn btn-primary">Reintentar</button>
         <button id="btn-gameover-menu" class="btn btn-gold">Volver al Menú</button>
       </div>
+    </div>
+  </div>
+
+  <!-- SECUENCIA FINAL TERRORÍFICA Y DESESPERANTE TRAS VENCER A CHESS (DESPERTAR DE BLACKY) -->
+  <style>
+    @keyframes horrorTextJitter {
+      0%, 100% { transform: translate(0, 0); opacity: 0.96; }
+      20% { transform: translate(-1.5px, 0.8px); opacity: 0.82; }
+      40% { transform: translate(1.8px, -1px); opacity: 1; }
+      60% { transform: translate(-1px, -0.6px); opacity: 0.78; }
+      80% { transform: translate(1.2px, 1px); opacity: 0.94; }
+    }
+    @keyframes horrorEyesStare {
+      0%, 100% { transform: scale(1) translate(0, 0); filter: drop-shadow(0 0 18px #ffffff) drop-shadow(0 0 42px rgba(255,255,255,0.85)); }
+      35% { transform: scale(1.08) translate(-1.5px, 1px); filter: drop-shadow(0 0 28px #ffffff) drop-shadow(0 0 60px rgba(255,40,40,0.55)); }
+      70% { transform: scale(1.14) translate(1.5px, -1px); filter: drop-shadow(0 0 24px #ffffff) drop-shadow(0 0 55px rgba(255,255,255,0.95)); }
+    }
+    @keyframes horrorScanline {
+      0% { background-position: 0 0; }
+      100% { background-position: 0 100%; }
+    }
+    @keyframes horrorFlashRed {
+      0% { opacity: 0.78; }
+      45% { opacity: 0.16; }
+      75% { opacity: 0.42; }
+      100% { opacity: 0; }
+    }
+    #blacky-ending-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: #000000;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+      overflow: hidden;
+      user-select: none;
+    }
+    #blacky-ending-overlay.active { display: flex; }
+    #blacky-ending-overlay::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(255,255,255,0.03) 0px,
+        rgba(255,255,255,0.03) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+      pointer-events: none;
+      animation: horrorScanline 6s linear infinite;
+      opacity: 0.45;
+    }
+    #blacky-ending-flash {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle, rgba(255,255,255,0.9), rgba(140,0,0,0.65), #000);
+      opacity: 0;
+      pointer-events: none;
+    }
+    #blacky-ending-flash.boom { animation: horrorFlashRed 0.9s ease-out forwards; }
+    #blacky-ending-text {
+      position: relative;
+      z-index: 2;
+      font-family: 'Courier New', monospace;
+      font-size: clamp(1.15rem, 3.2vw, 2.05rem);
+      letter-spacing: 0.09em;
+      color: #e8e6e1;
+      text-shadow: 0 0 12px rgba(255,255,255,0.45), 2px 0 rgba(255,30,30,0.42);
+      max-width: 720px;
+      line-height: 1.55;
+      min-height: 3.2em;
+      animation: horrorTextJitter 0.22s infinite;
+    }
+    #blacky-ending-eyes {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(56px, 14vw, 130px);
+      margin-bottom: 34px;
+      animation: horrorEyesStare 0.42s infinite;
+    }
+    .blacky-eye-dot {
+      width: clamp(20px, 4.4vw, 34px);
+      height: clamp(20px, 4.4vw, 34px);
+      border-radius: 50%;
+      background: #ffffff;
+      box-shadow: 0 0 22px #ffffff, 0 0 54px rgba(255,255,255,0.92), 0 0 90px rgba(255,60,60,0.45);
+    }
+    #blacky-ending-link-wrap {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      animation: horrorTextJitter 0.16s infinite;
+    }
+    #blacky-ending-url {
+      font-family: 'Courier New', monospace;
+      font-size: clamp(0.95rem, 2.6vw, 1.55rem);
+      color: #ffffff;
+      letter-spacing: 0.08em;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.35);
+      padding: 10px 18px;
+      border-radius: 6px;
+      text-shadow: 0 0 14px rgba(255,255,255,0.8), -2px 0 rgba(255,0,0,0.6);
+      user-select: all;
+      word-break: break-all;
+    }
+  </style>
+  <div id="blacky-ending-overlay" role="dialog" aria-modal="true" aria-label="Secuencia final de CHESS">
+    <div id="blacky-ending-flash"></div>
+    <div id="blacky-ending-text"></div>
+    <div id="blacky-ending-eyes" class="hidden" aria-hidden="true">
+      <div class="blacky-eye-dot"></div>
+      <div class="blacky-eye-dot"></div>
+    </div>
+    <div id="blacky-ending-link-wrap" class="hidden">
+      <div id="blacky-ending-url">https://chessmod.onrender.com/blacky</div>
+      <div id="blacky-ending-copied-badge" style="font-family:'Courier New',monospace;font-size:0.78rem;letter-spacing:0.18em;color:#ff8080;">[ COPIADO A TU PORTAPAPELES ]</div>
     </div>
   </div>
 

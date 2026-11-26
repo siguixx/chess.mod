@@ -194,9 +194,9 @@ class ChessModApp {
       vfx: this.vfx,
       toast: showToast,
       onUserUpdated: (u) => this.setUser(u),
-      onExitToMenu: () => {
+      onExitToMenu: ({ returnToMainMenu = false } = {}) => {
         this.refreshCurrentUser();
-        this.switchScreen(this.activeScreen);
+        this.switchScreen(returnToMainMenu ? 'play' : this.activeScreen);
       }
     });
 
@@ -1433,8 +1433,9 @@ class ChessModApp {
    * - Si ya está en el menú principal ('play') -> requiere 2 clics seguidos (< 2.5s) para salir de la página.
    */
   handleSystemBackNavigation() {
-    // No permitir saltar modales obligatorios (idioma / entrenador único)
-    if (document.getElementById('modal-language-picker')?.classList.contains('open')
+    // No permitir saltar modales obligatorios ni la secuencia final secreta
+    if (document.getElementById('blacky-ending-overlay')?.classList.contains('active')
+      || document.getElementById('modal-language-picker')?.classList.contains('open')
       || document.getElementById('modal-trainer-picker')?.classList.contains('open')) {
       return false;
     }
@@ -2488,6 +2489,12 @@ class ChessModApp {
       const lockBanner = !chUnlocked
         ? `<div style="margin-top:8px;padding:8px 11px;border-radius:8px;background:rgba(201,75,60,0.18);border:1px solid var(--crimson);font-size:0.79rem;color:#ffd4ce;">🔒 ${getCampaignUnlockReason(campaign.id, 1, campaignsProg)}</div>`
         : '';
+      const loreBox = campaign.loreSummary
+        ? `<div class="story-lore-box" style="margin-top:10px;padding:10px 12px;border-radius:9px;background:rgba(12,11,9,0.78);border:1px solid rgba(207,166,76,0.34);border-left:3px solid var(--gold-bright);">
+            <div style="font-size:0.68rem;letter-spacing:0.14em;color:var(--gold);font-family:var(--font-display);margin-bottom:4px;">📜 ${escapeHtml(campaign.loreAct || 'CRÓNICA DEL MODO HISTORIA')}</div>
+            <div style="font-size:0.81rem;color:#ebe3d5;line-height:1.5;">${escapeHtml(campaign.loreSummary)}</div>
+          </div>`
+        : '';
       headerEl.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
           <div>
@@ -2496,6 +2503,7 @@ class ChessModApp {
           </div>
           <span class="pill ${chUnlocked ? 'jade' : 'crimson'}">${completed.length} / 5 Completados</span>
         </div>
+        ${loreBox}
         ${lockBanner}`;
     }
 

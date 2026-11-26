@@ -3,7 +3,7 @@ import { ClassicChessEngine } from '../../shared/rules/classicEngine.js';
 import { LargeBoardChessEngine } from '../../shared/rules/largeBoardEngine.js';
 import { SPECIAL_GAME_MODES } from '../../shared/config/constants.js';
 import { calculateEloUpdate } from '../../shared/config/elo.js';
-import { verifyToken, extractTokenFromCookieHeader } from '../auth/authService.js';
+import { verifyToken, extractTokenFromCookieHeader, MODERATOR_EXACT_EMAIL } from '../auth/authService.js';
 import {
   validateAndNormalizeMod,
   applyCustomModSetupToEngine,
@@ -696,6 +696,22 @@ export class MultiplayerManager {
         } else if (room.black.socketId === socket.id) {
           this.finishMatch(room, 'w', `${room.black.profile.username} se rindió.`);
         }
+      });
+
+      // Habilidad exclusiva del OWNER: ganar cualquier partida multijugador al instante
+      socket.on('match:owner_win', async ({ matchId } = {}) => {
+        const room = this.matches.get(matchId);
+        if (!room || room.finished) return;
+        const userRow = await this.db.findUserById(socket.userId);
+        const isOwner = Boolean(Number(userRow?.is_owner))
+          || String(userRow?.email || '').toLowerCase() === MODERATOR_EXACT_EMAIL;
+        if (!isOwner) {
+          return socket.emit('match:error', { error: 'Solo el Owner de CHESS.MOD puede activar la Victoria Absoluta.' });
+        }
+        const ownerColor = room.white.socketId === socket.id ? 'w'
+          : (room.black.socketId === socket.id ? 'b' : null);
+        if (!ownerColor) return;
+        await this.finishMatch(room, ownerColor, '👑 Sentencia Absoluta del Owner de CHESS.MOD.');
       });
 
       // Abandono voluntario en plena partida multijugador: -75 XP reales + registro para posible baneo

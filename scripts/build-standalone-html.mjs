@@ -20,6 +20,7 @@ const galaxyMusicPath = path.join(clientDir, 'assets', 'audio', 'GalaxyBattle.mp
 const glitchMusicPath = path.join(clientDir, 'assets', 'audio', 'GlitchBattle.mp3');
 const chessMusicPath = path.join(clientDir, 'assets', 'audio', 'ChessBattle.mp3');
 const blackyMusicPath = path.join(clientDir, 'assets', 'audio', 'BlackyBattle.mp3');
+const blackyAwakeningPath = path.join(clientDir, 'assets', 'audio', 'BlackyAwakening.mp3');
 
 const mittensDataUri = `data:image/png;base64,${fs.readFileSync(mittensImgPath).toString('base64')}`;
 const blackyDataUri = `data:image/jpeg;base64,${fs.readFileSync(blackyImgPath).toString('base64')}`;
@@ -32,6 +33,7 @@ const galaxyMusicDataUri = `data:audio/mpeg;base64,${fs.readFileSync(galaxyMusic
 const glitchMusicDataUri = `data:audio/mpeg;base64,${fs.readFileSync(glitchMusicPath).toString('base64')}`;
 const chessMusicDataUri = `data:audio/mpeg;base64,${fs.readFileSync(chessMusicPath).toString('base64')}`;
 const blackyMusicDataUri = `data:audio/mpeg;base64,${fs.readFileSync(blackyMusicPath).toString('base64')}`;
+const blackyAwakeningDataUri = `data:audio/mpeg;base64,${fs.readFileSync(blackyAwakeningPath).toString('base64')}`;
 
 // 2. CSS combinado inline (todos los 4 archivos CSS)
 const cssMain = fs.readFileSync(path.join(clientDir, 'css', 'main.css'), 'utf8');
@@ -550,6 +552,7 @@ html = html.replaceAll('/assets/audio/GalaxyBattle.mp3', galaxyMusicDataUri);
 html = html.replaceAll('/assets/audio/GlitchBattle.mp3', glitchMusicDataUri);
 html = html.replaceAll('/assets/audio/ChessBattle.mp3', chessMusicDataUri);
 html = html.replaceAll('/assets/audio/BlackyBattle.mp3', blackyMusicDataUri);
+html = html.replaceAll('/assets/audio/BlackyAwakening.mp3', blackyAwakeningDataUri);
 
 // Quitar socket.io externo (no aplica en modo archivo descargable offline) y reemplazar el <script type="module"> por nuestro bundle inline
 html = html.replace(

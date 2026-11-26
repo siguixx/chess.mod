@@ -467,6 +467,42 @@ app.whenReady().then(async () => {
       document.getElementById('btn-cancel-exit-match')?.click();
       document.getElementById('view-battle').classList.add('hidden');
 
+      // 17. Verificar Lore de Modo Historia (Cap. 1 Maya + Cap. 5 CHESS), Habilidad Owner (Ganar contra Bot) y Secuencia Final Terrorífica de CHESS
+      document.querySelector('[data-screen="story"]').click();
+      await wait(120);
+      const chessLoreTxt = document.querySelector('#campaign-banner-info .story-lore-box')?.textContent || '';
+      document.querySelector('#campaign-tabs-bar [data-campaign="maya"]')?.click();
+      await wait(120);
+      const mayaLoreTxt = document.querySelector('#campaign-banner-info .story-lore-box')?.textContent || '';
+      results.storyLoreRendered = mayaLoreTxt.includes('mejor jugador de ajedrez del mundo')
+        && mayaLoreTxt.includes('Vía Láctea')
+        && chessLoreTxt.includes('Plano Astral de CHESS');
+
+      // Probar botón exclusivo Owner en partida contra Bot
+      document.querySelector('[data-screen="play"]').click();
+      await wait(120);
+      document.getElementById('btn-play-vs-ai')?.click();
+      await wait(350);
+      results.ownerInstaWinVisibleForOwner = !document.getElementById('owner-instawin-card')?.classList.contains('hidden');
+      document.getElementById('btn-owner-instawin')?.click();
+      await wait(450);
+      results.ownerInstaWinWonMatch = document.getElementById('modal-gameover')?.classList.contains('open')
+        && (document.getElementById('gameover-title')?.textContent || '').includes('Victoria');
+      document.getElementById('btn-gameover-menu')?.click();
+      await wait(150);
+
+      // Verificar audio BlackyAwakening.mp3 y secuencia final de CHESS (en modo acelerado para QA)
+      const awkAudio = document.getElementById('blacky-awakening-audio');
+      results.awakeningAudioSrcOk = (awkAudio?.src || '').includes('BlackyAwakening.mp3') && !awkAudio?.error;
+      window.__LAST_COPIED_SECRET_URL = '';
+      window.chessModApp.battle.playChessSecretHorrorEnding({ speedFactor: 0.03 });
+      await wait(100);
+      results.horrorEndingOverlayOpened = document.getElementById('blacky-ending-overlay')?.classList.contains('active') || false;
+      await wait(950);
+      results.horrorEndingCopiedUrl = window.__LAST_COPIED_SECRET_URL === 'https://chessmod.onrender.com/blacky';
+      results.horrorEndingReturnedToPlayMenu = !document.getElementById('blacky-ending-overlay')?.classList.contains('active')
+        && window.chessModApp.activeScreen === 'play';
+
       return results;
     })()`);
 

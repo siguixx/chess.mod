@@ -2003,6 +2003,74 @@ try {
     assert.equal(offEv.status, 'offline', 'Desconexión actualiza presencia a offline en tiempo real');
     s1.disconnect();
   });
+
+  await test('Lore completo de 5 Capítulos, Audio BlackyAwakening.mp3 y Habilidad Exclusiva Owner (Ganar todas las partidas)', async () => {
+    const {
+      ALL_CAMPAIGNS,
+      MAYA_CAMPAIGN,
+      MITTENS_CAMPAIGN,
+      GALAXY_CAMPAIGN,
+      GLITCH_CAMPAIGN,
+      CHESS_CAMPAIGN
+    } = await import('../shared/config/campaigns.js');
+    // 1. Verificar Lore completo de los 5 capítulos sin cambiar los personajes
+    assert.ok(ALL_CAMPAIGNS.every((c) => Boolean(c.loreAct && c.loreSummary)), 'Todos los capítulos tienen loreAct y loreSummary');
+    assert.ok(MAYA_CAMPAIGN.loreSummary.includes('mejor jugador de ajedrez del mundo') && MAYA_CAMPAIGN.loreSummary.includes('Vía Láctea'));
+    assert.ok(MITTENS_CAMPAIGN.loreSummary.includes('Mittens') && MITTENS_CAMPAIGN.epilogueText.includes('Entidad Galaxiana'));
+    assert.ok(GALAXY_CAMPAIGN.epilogueText.includes('rompe el universo') && GALAXY_CAMPAIGN.epilogueText.includes('Plano Glitch'));
+    assert.ok(GLITCH_CAMPAIGN.epilogueText.includes('Plano Astral') && GLITCH_CAMPAIGN.epilogueText.includes('Plano de CHESS'));
+    assert.ok(CHESS_CAMPAIGN.loreSummary.includes('restaurará todo') && CHESS_CAMPAIGN.defeatLore.includes('entidad que conserva a todos'));
+
+    // 2. Verificar que BlackyAwakening.mp3 se sirve correctamente 200 OK
+    const mp3Res = await fetch(`${url}/assets/audio/BlackyAwakening.mp3`);
+    assert.equal(mp3Res.status, 200, 'BlackyAwakening.mp3 debe servirse 200 OK');
+    const mp3Buf = await mp3Res.arrayBuffer();
+    assert.ok(mp3Buf.byteLength > 500000, 'BlackyAwakening.mp3 debe tener el audio completo');
+
+    // 3. Habilidad exclusiva del Owner en Multijugador Online: jugador normal es rechazado, Owner gana al instante
+    const ownerLogin = await (await fetch(`${url}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: 'sebasstianrf27@gmail.com', password: 'Escorpio01' })
+    })).json();
+    const rivalReg = await (await fetch(`${url}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'OwnerRivalPvp', email: 'ownerrival@chessmod.test', password: 'Password123' })
+    })).json();
+
+    const sOwn = ioClient(url, { auth: { token: ownerLogin.token }, transports: ['websocket'] });
+    const sRiv = ioClient(url, { auth: { token: rivalReg.token }, transports: ['websocket'] });
+    await Promise.all([
+      new Promise((res) => sOwn.on('connect', res)),
+      new Promise((res) => sRiv.on('connect', res))
+    ]);
+
+    const pCreated = new Promise((res) => sOwn.once('private:created', res));
+    sOwn.emit('private:create', { timeMinutes: 10 });
+    const priv = await pCreated;
+
+    const pOwnFound = new Promise((res) => sOwn.once('match:found', res));
+    const pRivFound = new Promise((res) => sRiv.once('match:found', res));
+    sRiv.emit('private:join', { code: priv.code });
+    const [mOwn] = await Promise.all([pOwnFound, pRivFound]);
+
+    // Jugador normal intenta usar match:owner_win -> RECHAZADO
+    const pRivErr = new Promise((res) => sRiv.once('match:error', res));
+    sRiv.emit('match:owner_win', { matchId: mOwn.matchId });
+    const rivErr = await pRivErr;
+    assert.ok(rivErr.error.includes('Owner'), 'Un jugador normal NO puede usar la habilidad de victoria del Owner');
+
+    // Owner usa match:owner_win -> GANA AL INSTANTE
+    const pEnded = new Promise((res) => sOwn.once('match:ended', res));
+    sOwn.emit('match:owner_win', { matchId: mOwn.matchId });
+    const ended = await pEnded;
+    assert.equal(ended.winner, mOwn.yourColor, 'El Owner debe ganar la partida al instante');
+    assert.ok(ended.reason.includes('Owner'), 'Motivo refleja la Sentencia Absoluta del Owner');
+
+    sOwn.disconnect();
+    sRiv.disconnect();
+  });
 } finally {
   await server.stop();
   try { fs.unlinkSync(tmpDb); } catch {}
