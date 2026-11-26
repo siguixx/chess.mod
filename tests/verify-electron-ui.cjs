@@ -491,15 +491,25 @@ app.whenReady().then(async () => {
       document.getElementById('btn-gameover-menu')?.click();
       await wait(150);
 
-      // Verificar audio BlackyAwakening.mp3 y secuencia final de CHESS (en modo acelerado para QA)
+      // Verificar audio BlackyAwakening.mp3 y secuencia final de CHESS (URL con botón de copiar manual, NO copiado automático) + botones de permisos de notificaciones externas
+      results.osNotifButtonsExist = Boolean(
+        document.getElementById('btn-modal-enable-os-notif')
+        && document.getElementById('btn-settings-enable-os-notif')
+      );
       const awkAudio = document.getElementById('blacky-awakening-audio');
       results.awakeningAudioSrcOk = (awkAudio?.src || '').includes('BlackyAwakening.mp3') && !awkAudio?.error;
       window.__LAST_COPIED_SECRET_URL = '';
-      window.chessModApp.battle.playChessSecretHorrorEnding({ speedFactor: 0.03 });
-      await wait(100);
+      window.chessModApp.battle.playChessSecretHorrorEnding({ speedFactor: 0.04 });
+      await wait(120);
       results.horrorEndingOverlayOpened = document.getElementById('blacky-ending-overlay')?.classList.contains('active') || false;
-      await wait(950);
-      results.horrorEndingCopiedUrl = window.__LAST_COPIED_SECRET_URL === 'https://chessmod.onrender.com/blacky';
+      await wait(520);
+      // En el clímax: el botón de copiar existe y NO se copió solo antes de hacer clic
+      results.horrorEndingNotAutoCopied = window.__LAST_COPIED_SECRET_URL === '';
+      const copyBtn = document.getElementById('btn-copy-blacky-url');
+      results.horrorEndingCopyBtnVisible = Boolean(copyBtn && !document.getElementById('blacky-ending-link-wrap')?.classList.contains('hidden'));
+      copyBtn?.click();
+      results.horrorEndingCopiedOnBtnClick = window.__LAST_COPIED_SECRET_URL === 'https://chessmod.onrender.com/blacky';
+      await wait(450);
       results.horrorEndingReturnedToPlayMenu = !document.getElementById('blacky-ending-overlay')?.classList.contains('active')
         && window.chessModApp.activeScreen === 'play';
 

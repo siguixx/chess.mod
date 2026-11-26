@@ -1065,6 +1065,13 @@
               </div>
             </div>
             <div class="setting-row">
+              <span>🔔 Notificaciones del sistema (fuera de la página)</span>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span id="settings-os-notif-status" class="pill muted" style="font-size:0.68rem;">Sin permiso</span>
+                <button id="btn-settings-enable-os-notif" type="button" class="btn btn-sm btn-gold">🔔 Activar Notificaciones</button>
+              </div>
+            </div>
+            <div class="setting-row">
               <span>Pantalla completa (también tecla F11)</span>
               <div style="display:flex;gap:8px;">
                 <button id="btn-toggle-fullscreen" class="btn btn-sm btn-gold">⛶ Alternar Pantalla Completa</button>
@@ -1567,6 +1574,10 @@
           <button id="btn-close-notifications" type="button" class="btn btn-sm btn-icon">✕</button>
         </div>
       </div>
+      <div id="os-notif-permission-bar" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border-radius:8px;background:rgba(207,166,76,0.1);border:1px solid rgba(207,166,76,0.35);margin-bottom:10px;font-size:0.76rem;">
+        <span id="modal-os-notif-label" style="color:#ebe3d5;">🔔 Recibe alertas fuera de la página (match, clan, amigos y chat).</span>
+        <button id="btn-modal-enable-os-notif" type="button" class="btn btn-sm btn-gold">🔔 Permitir</button>
+      </div>
       <div id="notifications-list-box" style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 2px;"></div>
     </div>
   </div>
@@ -1831,7 +1842,7 @@
     </div>
     <div id="blacky-ending-link-wrap" class="hidden">
       <div id="blacky-ending-url">https://chessmod.onrender.com/blacky</div>
-      <div id="blacky-ending-copied-badge" style="font-family:'Courier New',monospace;font-size:0.78rem;letter-spacing:0.18em;color:#ff8080;">[ COPIADO A TU PORTAPAPELES ]</div>
+      <button id="btn-copy-blacky-url" type="button" style="cursor:pointer;font-family:'Courier New',monospace;font-size:0.86rem;letter-spacing:0.14em;color:#ffffff;background:rgba(160,18,18,0.42);border:1px solid rgba(255,140,140,0.75);padding:9px 20px;border-radius:6px;box-shadow:0 0 18px rgba(255,40,40,0.45);transition:transform 0.12s ease;">📋 COPIAR ENLACE</button>
     </div>
   </div>
 

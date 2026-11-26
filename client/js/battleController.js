@@ -290,6 +290,16 @@ export class BattleController {
     // Botón de Poder equipado de Tienda / Mod VIP en batalla
     on('btn-shop-power', 'click', () => this.toggleShopPowerMode());
     on('btn-owner-instawin', 'click', () => this.triggerOwnerInstantWin());
+    on('btn-copy-blacky-url', 'click', () => {
+      const urlStr = 'https://chessmod.onrender.com/blacky';
+      this.copySecretUrlToClipboard(urlStr);
+      const btn = document.getElementById('btn-copy-blacky-url');
+      if (btn) {
+        btn.textContent = '✓ ENLACE COPIADO';
+        btn.style.background = 'rgba(38, 120, 72, 0.55)';
+        btn.style.borderColor = '#86efac';
+      }
+    });
 
     // Online buttons (incluye enviar solicitud de amistad al rival o compañero en plena partida)
     on('btn-exit-spectate', 'click', () => this.exitBattle());
@@ -2494,6 +2504,7 @@ export class BattleController {
     const eyesEl = document.getElementById('blacky-ending-eyes');
     const linkWrap = document.getElementById('blacky-ending-link-wrap');
     const urlEl = document.getElementById('blacky-ending-url');
+    const copyBtn = document.getElementById('btn-copy-blacky-url');
     const flashEl = document.getElementById('blacky-ending-flash');
     if (!overlay || !textEl || !eyesEl || !linkWrap) {
       this.exitBattle();
@@ -2521,6 +2532,11 @@ export class BattleController {
     linkWrap.classList.add('hidden');
     flashEl?.classList.remove('boom');
     if (urlEl) urlEl.textContent = SECRET_URL;
+    if (copyBtn) {
+      copyBtn.textContent = '📋 COPIAR ENLACE';
+      copyBtn.style.background = 'rgba(160,18,18,0.42)';
+      copyBtn.style.borderColor = 'rgba(255,140,140,0.75)';
+    }
     overlay.classList.add('active');
 
     // 1. Apagón inquietante (2.3 segundos en negro)
@@ -2550,7 +2566,7 @@ export class BattleController {
     });
     t += 3000;
 
-    // 4. Aparecen los 2 puntos blancos simulando ojos + MP3 muy fuerte + link copiado automáticamente
+    // 4. Aparecen los 2 puntos blancos simulando ojos + MP3 muy fuerte + URL con botón para copiarlo
     schedule(t, () => {
       if (flashEl) {
         flashEl.classList.remove('boom');
@@ -2559,12 +2575,11 @@ export class BattleController {
       }
       eyesEl.classList.remove('hidden');
       linkWrap.classList.remove('hidden');
-      this.copySecretUrlToClipboard(SECRET_URL);
       this.playLoudAwakeningAudio();
     });
 
-    // 5. Tras ~6 segundos intensos, corte seco al menú principal como si nada hubiera pasado (con logro de CHESS)
-    t += 6000;
+    // 5. Tras ~8.5 segundos (tiempo suficiente para copiar el enlace), corte seco al menú principal como si nada hubiera pasado
+    t += 8500;
     schedule(t, () => {
       this.stopLoudAwakeningAudio();
       overlay.classList.remove('active');

@@ -205,6 +205,7 @@ class ChessModApp {
     this.bindMenuEvents();
     this.bindSocketEvents();
     this.initBackNavigationGuard();
+    this.initBrowserNotifications();
     this.syncSettingsUI();
     this.bootstrap();
   }
@@ -380,6 +381,7 @@ class ChessModApp {
     if (user && api.getToken()) {
       mpSocket.connect();
       mpSocket.emit('presence:request');
+      this.maybePromptBrowserNotifications();
     }
   }
 
@@ -1202,6 +1204,7 @@ class ChessModApp {
     on('btn-notifications-bell', 'click', () => {
       this.unreadNotifs = 0;
       this.updateNotifBadge();
+      this.syncOsNotifPermissionUI();
       this.renderNotificationsModal();
       document.getElementById('modal-notifications')?.classList.add('open');
     });
@@ -1214,6 +1217,8 @@ class ChessModApp {
       this.updateNotifBadge();
       this.renderNotificationsModal();
     });
+    on('btn-modal-enable-os-notif', 'click', () => this.requestBrowserNotificationPermission());
+    on('btn-settings-enable-os-notif', 'click', () => this.requestBrowserNotificationPermission());
 
     // === 8. CONFIGURACIÓN COMPLETA ===
     document.querySelectorAll('#settings-lang-pills [data-set-lang]').forEach((b) => {
@@ -1529,6 +1534,146 @@ class ChessModApp {
     });
   }
 
+  /* ================= NOTIFICACIONES NATIVAS FUERA DE LA PÁGINA (WEB NOTIFICATIONS + SW) ================= */
+  initBrowserNotifications() {
+    this.swRegistration = null;
+    if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        this.swRegistration = reg;
+      }).catch(() => {});
+    }
+    this.syncOsNotifPermissionUI();
+  }
+
+  syncOsNotifPermissionUI() {
+    const supported = typeof window !== 'undefined' && 'Notification' in window;
+    const perm = supported ? Notification.permission : 'unsupported';
+    const setStatus = document.getElementById('settings-os-notif-status');
+    const setBtn = document.getElementById('btn-settings-enable-os-notif');
+    const modalLbl = document.getElementById('modal-os-notif-label');
+    const modalBtn = document.getElementById('btn-modal-enable-os-notif');
+
+    if (perm === 'granted') {
+      if (setStatus) { setStatus.textContent = 'Activas ✅'; setStatus.className = 'pill jade'; }
+      if (setBtn) { setBtn.textContent = '🔔 Probar Notificación'; }
+      if (modalLbl) modalLbl.textContent = '✅ Notificaciones fuera de la página activas.';
+      if (modalBtn) { modalBtn.textContent = '🔔 Probar'; }
+    } else if (perm === 'denied') {
+      if (setStatus) { setStatus.textContent = 'Bloqueadas'; setStatus.className = 'pill crimson'; }
+      if (setBtn) { setBtn.textContent = '🔒 Bloqueado en navegador'; }
+      if (modalLbl) modalLbl.textContent = '🔒 Bloqueadas en ajustes de tu navegador. Actívalas en el candado de la URL.';
+      if (modalBtn) { modalBtn.classList.add('hidden'); }
+    } else if (perm === 'default') {
+      if (setStatus) { setStatus.textContent = 'Sin activar'; setStatus.className = 'pill muted'; }
+      if (setBtn) { setBtn.textContent = '🔔 Activar Notificaciones'; }
+      if (modalLbl) modalLbl.textContent = '🔔 Activa notificaciones para recibir avisos aunque estés fuera de la página.';
+      if (modalBtn) { modalBtn.classList.remove('hidden'); modalBtn.textContent = '🔔 Permitir'; }
+    } else {
+      if (setStatus) { setStatus.textContent = 'No compatible'; setStatus.className = 'pill muted'; }
+      if (setBtn) setBtn.classList.add('hidden');
+      document.getElementById('os-notif-permission-bar')?.classList.add('hidden');
+    }
+  }
+
+  maybePromptBrowserNotifications() {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission !== 'default') return;
+    if (this._osNotifPromptShown) return;
+    try {
+      if (localStorage.getItem('chess_mod_os_notif_dismissed') === '1') return;
+    } catch {}
+    this._osNotifPromptShown = true;
+
+    const stack = document.getElementById('live-notif-stack');
+    if (!stack) return;
+    const card = document.createElement('div');
+    card.id = 'os-notif-ask-banner';
+    card.style.cssText = 'pointer-events:auto;background:rgba(20,18,15,0.97);border:1px solid var(--border-gold);border-left:4px solid #38bdf8;border-radius:10px;padding:10px 12px;box-shadow:0 12px 28px rgba(0,0,0,0.55);color:#f3ead8;font-size:0.78rem;';
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:4px;">
+        <strong style="color:#7dd3fc;font-size:0.8rem;">🔔 Notificaciones de CHESS.MOD</strong>
+        <button type="button" class="btn btn-sm btn-icon" data-dismiss-os="1" style="padding:1px 6px;font-size:0.68rem;">✕</button>
+      </div>
+      <div style="line-height:1.4;margin-bottom:8px;">¿Quieres recibir notificaciones fuera de la página cuando te reten a match, soliciten unirse a tu clan o te escriban?</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-sm btn-gold" data-allow-os="1">🔔 Permitir notificaciones</button>
+        <button type="button" class="btn btn-sm" data-dismiss-os="1">Ahora no</button>
+      </div>`;
+    stack.prepend(card);
+
+    card.querySelector('[data-allow-os]')?.addEventListener('click', async () => {
+      card.remove();
+      await this.requestBrowserNotificationPermission();
+    });
+    card.querySelectorAll('[data-dismiss-os]').forEach((b) => {
+      b.addEventListener('click', () => {
+        try { localStorage.setItem('chess_mod_os_notif_dismissed', '1'); } catch {}
+        card.remove();
+      });
+    });
+  }
+
+  async requestBrowserNotificationPermission() {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      showToast('Este navegador no soporta notificaciones externas.', 'info');
+      return 'unsupported';
+    }
+    if (Notification.permission === 'granted') {
+      this.syncOsNotifPermissionUI();
+      this.sendBrowserOSNotification({
+        id: `test_${Date.now()}`,
+        title: '🔔 CHESS.MOD · Notificaciones Activas',
+        message: 'Recibirás avisos aquí aunque estés fuera de la página.'
+      });
+      showToast('🔔 Notificación de prueba enviada.', 'success');
+      return 'granted';
+    }
+    try {
+      const perm = await Notification.requestPermission();
+      this.syncOsNotifPermissionUI();
+      if (perm === 'granted') {
+        try { localStorage.removeItem('chess_mod_os_notif_dismissed'); } catch {}
+        this.sendBrowserOSNotification({
+          id: `welcome_${Date.now()}`,
+          title: '🔔 CHESS.MOD · ¡Notificaciones Activadas!',
+          message: 'Ahora te avisaremos fuera de la página cuando recibas mensajes, solicitudes de clan o retos de match.'
+        });
+        showToast('✅ ¡Notificaciones fuera de la página activadas!', 'success');
+      } else if (perm === 'denied') {
+        showToast('Bloqueaste las notificaciones en tu navegador. Puedes activarlas desde los ajustes del sitio.', 'info');
+      }
+      return perm;
+    } catch {
+      return 'denied';
+    }
+  }
+
+  sendBrowserOSNotification(notif) {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+    const title = String(notif?.title || 'CHESS.MOD');
+    const options = {
+      body: String(notif?.message || ''),
+      icon: '/assets/images/chess_mod_logo.jpg',
+      badge: '/assets/images/chess_mod_logo.jpg',
+      tag: notif?.id || `chessmod_${Date.now()}`,
+      renotify: true
+    };
+    try {
+      if (this.swRegistration && typeof this.swRegistration.showNotification === 'function') {
+        this.swRegistration.showNotification(title, options).catch(() => {
+          try { new Notification(title, options); } catch {}
+        });
+      } else {
+        const n = new Notification(title, options);
+        n.onclick = () => {
+          try { window.focus(); } catch {}
+          n.close();
+        };
+      }
+    } catch {}
+  }
+
   /* ================= NOTIFICACIONES INTERACTIVAS EN TIEMPO REAL ================= */
   updateNotifBadge() {
     const badge = document.getElementById('notif-unread-badge');
@@ -1587,6 +1732,7 @@ class ChessModApp {
       this.renderNotificationsModal();
     }
     this.showInteractiveNotifBanner(this.notifications[0]);
+    this.sendBrowserOSNotification(this.notifications[0]);
   }
 
   showInteractiveNotifBanner(n) {
